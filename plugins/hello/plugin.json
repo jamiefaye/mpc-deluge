@@ -1,0 +1,17 @@
+{
+  "name": "Hello Deluge",
+  "manufacturer": "Fentonia",
+  "version": "1.0.0",
+  "format": "vst2",
+  "kind": "instrument",
+  "uid": "FujN",
+  "numInputs": 0,
+  "numOutputs": 2,
+  "category": "Synth",
+  "file32": "VST/hello-deluge-arm32.so",
+  "file64": "VST/hello-deluge-arm64.so",
+  "description": "Hello Deluge: a 4-voice synth for the MPC. Describe your plugin here.",
+  "author": "Fentonia",
+  "url": "",
+  "license": "MIT"
+}

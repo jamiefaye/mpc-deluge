@@ -1,0 +1,17 @@
+{
+  "name": "Deluge Proto",
+  "manufacturer": "Fentonia",
+  "version": "1.0.0",
+  "format": "vst2",
+  "kind": "instrument",
+  "uid": "FT6q",
+  "numInputs": 0,
+  "numOutputs": 2,
+  "category": "Synth",
+  "file32": "VST/deluge-proto-arm32.so",
+  "file64": "VST/deluge-proto-arm64.so",
+  "description": "Deluge Proto: Synthstrom Deluge oscillators and filters running on the MPC. A prototype, not the full Deluge synth.",
+  "author": "Fentonia",
+  "url": "",
+  "license": "GPL-3.0-or-later"
+}

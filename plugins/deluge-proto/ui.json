@@ -1,0 +1,22 @@
+{
+  "pages": [
+    {
+      "name": "MAIN",
+      "controls": [
+        { "param": "Cutoff",      "widget": "knob" },
+        { "param": "Resonance",   "widget": "knob" },
+        { "param": "Filter",      "widget": "slider", "overlay": "menu" },
+        { "param": "Volume",      "widget": "fader" },
+        { "param": "Waveform",    "widget": "slider", "overlay": "menu" },
+        { "param": "Pulse Width", "widget": "knob" },
+        { "widget": "empty" },
+        { "widget": "empty" },
+        { "param": "Attack",      "widget": "fader" },
+        { "param": "Decay",       "widget": "fader" },
+        { "param": "Sustain",     "widget": "fader" },
+        { "param": "Release",     "widget": "fader" }
+      ]
+    }
+  ],
+  "style": { "background": "ff1e1d1e", "accent": "ffd31145", "text": "ffffffff", "muted": "ff6a6a6c" }
+}

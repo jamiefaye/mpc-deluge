@@ -1,0 +1,8 @@
+build/
+dist/
+.DS_Store
+third_party/deluge/
+third_party/argon/
+third_party/etl/
+.mpc.env
+diagnostics.txt
