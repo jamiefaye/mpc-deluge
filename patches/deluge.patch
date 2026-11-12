@@ -343,6 +343,41 @@ diff -ruN a/deluge/src/deluge/memory/sdram_allocator.h b/deluge/src/deluge/memor
  namespace deluge::memory {
  
  /**
+diff -ruN a/deluge/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/deluge/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
+--- a/deluge/src/deluge/model/mod_controllable/mod_controllable_audio.cpp	2026-01-09 15:14:15
++++ b/deluge/src/deluge/model/mod_controllable/mod_controllable_audio.cpp	2026-11-12 15:58:55
+@@ -1755,5 +1755,10 @@
+ 	return false;
+ }
+ void ModControllableAudio::disableGrain() {
++	// mpc-deluge: grainFX is null until the grain effect is first enabled. On the Deluge the call
++	// below then reads through address 0x148, which is mapped there; on Linux it is a crash.
++	if (grainFX == nullptr) {
++		return;
++	}
+ 	grainFX->startSkippingRendering();
+ }
+diff -ruN a/deluge/src/deluge/model/voice/voice.cpp b/deluge/src/deluge/model/voice/voice.cpp
+--- a/deluge/src/deluge/model/voice/voice.cpp
++++ b/deluge/src/deluge/model/voice/voice.cpp
+@@ -1338,7 +1338,7 @@
+ 					    phaseIncrements[s], pulseWidth, &unisonParts[u].sources[s].oscPos, false, 0,
+ 					    doingOscSyncThisOscillator, oscSyncPos[u], phaseIncrements[0], sound.oscRetriggerPhase[s],
+ 					    sourceWaveIndexIncrements[s], sourceWaveIndexesLastTime[s],
+-					    static_cast<WaveTable*>(guides[s].audioFileHolder->audioFile));
++					    /* mpc-deluge: the holder is null unless the oscillator uses a file; the Deluge reads through address 8 here */ (guides[s].audioFileHolder ? static_cast<WaveTable*>(guides[s].audioFileHolder->audioFile) : nullptr));
+ 
+ 					// Sine and triangle waves come out bigger in fixed-amplitude rendering (for arbitrary reasons), so
+ 					// we need to compensate
+@@ -2436,7 +2436,7 @@
+ 			    sound.sources[s].oscType, sourceAmplitude, renderBuffer, oscBufferEnd, numSamples, phaseIncrement,
+ 			    pulseWidth, &unisonParts[u].sources[s].oscPos, true, amplitudeIncrement, doOscSync,
+ 			    oscSyncPosThisUnison, oscSyncPhaseIncrementsThisUnison, oscRetriggerPhase, waveIndexIncrement,
+-			    sourceWaveIndexesLastTime[s], static_cast<WaveTable*>(guides[s].audioFileHolder->audioFile));
++			    sourceWaveIndexesLastTime[s], /* mpc-deluge: the holder is null unless the oscillator uses a file; the Deluge reads through address 8 here */ (guides[s].audioFileHolder ? static_cast<WaveTable*>(guides[s].audioFileHolder->audioFile) : nullptr));
+ 
+ 			if (stereoBuffer) {
+ 				// TODO: if render buffer was typed we could use addPannedMono()
 diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/deluge/processing/engines/audio_engine.cpp
 --- a/deluge/src/deluge/processing/engines/audio_engine.cpp
 +++ b/deluge/src/deluge/processing/engines/audio_engine.cpp
@@ -366,6 +401,17 @@ diff -ruN a/deluge/src/deluge/processing/sound/sound.cpp b/deluge/src/deluge/pro
 +#include <algorithm> // mpc-deluge: was <bits/ranges_algo.h>, a libstdc++ internal
  #include <limits>
  #include <ranges>
+ 
+@@ -2640,7 +2640,9 @@
+ 	// reversible without doing anything
+ 
+ 	setSkippingRendering(true);
+-	grainFX->startSkippingRendering();
++	if (grainFX != nullptr) { // mpc-deluge: null until the grain effect is first enabled
++		grainFX->startSkippingRendering();
++	}
+ 	stopParamLPF(modelStack);
+ }
  
 diff -ruN a/deluge/src/deluge/processing/vector_rendering_function.h b/deluge/src/deluge/processing/vector_rendering_function.h
 --- a/deluge/src/deluge/processing/vector_rendering_function.h	2026-01-09 15:14:15

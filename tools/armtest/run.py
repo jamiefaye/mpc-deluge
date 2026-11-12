@@ -8,6 +8,7 @@ wrong arithmetic. It does not reproduce NEON alignment faults (use tools/check_a
 
     tools/armtest/run.py plugins/<name> [host_sim options]      test a built plugin
     tools/armtest/run.py --exe <arm32 program> [args]           run any arm32 glibc program
+    ... --file <host file or folder>=<path in the machine>      (repeatable) give it files to read
 
 Files the program writes under /out come back into build/armtest/out/. A plugin's diagnostics.txt
 and the simulator's WAV are copied there too.
@@ -88,6 +89,18 @@ def main():
     os.makedirs(stage)
     shutil.copy(init, os.path.join(stage, "init"))
     shutil.copytree(os.path.join(libroot, "lib"), os.path.join(stage, "lib"), symlinks=True)
+
+    # --file <host path>=<path in the machine> (repeatable): extra files for the program to read.
+    while "--file" in args:
+        i = args.index("--file")
+        host, guest = args[i + 1].split("=", 1)
+        dest = os.path.join(stage, guest.lstrip("/"))
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        if os.path.isdir(host):
+            shutil.copytree(host, dest)
+        else:
+            shutil.copy(host, dest)
+        del args[i:i + 2]
 
     plugin_folder = None
     if args[0] == "--exe":

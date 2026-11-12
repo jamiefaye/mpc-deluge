@@ -2,7 +2,7 @@
 """Compile the vendored Deluge firmware, plus the hosted hardware layer in hosted/, into a static
 library that a plugin links against.
 
-    tools/build_firmware.py [arm32|arm64|native] [--clean] [--probe]
+    tools/build_firmware.py [arm32|arm64|native] [--clean] [--probe] [--test tests/<name>.cpp]
 
 Output: build/firmware/<target>/libdeluge.a (objects in obj/, compiler messages in obj/*.err).
 --probe also links tools/sizing/root.cpp against the library with unused code dropped and writes
@@ -31,9 +31,9 @@ TARGETS = {
 
 # The same definitions tools/build.py gives a plugin, so both sides agree on every struct.
 DEFINES = ["-DDELUGE_HOSTED=1", "-D_GNU_SOURCE", "-DUSE_TASK_MANAGER", "-DPRINTF_ALIAS_STANDARD_FUNCTION_NAMES=0"]
-COMMON = ["-O2", "-fPIC", "-c", "-w", "-fsigned-char", "-ffunction-sections", "-fdata-sections",
+COMMON = ["-O2", "-g1", "-fPIC", "-c", "-w", "-fsigned-char", "-ffunction-sections", "-fdata-sections",
           "-fvisibility=hidden"] + DEFINES
-INCLUDES = ["-I" + os.path.join(HERE, "hosted")] + ["-I" + os.path.join(FW, d) for d in (
+INCLUDES = ["-I" + os.path.join(HERE, "hosted"), "-I" + os.path.join(HERE, "tests")] + ["-I" + os.path.join(FW, d) for d in (
     "", "deluge", "OSLikeStuff", "lib", "NE10/inc", "fatfs", "deluge/version")] + [
     "-I" + os.path.join(TP, "argon", "include"), "-I" + os.path.join(TP, "etl", "include")]
 
@@ -74,7 +74,9 @@ def sources(target):
 
 def command(src, obj, target):
     if src.endswith(".cpp"):
-        lang = ["c++", "-std=c++23"]
+        # The firmware never exits, so its static objects are never destroyed on a Deluge, and some
+        # of their destructors cannot run safely (they free into an allocator that may be gone).
+        lang = ["c++", "-std=c++23", "-fno-c++-static-destructors"]
     elif src.endswith(".c"):
         lang = ["cc", "-std=gnu17"]
     else:
@@ -93,7 +95,7 @@ def compile_one(job):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    args = [a for a in sys.argv[1:] if a in TARGETS]
     target = args[0] if args else "arm32"
     if target not in TARGETS:
         sys.exit("unknown target " + target)
@@ -130,6 +132,24 @@ def main():
         os.remove(lib)
     subprocess.run(ZIG + ["ar", "rcs", lib] + [j[1] for j in jobs], check=True)
     print("  %s (%.1f MB)" % (os.path.relpath(lib, HERE), os.path.getsize(lib) / 1e6))
+
+    # --test <file.cpp>: build a stand-alone program from one source in tests/ against the library.
+    # It is an ordinary arm32 Linux executable; run it with tools/armtest/run.py --exe.
+    if "--test" in sys.argv:
+        src = sys.argv[sys.argv.index("--test") + 1]
+        name = os.path.splitext(os.path.basename(src))[0]
+        obj = os.path.join(out, name + ".o")
+        exe = os.path.join(out, name)
+        p = subprocess.run(command(os.path.abspath(src), obj, target))
+        if p.returncode != 0:
+            sys.exit(1)
+        p = subprocess.run(ZIG + ["c++"] + TARGETS[target] + ["-no-pie", "-Wl,--gc-sections", "-o", exe, obj, lib, "-ldl", "-lpthread"],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        text = p.stdout.decode("utf-8", "replace")
+        if p.returncode != 0:
+            print(text[-6000:])
+            sys.exit(1)
+        print("  %s (%.1f MB)" % (os.path.relpath(exe, HERE), os.path.getsize(exe) / 1e6))
 
     if "--probe" in sys.argv:
         root = os.path.join(out, "root.o")

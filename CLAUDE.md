@@ -110,11 +110,18 @@ would. The GUI code is linked but never run.
    FAT internals used for sample streaming report failure), `hardware.c` (UART, SSI buffers,
    timers advanced by `deluge_hosted_advance_samples`, OLED/SPI/GPIO/USB/flash no-ops, NE10 FFT
    absent), `mtu2.c` (the timer register block as plain memory).
-3. Bring up the firmware's globals without its `main()`: allocator, `AudioEngine`, a minimal
-   `Song` if `Sound` insists on one.
-4. Load a SYNTH XML through the firmware's own `XMLDeserializer` and `SoundInstrument::readFromFile`,
-   send notes with `sendNote`, render with `renderOutput`. First test target: arm32 on the Force,
-   because there is no 32-bit host to run it on here.
+3. ~~Bring up the firmware's globals without its `main()`.~~ Done 2026-11-12, in the emulator.
+4. ~~Load a SYNTH XML, send notes, render.~~ Done 2026-11-12, in the emulator, as
+   `hosted/engine.h` (`engineInit`, `engineLoadSynth`, `engineNoteOn/Off`, `engineRender`). It
+   follows the firmware's own code: `deluge_main()` for start-up and
+   `Song::ensureAtLeastOneSessionClip()` for "one clip playing one synth preset" (a real `Song`,
+   `InstrumentClip` and `SoundInstrument`; the clip is required, it holds the arpeggiator
+   settings and the parameters). Loading is `StorageManager::loadInstrumentFromFile`, rendering
+   is `SoundInstrument::renderOutput`.
+   **Corpus result:** `tests/engine_corpus.cpp` ran all 747 presets in `~/deluge/SDCard/SYNTHS`
+   (80 seconds in the emulator): 746 load and render, 724 make sound, 22 are silent (21 of those
+   are sample-based, which is expected), 1 hangs (`156 - ABSTRACT 5.XML`, not yet investigated).
+   Nothing has been checked against a real Deluge yet, and none of this has run on the Force.
 5. Compare against a Deluge: render the same notes on both and diff the audio.
 6. Then the plugin shell: patch file choice, the 16 mod-knob parameters, state chunk holding the
    XML, and the screen.
@@ -138,6 +145,34 @@ keep everything that makes the sound and drop what only exists to survive the ha
   on the Force is measured.
 - Not free: the plugin shares the MPC's CPU with everything else in the project, and the SDK asks
   for a few percent of one core per instance. Measure before raising anything.
+
+Running the engine in the emulator:
+```
+tools/enginetest.sh [preset.XML]      # build, run tests/engine_smoke.cpp on one preset, name the
+                                      # crashing function if it crashes; WAV in build/armtest/out/
+tools/build_firmware.py arm32 --test tests/engine_corpus.cpp
+tools/armtest/run.py --exe build/firmware/arm32/engine_corpus /sd SYNTHS --file ~/deluge/SDCard/SYNTHS=/sd/SYNTHS
+tools/build_firmware.py arm32 --test tests/intrinsics_check.cpp    # then run.py --exe .../intrinsics_check
+```
+`tests/crash_report.h` + `tools/armtest/symbolize.py` stand in for a debugger: a crashing test
+prints its PC, LR and the code addresses on its stack, and the script names them.
+
+What running it taught (2026-11-12):
+- The firmware dereferences null pointers that happen to be harmless on a Deluge, where low
+  memory is mapped: `grainFX->startSkippingRendering()` before the grain effect exists, and
+  `guides[s].audioFileHolder->audioFile` for oscillators with no file. Each is a crash on Linux
+  and is patched with a null check. Expect more; they are real firmware bugs worth sending upstream.
+- The firmware library is built with `-fno-c++-static-destructors`: firmware statics are never
+  destroyed on a Deluge and some destructors cannot run safely at exit.
+- All fixed-point primitives the firmware uses pass `tests/intrinsics_check.cpp` on arm32 with
+  clang. `shift_left_saturate` is unused and is not equivalent to its fallback.
+- The engine's output is quiet in raw 32-bit terms (median peak about -44 dB re int32 full scale
+  for one note). The Deluge scales this up on the way to its codec; the right factor is not yet
+  taken from the firmware.
+- Check a preset's `bitCrush` and `sampleRateReduction` before judging a waveform by eye.
+  `SYNT100.XML` has both on; its odd, one-sided output is what it should be.
+- Not wired up yet: the song-level reverb (a preset's reverb send goes nowhere), sample loading,
+  unloading or replacing a preset, the mod knobs.
 
 Notes for step 2, from reading the firmware (2026-11-12):
 - Patch loading does not need a FAT filesystem. `FileReader` has a memory mode
