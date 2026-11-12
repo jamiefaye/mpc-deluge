@@ -234,6 +234,15 @@ Notes for step 2, from reading the firmware (2026-11-12):
   inside the MPC application, in archive order. Expect start-up-order problems; this is what the
   emulator is for.
 
+Next up (decided 2026-11-12): **make the firmware 64-bit clean**, ahead of tempo sync. A
+successor to the Force has leaked (reported as "Force G2", unannounced) and will presumably be
+64-bit like the MPC Live III and XL, where Deluge Synth currently plays only its placeholder
+tone. The work: the roughly 140 pointer-as-32-bit sites in 28 files (allocator, resizeable
+arrays, sample and cluster code; re-measure with `tools/sizing/run.sh native`), the
+`add_saturate` fallback, and the C fallback for `neon_fm_kernel`. It also lets the engine run
+natively on the Mac, which removes `engine_stub.cpp` and puts the real engine under the SDK's
+host simulator. Check the result against arm32 with the corpus test: outputs should match.
+
 Open problems, in the order they will bite:
 - **Testing.** Solved for arm32 by `tools/armtest` (emulated). The full engine still cannot
   run natively on the Mac until the firmware is 64-bit clean, which also blocks the SDK's own
