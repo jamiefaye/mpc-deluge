@@ -28,6 +28,8 @@
 #include <cmath>
 #include <cstdio>
 #include <dirent.h>
+#include <strings.h>
+#include <sys/stat.h>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -115,10 +117,28 @@ public:
         return true;
     }
 
+    // The project remembers the preset by its path under Content/SYNTHS, not by its position in
+    // the list, so adding or removing preset files does not change what a project plays.
     void saveExtraState(std::vector<uint8_t>& out) override
     {
-        (void)out;
+        const int i = presetIndex();
+        if (i >= 0) out.assign(presets_[(size_t)i].begin(), presets_[(size_t)i].end());
         writeDiagnostics();   // a project save is a convenient moment to refresh the file
+    }
+
+    void loadExtraState(const uint8_t* data, size_t size) override
+    {
+        const std::string wanted(reinterpret_cast<const char*>(data), size);
+        for (size_t i = 0; i < presets_.size(); ++i)
+        {
+            if (presets_[i] == wanted)
+            {
+                set(kPreset, (float)i);
+                requestedPreset_.store((int)i);
+                return;
+            }
+        }
+        // Not found (the file was removed or renamed): keep whatever the Preset number selects.
     }
 
     void process(mpc::ProcessContext& ctx) override
@@ -211,22 +231,29 @@ private:
 
     static float dbToGain(float dB) { return std::pow(10.0f, dB / 20.0f); }
 
-    // Preset files in Content/SYNTHS, sorted by name. Done once, in the constructor.
-    void scanPresets()
+    // Preset files under Content/SYNTHS, subfolders included, as paths relative to that folder
+    // ("Pads/Warm.XML"), sorted so that a folder's presets sit together. Done once, in the
+    // constructor.
+    void scanPresets() { scanFolder(mpc::contentPath("SYNTHS"), "", 0); std::sort(presets_.begin(), presets_.end(), lessIgnoringCase); if (presets_.size() > (size_t)kMaxPresets) presets_.resize((size_t)kMaxPresets); }
+
+    static bool lessIgnoringCase(const std::string& a, const std::string& b) { return strcasecmp(a.c_str(), b.c_str()) < 0; }
+
+    void scanFolder(const std::string& absolute, const std::string& relative, int depth)
     {
-        const std::string folder = mpc::contentPath("SYNTHS");
-        if (DIR* d = opendir(folder.c_str()))
+        DIR* d = opendir(absolute.c_str());
+        if (!d) return;
+        while (dirent* e = readdir(d))
         {
-            while (dirent* e = readdir(d))
-            {
-                const std::string name = e->d_name;
-                if (name.size() > 4 && name[0] != '.' && strcasecmp(name.c_str() + name.size() - 4, ".xml") == 0)
-                    presets_.push_back(name);
-            }
-            closedir(d);
+            const std::string name = e->d_name;
+            if (name.empty() || name[0] == '.') continue;
+            const std::string childAbsolute = absolute + "/" + name;
+            const std::string childRelative = relative.empty() ? name : relative + "/" + name;
+            struct stat st;
+            if (stat(childAbsolute.c_str(), &st) != 0) continue;
+            if (S_ISDIR(st.st_mode)) { if (depth < 6) scanFolder(childAbsolute, childRelative, depth + 1); }
+            else if (name.size() > 4 && strcasecmp(name.c_str() + name.size() - 4, ".xml") == 0) presets_.push_back(childRelative);
         }
-        std::sort(presets_.begin(), presets_.end());
-        if (presets_.size() > (size_t)kMaxPresets) presets_.resize((size_t)kMaxPresets);
+        closedir(d);
     }
 
     int presetIndex() { return presets_.empty() ? -1 : mpc::clamp(getInt(kPreset), 0, (int)presets_.size() - 1); }

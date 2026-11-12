@@ -30,6 +30,7 @@ remote() { python3 "$sdk/tools/mpc_remote.py" "$MPC_ADDRESS" --no-color "$@"; }
 project=
 restart=no
 build=yes
+pull=no
 for arg in "$@"; do
   case $arg in
     --info)    remote info; exit ;;
@@ -52,6 +53,26 @@ if [ -z "$MPC_DRIVE" ]; then
 fi
 
 cd "$here"
+
+# Akai's layout keeps a plugin's files, including ones the user added on the device, inside the
+# plugin folder (Content/), and installing replaces that folder. So first bring back whatever is
+# in the installed copy's Content/ and merge it into the project's Content/ (never overwriting a
+# local file); the build then carries it into the new copy. Skipped when nothing is installed.
+if [ -d "$project/Content" ] || [ "$pull" = yes ]; then
+  name=$(python3 -c 'import json,sys; j=json.load(open(sys.argv[1])); print(j["manufacturer"]+" - VST - "+j["name"])' "$project/plugin.json")
+  tmp=$(mktemp -d)
+  if remote --drive "$MPC_DRIVE" --yes export "$name" --out "$tmp" >/dev/null 2>&1 && ls "$tmp"/*.zip >/dev/null 2>&1; then
+    mkdir -p "$project/Content"
+    (cd "$tmp" && unzip -q -o ./*.zip "$name/Content/*" -d unpacked 2>/dev/null || true)
+    if [ -d "$tmp/unpacked/$name/Content" ]; then
+      # -n: keep the local file when both exist
+      cp -R -n "$tmp/unpacked/$name/Content/." "$project/Content/" 2>/dev/null || true
+      echo "Kept the device's Content/ ($(find "$tmp/unpacked/$name/Content" -type f | wc -l | tr -d ' ') files on the device)"
+    fi
+  fi
+  rm -rf "$tmp"
+fi
+
 # build.sh stops on a build, validation or host_sim failure, so a broken build is never sent.
 [ "$build" = yes ] && ./build.sh "$project"
 
