@@ -21,8 +21,8 @@ synth engine on the MPC; so far the Deluge oscillators and filters run in a prot
 - `common/` - sources added to every plugin by `tools/build.py` (see "Static destructors").
 - `tools/build_firmware.py [arm32]` - compiles the whole vendored firmware plus `hosted/` into
   `build/firmware/<target>/libdeluge.a`; `--probe` links the sizing probe against it and lists
-  what is still undefined (85 on 2026-11-12, all hardware layer). `hosted/` is where the
-  replacement hardware layer goes; it is empty so far.
+  what is still undefined (none, as of 2026-11-12). `hosted/` is the replacement hardware
+  layer, compiled into the same library; `hosted/hosted.h` is its interface.
 - `tools/armtest/` - see "Testing arm32 without the hardware".
 - `tools/gen_headers.sh` - writes the two headers the firmware's CMake build generates; called
   by `vendor.sh` and `mkpatch.sh`.
@@ -104,7 +104,12 @@ would. The GUI code is linked but never run.
 1. ~~Make the failing arm32 files compile~~ Done 2026-11-12.
 2. Write a hosted hardware layer in `hosted/`: FatFS calls onto POSIX files, no-op
    UART/SPI/OLED/PIC, timers from the sample clock, the allocator's regions from `malloc`.
-   In progress: the library build and probe exist (`tools/build_firmware.py --probe`).
+   Link closure reached 2026-11-12: `tools/build_firmware.py arm32 --probe` links with nothing
+   undefined. None of it has been run yet. What `hosted/` does: `memory.c` (one mmap'd block
+   for the allocator's regions), `files.c` + `dirs.c` (FatFs API over files under a root folder;
+   FAT internals used for sample streaming report failure), `hardware.c` (UART, SSI buffers,
+   timers advanced by `deluge_hosted_advance_samples`, OLED/SPI/GPIO/USB/flash no-ops, NE10 FFT
+   absent), `mtu2.c` (the timer register block as plain memory).
 3. Bring up the firmware's globals without its `main()`: allocator, `AudioEngine`, a minimal
    `Song` if `Sound` insists on one.
 4. Load a SYNTH XML through the firmware's own `XMLDeserializer` and `SoundInstrument::readFromFile`,

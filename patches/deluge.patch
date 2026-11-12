@@ -1,6 +1,6 @@
 diff -ruN a/deluge/src/OSLikeStuff/timers_interrupts/clock_type.h b/deluge/src/OSLikeStuff/timers_interrupts/clock_type.h
 --- a/deluge/src/OSLikeStuff/timers_interrupts/clock_type.h	2026-01-09 15:14:15
-+++ b/deluge/src/OSLikeStuff/timers_interrupts/clock_type.h	2026-11-12 15:26:44
++++ b/deluge/src/OSLikeStuff/timers_interrupts/clock_type.h	2026-11-12 15:53:25
 @@ -14,6 +14,11 @@
  typedef int64_t dTime;
  #ifdef __cplusplus
@@ -13,9 +13,48 @@ diff -ruN a/deluge/src/OSLikeStuff/timers_interrupts/clock_type.h b/deluge/src/O
  
  constexpr double rollTime = ((double)(UINT32_MAX) / DELUGE_CLOCKS_PERf);
  class Time {
+diff -ruN a/deluge/src/RZA1/cpu_specific.h b/deluge/src/RZA1/cpu_specific.h
+--- a/deluge/src/RZA1/cpu_specific.h
++++ b/deluge/src/RZA1/cpu_specific.h
+@@ -119,11 +119,18 @@
+ #define MIDI_RX_DMA_CHANNEL        13
+ #define MIDI_RX_TIMING_DMA_CHANNEL 14
+ 
++#if defined(DELUGE_HOSTED) // mpc-deluge: the memory map is whatever the host system gave us
++#include "hosted.h"
++#define EXTERNAL_MEMORY_BEGIN deluge_hosted_external_begin
++#define EXTERNAL_MEMORY_END   deluge_hosted_external_end
++#define INTERNAL_MEMORY_BEGIN deluge_hosted_internal_begin
++#else
+ #define EXTERNAL_MEMORY_BEGIN       0x0C000000
+ #define EXTERNAL_MEMORY_END         0x10000000
++#define INTERNAL_MEMORY_BEGIN 0x20000000uL
++#endif
+ #define UNUSED_MEMORY_SPACE_ADDRESS 0x08000000
+ 
+-#define INTERNAL_MEMORY_BEGIN 0x20000000uL
+ 
+ #define UNCACHED_MIRROR_OFFSET 0x40000000
+ 
+diff -ruN a/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h b/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h
+--- a/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h	2026-01-09 15:14:15
++++ b/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h	2026-11-12 15:53:25
+@@ -131,7 +131,12 @@
+ };
+ 
+ 
++#if defined(DELUGE_HOSTED) // mpc-deluge: ordinary memory instead of the hardware registers
++extern struct st_mtu2 deluge_hosted_mtu2;
++#define MTU2 deluge_hosted_mtu2
++#else
+ #define MTU2    (*(struct st_mtu2    *)0xFCFF0000uL) /* MTU2 */
++#endif
+ 
+ 
+ #define MTU2TCR_2 MTU2.TCR_2
 diff -ruN a/deluge/src/arm_neon_shim.h b/deluge/src/arm_neon_shim.h
---- a/deluge/src/arm_neon_shim.h	2026-01-09 15:14:15
-+++ b/deluge/src/arm_neon_shim.h	2026-11-12 14:35:34
+--- a/deluge/src/arm_neon_shim.h
++++ b/deluge/src/arm_neon_shim.h
 @@ -24,7 +24,8 @@
  #define ARM_NEON_SHIM_H
  // this exists to make clang happy because it doesn't use the same types as gcc neon.
@@ -28,7 +67,7 @@ diff -ruN a/deluge/src/arm_neon_shim.h b/deluge/src/arm_neon_shim.h
  
 diff -ruN a/deluge/src/definitions.h b/deluge/src/definitions.h
 --- a/deluge/src/definitions.h	2026-01-09 15:14:15
-+++ b/deluge/src/definitions.h	2026-11-12 14:35:34
++++ b/deluge/src/definitions.h	2026-11-12 15:53:25
 @@ -74,10 +74,17 @@
  #define MAX_NUM_USB_MIDI_DEVICES 6
  
@@ -49,7 +88,7 @@ diff -ruN a/deluge/src/definitions.h b/deluge/src/definitions.h
  // SDRAM, maybe timing?
 diff -ruN a/deluge/src/deluge/dsp/convolution/impulse_response_processor.h b/deluge/src/deluge/dsp/convolution/impulse_response_processor.h
 --- a/deluge/src/deluge/dsp/convolution/impulse_response_processor.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/dsp/convolution/impulse_response_processor.h	2026-11-12 15:26:44
++++ b/deluge/src/deluge/dsp/convolution/impulse_response_processor.h	2026-11-12 15:53:25
 @@ -19,6 +19,7 @@
  
  #include "dsp_ng/core/types.hpp"
@@ -59,8 +98,8 @@ diff -ruN a/deluge/src/deluge/dsp/convolution/impulse_response_processor.h b/del
  
  namespace deluge::dsp {
 diff -ruN a/deluge/src/deluge/dsp/dx/env.cpp b/deluge/src/deluge/dsp/dx/env.cpp
---- a/deluge/src/deluge/dsp/dx/env.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/dsp/dx/env.cpp	2026-11-12 15:26:44
+--- a/deluge/src/deluge/dsp/dx/env.cpp
++++ b/deluge/src/deluge/dsp/dx/env.cpp
 @@ -15,6 +15,7 @@
   * limitations under the License.
   */
@@ -80,7 +119,7 @@ diff -ruN a/deluge/src/deluge/dsp/dx/env.cpp b/deluge/src/deluge/dsp/dx/env.cpp
  		if (targetlevel_ == level_ || (ix_ == 0 && newlevel == 0)) {
 diff -ruN a/deluge/src/deluge/dsp/filter/filter.cpp b/deluge/src/deluge/dsp/filter/filter.cpp
 --- a/deluge/src/deluge/dsp/filter/filter.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/dsp/filter/filter.cpp	2026-11-12 15:27:40
++++ b/deluge/src/deluge/dsp/filter/filter.cpp	2026-11-12 15:53:25
 @@ -17,6 +17,7 @@
  #include "definitions.h"
  #include "dsp_ng/core/types.hpp"
@@ -91,7 +130,7 @@ diff -ruN a/deluge/src/deluge/dsp/filter/filter.cpp b/deluge/src/deluge/dsp/filt
  }
 diff -ruN a/deluge/src/deluge/dsp/filter/filter.h b/deluge/src/deluge/dsp/filter/filter.h
 --- a/deluge/src/deluge/dsp/filter/filter.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/dsp/filter/filter.h	2026-11-12 15:26:44
++++ b/deluge/src/deluge/dsp/filter/filter.h	2026-11-12 15:53:25
 @@ -17,6 +17,7 @@
  
  #pragma once
@@ -102,7 +141,7 @@ diff -ruN a/deluge/src/deluge/dsp/filter/filter.h b/deluge/src/deluge/dsp/filter
  #include "util/fixedpoint.h"
 diff -ruN a/deluge/src/deluge/dsp/oscillators/oscillator.cpp b/deluge/src/deluge/dsp/oscillators/oscillator.cpp
 --- a/deluge/src/deluge/dsp/oscillators/oscillator.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/dsp/oscillators/oscillator.cpp	2026-11-12 14:35:34
++++ b/deluge/src/deluge/dsp/oscillators/oscillator.cpp	2026-11-12 15:53:25
 @@ -274,11 +274,11 @@
  
  				if (!doOscSync) {
@@ -118,8 +157,8 @@ diff -ruN a/deluge/src/deluge/dsp/oscillators/oscillator.cpp b/deluge/src/deluge
  					return;
  				}
 diff -ruN a/deluge/src/deluge/gui/l10n/language.h b/deluge/src/deluge/gui/l10n/language.h
---- a/deluge/src/deluge/gui/l10n/language.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/gui/l10n/language.h	2026-11-12 15:27:40
+--- a/deluge/src/deluge/gui/l10n/language.h
++++ b/deluge/src/deluge/gui/l10n/language.h
 @@ -24,7 +24,14 @@
  	};
  
@@ -138,7 +177,7 @@ diff -ruN a/deluge/src/deluge/gui/l10n/language.h b/deluge/src/deluge/gui/l10n/l
  
 diff -ruN a/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h b/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h
 --- a/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h	2026-11-12 15:26:44
++++ b/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h	2026-11-12 15:53:25
 @@ -20,7 +20,7 @@
  #include "hid/display/display.h"
  #include "hid/display/oled.h"
@@ -149,8 +188,8 @@ diff -ruN a/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h b/deluge/src/de
  namespace deluge::gui::menu_item::arpeggiator {
  
 diff -ruN a/deluge/src/deluge/gui/ui/browser/browser.cpp b/deluge/src/deluge/gui/ui/browser/browser.cpp
---- a/deluge/src/deluge/gui/ui/browser/browser.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/gui/ui/browser/browser.cpp	2026-11-12 15:27:40
+--- a/deluge/src/deluge/gui/ui/browser/browser.cpp
++++ b/deluge/src/deluge/gui/ui/browser/browser.cpp
 @@ -352,7 +352,7 @@
  					goto nonNumericFile;
  				}
@@ -161,8 +200,8 @@ diff -ruN a/deluge/src/deluge/gui/ui/browser/browser.cpp b/deluge/src/deluge/gui
  					goto nonNumericFile; // Shouldn't happen?
  				}
 diff -ruN a/deluge/src/deluge/gui/ui/ui.cpp b/deluge/src/deluge/gui/ui/ui.cpp
---- a/deluge/src/deluge/gui/ui/ui.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/gui/ui/ui.cpp	2026-11-12 15:26:44
+--- a/deluge/src/deluge/gui/ui/ui.cpp
++++ b/deluge/src/deluge/gui/ui/ui.cpp
 @@ -358,7 +358,7 @@
  		}
  
@@ -174,7 +213,7 @@ diff -ruN a/deluge/src/deluge/gui/ui/ui.cpp b/deluge/src/deluge/gui/ui/ui.cpp
  			uiNavigationHierarchy[u]->renderOLED(deluge::hid::display::OLED::main);
 diff -ruN a/deluge/src/deluge/gui/views/instrument_clip_view.cpp b/deluge/src/deluge/gui/views/instrument_clip_view.cpp
 --- a/deluge/src/deluge/gui/views/instrument_clip_view.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/gui/views/instrument_clip_view.cpp	2026-11-12 15:27:40
++++ b/deluge/src/deluge/gui/views/instrument_clip_view.cpp	2026-11-12 15:53:25
 @@ -2095,7 +2095,7 @@
  	if (path == &nothing) {
  		return ActionResult::NOT_DEALT_WITH;
@@ -185,8 +224,8 @@ diff -ruN a/deluge/src/deluge/gui/views/instrument_clip_view.cpp b/deluge/src/de
  		return ActionResult::NOT_DEALT_WITH;
  	}
 diff -ruN a/deluge/src/deluge/hid/display/oled.cpp b/deluge/src/deluge/hid/display/oled.cpp
---- a/deluge/src/deluge/hid/display/oled.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/hid/display/oled.cpp	2026-11-12 14:35:34
+--- a/deluge/src/deluge/hid/display/oled.cpp
++++ b/deluge/src/deluge/hid/display/oled.cpp
 @@ -32,7 +32,7 @@
  #include "util/cfunctions.h"
  #include "util/d_string.h"
@@ -198,7 +237,7 @@ diff -ruN a/deluge/src/deluge/hid/display/oled.cpp b/deluge/src/deluge/hid/displ
  #include <gui/ui/ui.h>
 diff -ruN a/deluge/src/deluge/hid/display/seven_segment.cpp b/deluge/src/deluge/hid/display/seven_segment.cpp
 --- a/deluge/src/deluge/hid/display/seven_segment.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/hid/display/seven_segment.cpp	2026-11-12 15:26:44
++++ b/deluge/src/deluge/hid/display/seven_segment.cpp	2026-11-12 15:53:25
 @@ -315,7 +315,9 @@
  	    true; // Pretend this initially, cos the segment before the first one doesn't exist, obviously
  	*andAHalf = false;
@@ -212,7 +251,7 @@ diff -ruN a/deluge/src/deluge/hid/display/seven_segment.cpp b/deluge/src/deluge/
  		// If dot here, and we haven't just had a dot previously, then this dot just gets crammed into prev encoded char
 diff -ruN a/deluge/src/deluge/memory/external_allocator.h b/deluge/src/deluge/memory/external_allocator.h
 --- a/deluge/src/deluge/memory/external_allocator.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/memory/external_allocator.h	2026-11-12 15:27:40
++++ b/deluge/src/deluge/memory/external_allocator.h	2026-11-12 15:53:25
 @@ -2,9 +2,13 @@
  #include "memory/general_memory_allocator.h"
  #include "util/exceptions.h"
@@ -229,7 +268,7 @@ diff -ruN a/deluge/src/deluge/memory/external_allocator.h b/deluge/src/deluge/me
  /**
 diff -ruN a/deluge/src/deluge/memory/fast_allocator.h b/deluge/src/deluge/memory/fast_allocator.h
 --- a/deluge/src/deluge/memory/fast_allocator.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/memory/fast_allocator.h	2026-11-12 15:26:44
++++ b/deluge/src/deluge/memory/fast_allocator.h	2026-11-12 15:53:25
 @@ -2,9 +2,13 @@
  #include "memory/general_memory_allocator.h"
  #include "util/exceptions.h"
@@ -244,9 +283,52 @@ diff -ruN a/deluge/src/deluge/memory/fast_allocator.h b/deluge/src/deluge/memory
  namespace deluge::memory {
  
  /**
+diff -ruN a/deluge/src/deluge/memory/general_memory_allocator.cpp b/deluge/src/deluge/memory/general_memory_allocator.cpp
+--- a/deluge/src/deluge/memory/general_memory_allocator.cpp	2026-01-09 15:14:15
++++ b/deluge/src/deluge/memory/general_memory_allocator.cpp	2026-11-12 15:53:25
+@@ -40,6 +40,9 @@
+ extern uint32_t program_stack_end;
+ // NOLINTEND
+ GeneralMemoryAllocator::GeneralMemoryAllocator() : lock(false) {
++#if defined(DELUGE_HOSTED) // mpc-deluge
++	deluge_hosted_memory_init();
++#endif
+ 	uint32_t external_small_end = EXTERNAL_MEMORY_END;
+ 	uint32_t external_small_start = external_small_end - RESERVED_EXTERNAL_SMALL_ALLOCATOR;
+ 	uint32_t external_end = external_small_start;
+@@ -47,12 +50,20 @@
+ 	uint32_t stealable_end = external_start;
+ 	// NOLINTBEGIN
+ 	// clang tidy hates both reinterpret and c style casts but linker output is only meaningful when taking address
++#if defined(DELUGE_HOSTED) // mpc-deluge: regions come from hosted/memory.c, not the linker script
++	auto stealable_start = (uint32_t)deluge_hosted_external_begin;
++	auto internal_small_start = (uint32_t)deluge_hosted_internal_begin;
++	auto internal_small_end = (uint32_t)deluge_hosted_internal_small_end;
++	auto internal_start = (uint32_t)deluge_hosted_internal_small_end;
++	auto internal_end = (uint32_t)deluge_hosted_internal_end;
++#else
+ 	auto stealable_start = (uint32_t)&__sdram_bss_end;
+ 
+ 	auto internal_small_start = (uint32_t)&__frunk_bss_end;
+ 	auto internal_small_end = (uint32_t)&__frunk_slack_end;
+ 	auto internal_start = (uint32_t)&__heap_start;
+ 	auto internal_end = (uint32_t)&program_stack_start;
++#endif
+ 	// NOLINTEND
+ 	regions[MEMORY_REGION_STEALABLE].name = "stealable";
+ 	regions[MEMORY_REGION_INTERNAL].name = "internal";
+@@ -81,7 +92,7 @@
+ int32_t closestDistance = 2147483647;
+ 
+ void GeneralMemoryAllocator::checkStack(char const* caller) {
+-#if ALPHA_OR_BETA_VERSION
++#if ALPHA_OR_BETA_VERSION && !defined(DELUGE_HOSTED) // mpc-deluge: the stack is the host's, not at program_stack_start
+ 
+ 	char a;
+ 
 diff -ruN a/deluge/src/deluge/memory/sdram_allocator.h b/deluge/src/deluge/memory/sdram_allocator.h
 --- a/deluge/src/deluge/memory/sdram_allocator.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/memory/sdram_allocator.h	2026-11-12 15:27:40
++++ b/deluge/src/deluge/memory/sdram_allocator.h	2026-11-12 15:53:25
 @@ -2,9 +2,13 @@
  #include "memory/general_memory_allocator.h"
  #include "util/exceptions.h"
@@ -262,8 +344,8 @@ diff -ruN a/deluge/src/deluge/memory/sdram_allocator.h b/deluge/src/deluge/memor
  
  /**
 diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/deluge/processing/engines/audio_engine.cpp
---- a/deluge/src/deluge/processing/engines/audio_engine.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/processing/engines/audio_engine.cpp	2026-11-12 14:35:34
+--- a/deluge/src/deluge/processing/engines/audio_engine.cpp
++++ b/deluge/src/deluge/processing/engines/audio_engine.cpp
 @@ -60,7 +60,7 @@
  #include "util/functions.h"
  #include "util/misc.h"
@@ -274,8 +356,8 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  #include <cstring>
  #include <execution>
 diff -ruN a/deluge/src/deluge/processing/sound/sound.cpp b/deluge/src/deluge/processing/sound/sound.cpp
---- a/deluge/src/deluge/processing/sound/sound.cpp	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/processing/sound/sound.cpp	2026-11-12 14:35:34
+--- a/deluge/src/deluge/processing/sound/sound.cpp
++++ b/deluge/src/deluge/processing/sound/sound.cpp
 @@ -63,7 +63,7 @@
  #include "util/misc.h"
  #include <algorithm>
@@ -287,7 +369,7 @@ diff -ruN a/deluge/src/deluge/processing/sound/sound.cpp b/deluge/src/deluge/pro
  
 diff -ruN a/deluge/src/deluge/processing/vector_rendering_function.h b/deluge/src/deluge/processing/vector_rendering_function.h
 --- a/deluge/src/deluge/processing/vector_rendering_function.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/processing/vector_rendering_function.h	2026-11-12 15:12:44
++++ b/deluge/src/deluge/processing/vector_rendering_function.h	2026-11-12 15:53:25
 @@ -33,8 +33,12 @@
  		strength2[i] = rshifted;
  
@@ -305,7 +387,7 @@ diff -ruN a/deluge/src/deluge/processing/vector_rendering_function.h b/deluge/sr
  	strength2 = strength2 >> 1;
 diff -ruN a/deluge/src/deluge/util/container/array/ordered_resizeable_array.h b/deluge/src/deluge/util/container/array/ordered_resizeable_array.h
 --- a/deluge/src/deluge/util/container/array/ordered_resizeable_array.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/util/container/array/ordered_resizeable_array.h	2026-11-12 14:35:34
++++ b/deluge/src/deluge/util/container/array/ordered_resizeable_array.h	2026-11-12 15:53:25
 @@ -51,12 +51,12 @@
  
  protected:
@@ -323,7 +405,7 @@ diff -ruN a/deluge/src/deluge/util/container/array/ordered_resizeable_array.h b/
  	}
 diff -ruN a/deluge/src/deluge/util/d_stringbuf.h b/deluge/src/deluge/util/d_stringbuf.h
 --- a/deluge/src/deluge/util/d_stringbuf.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/util/d_stringbuf.h	2026-11-12 15:26:44
++++ b/deluge/src/deluge/util/d_stringbuf.h	2026-11-12 15:53:25
 @@ -67,5 +67,6 @@
  
  /// Define a `StringBuf` that uses an array placed on the stack.
@@ -334,7 +416,7 @@ diff -ruN a/deluge/src/deluge/util/d_stringbuf.h b/deluge/src/deluge/util/d_stri
  	StringBuf name = {name##__buf, capacity}
 diff -ruN a/deluge/src/deluge/util/intrinsics.h b/deluge/src/deluge/util/intrinsics.h
 --- a/deluge/src/deluge/util/intrinsics.h	2026-01-09 15:14:15
-+++ b/deluge/src/deluge/util/intrinsics.h	2026-11-12 14:35:34
++++ b/deluge/src/deluge/util/intrinsics.h	2026-11-12 15:53:25
 @@ -19,6 +19,9 @@
  #include <bit>
  #include <cstdint>

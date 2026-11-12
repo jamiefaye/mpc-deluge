@@ -15,7 +15,9 @@ mkdir -p "$here/patches"
 cd "$tmp"
 for part in deluge argon; do
   out=$here/patches/$part.patch
-  diff -ruN "a/$part" "b/$part" > "$out" || true   # diff exits 1 when there are differences
+  # diff exits 1 when there are differences. The sed drops the timestamps diff puts on the
+  # ---/+++ lines, so regenerating without changes leaves the patch files byte-identical.
+  diff -ruN "a/$part" "b/$part" | sed -E 's/^(---|\+\+\+) ([^\t]+)\t.*/\1 \2/' > "$out" || true
   if [ -s "$out" ]; then
     echo "patches/$part.patch: $(grep -c '^diff ' "$out") file(s)"
   else

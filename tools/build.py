@@ -24,6 +24,8 @@ flags += ["-DDELUGE_HOSTED=1"]
 # What the firmware's own CMake build passes and its code relies on. char is unsigned by default
 # on ARM; the firmware is written for signed char.
 flags += ["-fsigned-char", "-D_GNU_SOURCE", "-DUSE_TASK_MANAGER"]
+# hosted/hosted.h is included by the patched firmware headers.
+flags += ["-I" + os.path.join(HERE, "hosted")]
 for inc in ("deluge/src", "deluge/src/deluge", "argon/include", "etl/include"):
     path = os.path.join(TP, inc)
     if not os.path.isdir(path):
