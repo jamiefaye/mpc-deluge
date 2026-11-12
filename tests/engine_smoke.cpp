@@ -48,6 +48,15 @@ int main(int argc, char** argv) {
 	int64_t peak = 0;
 	deluge_hosted::engineNoteOn(note, velocity);
 	for (int block = 0; block < numBlocks; block++) {
+		// Exercise the expression inputs while the note is held: bend up a tone-ish, wheel, pressure.
+		if (block == numBlocks / 8) {
+			deluge_hosted::enginePitchBend(4096);
+		}
+		if (block == numBlocks / 4) {
+			deluge_hosted::enginePitchBend(0);
+			deluge_hosted::engineModWheel(127);
+			deluge_hosted::engineChannelPressure(100);
+		}
 		if (block == numBlocks / 2) {
 			deluge_hosted::engineNoteOff(note);
 		}

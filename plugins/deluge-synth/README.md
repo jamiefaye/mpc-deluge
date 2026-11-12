@@ -18,7 +18,8 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
 ## What it does not do yet
 
 - Only one instance per MPC project makes sound; a second one is silent.
-- No tempo sync (synced LFOs, arpeggiator and delay have no clock), pitch bend or mod wheel.
+- No tempo sync (synced LFOs, arpeggiator and delay have no clock) and no MPE. Pitch bend, mod
+  wheel and channel pressure work, as a Deluge treats them on a synth's input channel.
 - Gold knobs whose assignment is a switch or a momentary action (stutter) only move a value.
 - Parameters: Volume; Preset, Folder and four stepping buttons; Gold 1-16, the preset's sixteen
   gold-knob assignments (value text shows what each controls and its 0-50 position). The rest

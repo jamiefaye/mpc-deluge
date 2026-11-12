@@ -218,6 +218,29 @@ void engineAllNotesOff() {
 	synth->allNotesOff(modelStack, synth->getArp());
 }
 
+// MelodicInstrument::receivedPitchBend / receivedCC / receivedAftertouch reduce to this call for a
+// plain (non-MPE) input channel, with these value scalings.
+static void channelExpression(int32_t cc, int32_t value) {
+	if (synth == nullptr) {
+		return;
+	}
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithTimelineCounter* modelStack = setupModelStackWithSong(modelStackMemory, song)->addTimelineCounter(clip);
+	synth->processParamFromInputMIDIChannel(cc, value, modelStack);
+}
+
+void enginePitchBend(int value) {
+	channelExpression(CC_NUMBER_PITCH_BEND, (int32_t)std::clamp(value, -8192, 8191) << 18);
+}
+
+void engineModWheel(int value) {
+	channelExpression(CC_NUMBER_Y_AXIS, (int32_t)std::clamp(value, 0, 127) << 24);
+}
+
+void engineChannelPressure(int value) {
+	channelExpression(CC_NUMBER_AFTERTOUCH, (int32_t)std::clamp(value, 0, 127) << 24);
+}
+
 // The firmware finds "the parameter under gold knob N" through the instrument's current knob
 // button (modKnobMode); this selects the button, asks, and puts the selection back.
 static ModelStackWithAutoParam* knobParam(char* modelStackMemory, int knob) {

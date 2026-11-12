@@ -206,7 +206,12 @@ What running it taught (2026-11-12):
   parameters Gold 1-16 with the preset's name for each in the value text.
 - First CPU figures from the Force (2026-11-12, Deluge Synth, a few single notes and chords):
   average 1.4% of one core over 135 s, worst single block 6.1%.
-- Not wired up yet: tempo, pitch bend, mod wheel, kits, the rest of the parameter matrix.
+- Pitch bend, mod wheel and channel pressure go in through
+  `MelodicInstrument::processParamFromInputMIDIChannel` with the scalings the firmware's MIDI
+  input code uses (bend `<< 18`, wheel and pressure `<< 24`; the wheel is the "Y" source).
+- CPU is not a constraint (Jamie, 2026-11-12): the Force has four 1.8 GHz cores against the
+  Deluge's one at 400 MHz. Do not spend effort on optimisation or load shedding.
+- Not wired up yet: tempo, MPE, kits, the rest of the parameter matrix.
 
 Notes for step 2, from reading the firmware (2026-11-12):
 - Patch loading does not need a FAT filesystem. `FileReader` has a memory mode

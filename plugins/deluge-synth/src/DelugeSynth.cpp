@@ -11,7 +11,7 @@
 //     instance in the same MPC process stays silent.
 //   * Presets come from Content/SYNTHS/ inside the plugin folder, and their samples from
 //     Content/SAMPLES/ (the folder layout of a Deluge SD card). Samples are loaded whole into memory.
-//   * No tempo sync, pitch bend or mod wheel yet.
+//   * No tempo sync yet (synced LFOs, arpeggiator and delay have no clock), and no MPE.
 //
 // Gold knobs: parameters Gold 1..16 are the sixteen gold-knob assignments stored in the preset
 // (eight buttons times two knobs on a Deluge). Their value text names what each controls.
@@ -444,6 +444,9 @@ private:
         if (e.isNoteOn()) { deluge_hosted::engineNoteOn(e.note(), e.velocity()); statNoteOns_.fetch_add(1, std::memory_order_relaxed); }
         else if (e.isNoteOff()) deluge_hosted::engineNoteOff(e.note());
         else if (e.isAllNotesOff()) deluge_hosted::engineAllNotesOff();
+        else if (e.isPitchBend()) deluge_hosted::enginePitchBend(e.pitchBend());
+        else if (e.isController() && e.controller() == 1) deluge_hosted::engineModWheel(e.data[2]);
+        else if (e.isAftertouch()) deluge_hosted::engineChannelPressure(e.data[1]);
     }
 
     // What happened so far, written into the plugin's own folder: there is no other way to see

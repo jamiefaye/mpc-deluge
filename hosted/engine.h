@@ -31,6 +31,14 @@ void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 void engineAllNotesOff(); // releases every held note (they still ring out through their release)
 
+// Channel-wide expression, as a Deluge treats it arriving on a synth's MIDI input channel: pitch
+// bend (-8192..8191; the range is the preset's bend range), the mod wheel (0..127; the firmware
+// routes it to its "Y" expression source) and channel pressure (0..127; its "Z" source). What they
+// do depends on the preset's patching.
+void enginePitchBend(int value);
+void engineModWheel(int value);
+void engineChannelPressure(int value);
+
 // --- the gold knobs ---------------------------------------------------------------------------------
 // A Deluge has two gold knobs and eight buttons that choose what the pair controls: sixteen
 // assignments, stored in each preset. Knob numbers here run 0..15: (button 0, upper knob),

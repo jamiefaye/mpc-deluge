@@ -54,6 +54,10 @@ bool engineKnobGet(int, int* position) {
 
 void engineKnobSet(int, int) {}
 
+void enginePitchBend(int) {}
+void engineModWheel(int) {}
+void engineChannelPressure(int) {}
+
 void engineNoteOn(int note, int velocity) {
 	Tone* slot = &tones[0];
 	for (Tone& t : tones) {
