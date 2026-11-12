@@ -21,9 +21,9 @@ Deluge.
 
 - Builds for 32-bit ARM (Force, MPC Live, X, One, Key), 64-bit ARM (Live III, XL) and this computer.
 - Passes the SDK host simulator (`host_sim ... test`).
-- Runs on an Akai Force (32-bit, MPC 3.10.1.12; first heard 2026-11-12). The oscillators and the
-  SVF match the desktop build bit for bit there; the ladder filters differ by 0.1-0.3% because
-  the Force runs the firmware's ARM assembly arithmetic and the desktop build its C fallbacks.
+- Runs on an Akai Force (32-bit, MPC 3.10.1.12; first heard 2026-11-12).
+- Its self-test gives bit-identical output on the desktop (arm64) build and on emulated 32-bit
+  ARM, for every oscillator and filter mode.
 - CPU on the Force: about 3-4% of one core by the device's own meter; per-voice figures not yet
   collected.
 - Not tried on an MPC Live or on any 64-bit MPC.

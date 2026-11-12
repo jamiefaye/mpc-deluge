@@ -30,5 +30,11 @@ for inc in ("deluge/src", "deluge/src/deluge", "argon/include", "etl/include"):
         sys.exit("missing %s: run tools/vendor.sh" % path)
     flags += ["-isystem", path]
 
+# Every plugin also gets common/*.cpp (see the comments in those files for why).
+COMMON_SOURCES = sorted(
+    os.path.join(HERE, "common", f) for f in os.listdir(os.path.join(HERE, "common")) if f.endswith(".cpp"))
+_find_sources = sdk_build.find_sources
+sdk_build.find_sources = lambda project: _find_sources(project) + COMMON_SOURCES
+
 if __name__ == "__main__":
     sys.exit(sdk_build.main())

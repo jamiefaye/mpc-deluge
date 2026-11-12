@@ -29,3 +29,18 @@ case $(uname) in Darwin) ext=dylib ;; *) ext=so ;; esac
 for lib in "$project"/build/native/*."$ext"; do
   "$sdk/.sdk-tools/host_sim" "$lib" test --wav "$project/build/test.wav"
 done
+
+# The same simulator, built for 32-bit ARM, against the arm32 .so in an emulated machine: the
+# closest thing to a Force or MPC Live that runs here. Skipped if qemu is not installed.
+if command -v qemu-system-arm >/dev/null 2>&1; then
+  echo
+  echo "== arm32 in the emulator (tools/armtest) =="
+  "$here/tools/armtest/run.py" "$project" | grep -E '^(PASS|FAIL|WARN|CRASH|Result|INFO  (main pass|block of)|       )' || true
+  # run.py's own exit status is lost in the pipe; read the verdict from its log instead
+  if ! grep -q '^Result: PASS' "$here/build/armtest/console.log" || grep -q '^CRASH' "$here/build/armtest/console.log"; then
+    echo "arm32 emulator run failed (see build/armtest/console.log)" >&2
+    exit 1
+  fi
+else
+  echo "warning: qemu-system-arm not found; skipping the arm32 emulator run" >&2
+fi

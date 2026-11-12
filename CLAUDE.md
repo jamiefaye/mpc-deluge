@@ -18,6 +18,12 @@ synth engine on the MPC; so far the Deluge oscillators and filters run in a prot
   Linux and 64-bit ARM need. Edit files under `third_party/`, then run `tools/mkpatch.sh`.
 - `tools/build.py` - wraps the SDK's `build.py`: C++23, `-DDELUGE_HOSTED=1`, and `-isystem` paths
   into `third_party/`. `build.sh` calls it for every plugin.
+- `common/` - sources added to every plugin by `tools/build.py` (see "Static destructors").
+- `tools/build_firmware.py [arm32]` - compiles the whole vendored firmware plus `hosted/` into
+  `build/firmware/<target>/libdeluge.a`; `--probe` links the sizing probe against it and lists
+  what is still undefined (85 on 2026-11-12, all hardware layer). `hosted/` is where the
+  replacement hardware layer goes; it is empty so far.
+- `tools/armtest/` - see "Testing arm32 without the hardware".
 - `tools/gen_headers.sh` - writes the two headers the firmware's CMake build generates; called
   by `vendor.sh` and `mkpatch.sh`.
 - `tools/sizing/` - the probe described below; output in `build/sizing/` (gitignored).
@@ -69,13 +75,19 @@ patch, plays a note and renders):
   `process()`), and `mpc_remote.py export` brings the whole folder back. Deluge Proto writes
   `diagnostics.txt` from `prepare()`: an offline engine self-test plus counters from `process()`.
   The Mac's version of that file is the reference to compare against.
-- **First run on hardware (Force, 2026-11-12): Deluge Proto plays.** Comparing the self-test
-  from the Force with the Mac's (`build/reference/`): the oscillators and the SVF are
-  bit-identical; the ladder filters differ by 0.1-0.3%. The Force runs the firmware's ARM
-  assembly paths in `util/intrinsics.h`, as a Deluge does; arm64 uses the portable fallbacks,
-  and they are not equivalent (`add_saturate`'s fallback overflows before it clamps: it returns
-  -2^31 for 2^30 + 2^30). So arm32 is the reference, and the fallbacks need fixing before an
-  arm64 build can claim to sound the same.
+- **First run on hardware (Force, 2026-11-12): Deluge Proto plays.** With the noise generator
+  reset first, the self-test is bit-identical between the Mac (arm64) and emulated arm32, for
+  every oscillator and filter mode. (An earlier note here blamed a 0.1-0.3% ladder-filter
+  difference on the firmware's ARM assembly paths. That was wrong: the ladder filters add noise
+  from the global generator `jcong`, and the runs being compared had drawn different amounts
+  from it.) One real difference remains: `add_saturate`'s portable fallback in
+  `util/intrinsics.h` overflows before it clamps (2^30 + 2^30 gives -2^31; the ARM instruction
+  gives 2^31-1), so arm64 can differ wherever that saturates. Worth fixing and sending upstream.
+- **Static destructors at unload.** A library linked by `zig c++` has no finaliser calling
+  `__cxa_finalize`, so destructors registered with `__cxa_atexit` outlive the library and crash
+  the host at exit. Any plugin using the SDK's `mpc::pluginFolder()` has one. `common/
+  dso_finalize.cpp` supplies the finaliser; `tools/build.py` adds `common/*.cpp` to every plugin.
+  This is an SDK/toolchain problem, not specific to this project.
 - The firmware needs the pinned Argon; Argon `main` has renamed the API.
 - The native test build is arm64 macOS, so it has NEON. An Intel Mac has no NEON and cannot build
   the firmware DSP natively.
@@ -90,8 +102,9 @@ screen (an XY pad or button grid standing in for the Deluge's pads).
 Approach: compile the whole firmware and replace only the hardware layer, the way an emulator
 would. The GUI code is linked but never run.
 1. ~~Make the failing arm32 files compile~~ Done 2026-11-12.
-2. Write a hosted hardware layer: FatFS calls onto POSIX files, no-op UART/SPI/OLED/PIC, timers
-   from the sample clock, the allocator's regions from `malloc`.
+2. Write a hosted hardware layer in `hosted/`: FatFS calls onto POSIX files, no-op
+   UART/SPI/OLED/PIC, timers from the sample clock, the allocator's regions from `malloc`.
+   In progress: the library build and probe exist (`tools/build_firmware.py --probe`).
 3. Bring up the firmware's globals without its `main()`: allocator, `AudioEngine`, a minimal
    `Song` if `Sound` insists on one.
 4. Load a SYNTH XML through the firmware's own `XMLDeserializer` and `SoundInstrument::readFromFile`,
@@ -121,11 +134,32 @@ keep everything that makes the sound and drop what only exists to survive the ha
 - Not free: the plugin shares the MPC's CPU with everything else in the project, and the SDK asks
   for a few percent of one core per instance. Measure before raising anything.
 
+Notes for step 2, from reading the firmware (2026-11-12):
+- Patch loading does not need a FAT filesystem. `FileReader` has a memory mode
+  (`FileReader(char* memBuffer, uint32_t bufLen)`), though `XMLDeserializer` only has the file
+  constructor and its `reset()` assumes cluster-sized reads; and the file path is just
+  `f_read(&readFIL, buf, Cluster::size, &n)`. A hosted `f_open`/`f_read` over POSIX files, with
+  the host file handle carried in `FIL.obj.sclust`, serves both normal opens and the firmware's
+  `FilePointer` (start cluster + size) opens.
+- Sample loading is different: `AudioFileManager` walks the FAT itself (`clst2sect`,
+  `get_fat_from_fs`, `dir_find`, `disk_read_without_streaming_first`). Stub those to fail for
+  now; samples need their own design (see "Samples" above).
+- Only one hardware register block is touched outside the drivers and `deluge.cpp`: the MTU2
+  timers (`*TCNT[TIMER_SYSTEM_FAST]`, `MTU2.TCNT_0`), used for timing and to seed `jcong`.
+  Redirect `MTU2` to an ordinary struct under `DELUGE_HOSTED`.
+- The allocator takes its regions from linker symbols and from fixed addresses
+  (`EXTERNAL_MEMORY_BEGIN/END`, `INTERNAL_MEMORY_BEGIN`; `resizeable_array.cpp` assumes internal
+  memory sits above external). Make those variables under `DELUGE_HOSTED`, set from one
+  allocated block laid out external-then-internal.
+- Every firmware global with a constructor will be constructed when the plugin library loads,
+  inside the MPC application, in archive order. Expect start-up-order problems; this is what the
+  emulator is for.
+
 Open problems, in the order they will bite:
-- **Testing.** The SDK's host simulator runs native code, and the firmware is not 64-bit clean,
-  so the full engine cannot be tested on this Mac until the 64-bit work is done. Until then every
-  test is on the hardware. Options: do the 64-bit work early, or run the arm32 build under an
-  emulated Linux.
+- **Testing.** Solved for arm32 by `tools/armtest` (emulated). The full engine still cannot
+  run natively on the Mac until the firmware is 64-bit clean, which also blocks the SDK's own
+  build flow: `build.py` wants a native library for the parameter dump and UI generation, so a
+  full-engine plugin needs a native build with the engine stubbed out, or the 64-bit work.
 - **Globals.** The firmware assumes one of everything (`AudioEngine`, the voice pool, the
   allocator, `currentSong`). Two plugin instances in one MPC project share one copy of the
   library. They either share a single engine behind a lock or the globals have to be made
@@ -155,6 +189,19 @@ python3 ../mpc-plugin-builder-sdk/tools/package.py plugins/<name>     # zip for 
 The deployable folder is `plugins/<name>/build/<Manufacturer> - VST - <Name>/`; it goes in a
 `VST2 Plugins` folder at the root of a USB stick or SD card. The MPC needs OS 3.10.1 or later with
 Preferences > Enhancements > Enable Enhancements and External Plugin Support switched on.
+
+## Testing arm32 without the hardware
+
+`tools/armtest/run.py plugins/<name> [host_sim options]` boots an emulated 32-bit ARM Linux
+machine (qemu-system-arm, a Debian armhf kernel and C library kept in `build/armtest/cache`) and
+runs the SDK's simulator, built for arm32, against the plugin's real arm32 `.so`. About 15
+seconds. `build.sh` runs it after the native simulator and fails on a FAIL or CRASH. What comes
+back lands in `build/armtest/out/` (`test.wav`, the plugin's `diagnostics.txt`); the full console
+is `build/armtest/console.log`. `--exe <program> [args]` runs any arm32 glibc program instead.
+
+It catches load failures (a missing import), 32-bit-only crashes and arithmetic differences. It
+does not raise NEON alignment faults, so `tools/check_alignment.py` still matters, and it says
+nothing about speed. The Force remains the last word; this is for everything before that.
 
 ## Deploying
 

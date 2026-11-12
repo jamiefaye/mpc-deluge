@@ -179,6 +179,12 @@ void Engine::selfTest(std::string& report) {
 	              sawTable ? "ok" : "NULL", sawTable ? (int)sawTable[100] : 0);
 	add(line);
 
+	// The ladder filters add noise from the firmware's global random generator (jcong, in
+	// util/waves.cpp). Start it from its power-on value so the numbers below are repeatable and
+	// comparable between machines, and put it back afterwards.
+	const uint32_t savedRandomState = jcong;
+	jcong = 380116160;
+
 	VoiceState* v = new VoiceState();
 	int32_t* buffer = new int32_t[kMaxChunk + 16];
 	const uint32_t phaseIncrement = (uint32_t)(261.6256 * (4294967296.0 / 44100.0));
@@ -226,6 +232,7 @@ void Engine::selfTest(std::string& report) {
 	}
 	delete[] buffer;
 	delete v;
+	jcong = savedRandomState;
 }
 
 } // namespace dproto
