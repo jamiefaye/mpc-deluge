@@ -44,6 +44,20 @@ InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
 } // namespace
 
+// setupBlankSong(), without the UI parts.
+static void makeBlankSong() {
+	void* songMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(Song));
+	song = new (songMemory) Song();
+	song->paramManager.setupUnpatched();
+	GlobalEffectable::initParams(&song->paramManager);
+	song->setupDefault();
+	currentSong = song;
+	AudioEngine::getReverbParamsFromSong(currentSong);
+	AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
+	clip = nullptr;
+	synth = nullptr;
+}
+
 void engineInit(const char* root) {
 	deluge_hosted_set_root(root);
 	if (started) {
@@ -60,20 +74,21 @@ void engineInit(const char* root) {
 	FlashStorage::resetSettings();
 	runtimeFeatureSettings.init();
 
-	// setupBlankSong(), without the UI parts.
-	void* songMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(Song));
-	song = new (songMemory) Song();
-	song->paramManager.setupUnpatched();
-	GlobalEffectable::initParams(&song->paramManager);
-	song->setupDefault();
-	currentSong = song;
-	AudioEngine::getReverbParamsFromSong(currentSong);
+	makeBlankSong();
 }
 
 int engineLoadSynth(const char* presetPath) {
 	FilePointer filePointer;
 	if (!StorageManager::fileExists(presetPath, &filePointer)) {
 		return (int)Error::FILE_NOT_FOUND;
+	}
+
+	// Replacing a loaded preset: silence everything and start again from a blank song. The old
+	// song, clip and instrument are abandoned, not freed (a few kilobytes of the firmware's 64 MB
+	// each time); the firmware's own way of swapping instruments runs through its UI code.
+	if (synth != nullptr) {
+		AudioEngine::killAllVoices(true);
+		makeBlankSong();
 	}
 
 	void* clipMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(InstrumentClip));
@@ -125,6 +140,17 @@ void engineNoteOn(int note, int velocity) {
 
 void engineNoteOff(int note) {
 	sendNote(false, note, 0);
+}
+
+void engineAllNotesOff() {
+	if (synth == nullptr) {
+		return;
+	}
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithThreeMainThings* modelStack = setupModelStackWithSong(modelStackMemory, song)
+	                                                ->addTimelineCounter(clip)
+	                                                ->addOtherTwoThingsButNoNoteRow(synth, &clip->paramManager);
+	synth->allNotesOff(modelStack, synth->getArp());
 }
 
 void engineRender(int32_t* out, int numFrames) {

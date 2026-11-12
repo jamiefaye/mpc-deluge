@@ -38,5 +38,28 @@ COMMON_SOURCES = sorted(
 _find_sources = sdk_build.find_sources
 sdk_build.find_sources = lambda project: _find_sources(project) + COMMON_SOURCES
 
+# A plugin whose folder holds a file called "link-firmware" gets the firmware library on its
+# arm32 link line (build it first: tools/build_firmware.py arm32). Its other builds must supply
+# the engine themselves; see plugins/deluge-synth/src/engine_stub.cpp.
+FIRMWARE_LIB = os.path.join(HERE, "build", "firmware", "arm32", "libdeluge.a")
+_build_arm = sdk_build.Builder.build_arm
+
+
+def build_arm_with_firmware(self, target, output):
+    wants = target == "arm32" and os.path.exists(os.path.join(self.project, "link-firmware"))
+    if not wants:
+        return _build_arm(self, target, output)
+    if not os.path.exists(FIRMWARE_LIB):
+        raise sdk_build.BuildError("this plugin links the firmware: run tools/build_firmware.py arm32 first")
+    saved = self.sources
+    self.sources = saved + [FIRMWARE_LIB, "-ldl", "-lpthread"]
+    try:
+        return _build_arm(self, target, output)
+    finally:
+        self.sources = saved
+
+
+sdk_build.Builder.build_arm = build_arm_with_firmware
+
 if __name__ == "__main__":
     sys.exit(sdk_build.main())

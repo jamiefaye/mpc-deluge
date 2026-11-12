@@ -8,6 +8,12 @@ synth engine on the MPC; so far the Deluge oscillators and filters run in a prot
 
 - `plugins/hello/` - "Hello Deluge", the SDK's instrument template unchanged (uid `FujN`). A
   toolchain check with no Deluge code; MIT.
+- `plugins/deluge-synth/` - "Deluge Synth" (uid `F6wM`): the real engine. A shell around
+  `hosted/engine.h` that picks a preset from `Content/SYNTHS/` (gitignored), feeds notes and
+  copies audio out. Its arm32 build links `libdeluge.a` (the `link-firmware` marker file tells
+  `tools/build.py`); the native and arm64 builds get `src/engine_stub.cpp`, a placeholder sine,
+  because the SDK flow needs a native build and the firmware is not 64-bit clean. One instance
+  per process owns the engine; presets load on a worker thread while `process()` try-locks.
 - `plugins/deluge-proto/` - "Deluge Proto" (uid `FT6q`): Deluge firmware oscillators and filter
   set compiled from source, with stand-in voices, envelope and parameter scaling. GPL-3.0. Its
   README says exactly what is firmware code and what is not. Not yet run on hardware.
@@ -247,9 +253,11 @@ seconds. `build.sh` runs it after the native simulator and fails on a FAIL or CR
 back lands in `build/armtest/out/` (`test.wav`, the plugin's `diagnostics.txt`); the full console
 is `build/armtest/console.log`. `--exe <program> [args]` runs any arm32 glibc program instead.
 
-It catches load failures (a missing import), 32-bit-only crashes and arithmetic differences. It
-does not raise NEON alignment faults, so `tools/check_alignment.py` still matters, and it says
-nothing about speed. The Force remains the last word; this is for everything before that.
+It catches load failures (a missing import), 32-bit-only crashes, arithmetic differences and
+NEON alignment faults (`tests/alignment_probe.cpp` confirms qemu raises SIGBUS for them, as the
+Force does), on the code paths a test exercises. `tools/check_alignment.py` lists every such
+access statically, including ones no test reaches; most of its hits in the firmware are on
+buffers the firmware declares aligned. It says nothing about speed. The Force remains the last word; this is for everything before that.
 
 ## Deploying
 

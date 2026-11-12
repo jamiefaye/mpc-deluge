@@ -18,11 +18,13 @@ void engineInit(const char* root);
 
 // Loads a SYNTH preset (path relative to the root, e.g. "SYNTHS/SYNT100.XML") into a new clip, the
 // way the firmware sets up a song's first clip. Returns 0, or the firmware's Error code.
-// Not yet: unloading or replacing a loaded preset; call once per process.
+// May be called again to change preset: all sound stops and the song (with its reverb) is rebuilt.
+// Not thread-safe against the other calls: the caller serialises them.
 int engineLoadSynth(const char* presetPath);
 
 void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
+void engineAllNotesOff(); // releases every held note (they still ring out through their release)
 
 // Renders numFrames of interleaved stereo, replacing what is in `out`. numFrames must be a
 // multiple of 4 from 4 to kMaxRenderFrames: the firmware always renders in fours.

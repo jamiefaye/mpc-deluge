@@ -1,0 +1,4 @@
+build/
+dist/
+# Presets copied from a Deluge SD card for local use; not ours to redistribute.
+Content/

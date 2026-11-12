@@ -14,6 +14,10 @@ if [ ! -f "$sdk/tools/build.py" ]; then
 fi
 
 cd "$here"
+# A plugin that links the firmware (see tools/build.py) needs the library up to date first.
+if [ -f "$project/link-firmware" ]; then
+  python3 "$here/tools/build_firmware.py" arm32
+fi
 MPC_SDK="$sdk" python3 "$here/tools/build.py" "$project"
 
 # Things the SDK's validator and the simulator cannot see, both learned on a Force:
