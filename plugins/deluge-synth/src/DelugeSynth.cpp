@@ -13,6 +13,9 @@
 //     Content/SAMPLES/ (the folder layout of a Deluge SD card). Samples are loaded whole into memory.
 //   * No tempo sync, pitch bend, mod wheel or gold-knob parameters yet.
 //
+// Choosing a preset: the Preset parameter is the position in the sorted list of preset files, and
+// Folder is the folder it sits in. Four button parameters step through presets and folders.
+//
 // Threads: the engine must never be entered by two threads at once. process() (audio thread)
 // takes the engine lock with try_lock and outputs silence if it cannot have it. A worker thread
 // owned by the plugin loads presets, holding the lock while it does.
@@ -42,6 +45,11 @@ enum ParamIndex
 {
     kVolume = 0,     // dB. First on purpose: the MPC nudges parameter 0 on every load.
     kPreset,         // index into the preset files found at start-up
+    kFolder,         // index of the folder the preset is in; setting it jumps to that folder's first preset
+    kFolderPrev,     // momentary buttons: the plugin acts on a press and puts the button back
+    kFolderNext,
+    kPresetPrev,
+    kPresetNext,
     kNumParams
 };
 
@@ -49,7 +57,7 @@ enum ParamIndex
 std::mutex gEngineLock;
 std::atomic<void*> gEngineOwner{nullptr};
 
-constexpr int kMaxPresets = 1024;
+constexpr int kMaxPresets = 4096;
 
 } // namespace
 
@@ -60,9 +68,16 @@ public:
     {
         scanPresets();
         addParam(mpc::floatParam("volume", "Volume", -40.0f, 12.0f, 0.0f, "dB", 1));
-        // The range is fixed so that projects keep working when presets are added or removed;
-        // values past the last preset select the last one.
-        addParam(mpc::intParam("preset", "Preset", 0, kMaxPresets - 1, 0));
+        // One step per preset or folder found, so a knob or the data wheel cannot skip any. (A
+        // project stores the preset's path, so these ranges may differ from one start to the next.)
+        addParam(mpc::intParam("preset", "Preset", 0, std::max(0, (int)presets_.size() - 1), 0));
+        addParam(mpc::intParam("folder", "Folder", 0, std::max(0, (int)folders_.size() - 1), 0));
+        // The MPC has no list widget, so stepping is done with buttons. Each is a parameter that
+        // the worker thread sets back to off after acting on it.
+        addParam(mpc::boolParam("folderprev", "Folder -", false));
+        addParam(mpc::boolParam("foldernext", "Folder +", false));
+        addParam(mpc::boolParam("presetprev", "Preset -", false));
+        addParam(mpc::boolParam("presetnext", "Preset +", false));
     }
 
     ~DelugeSynth() override
@@ -106,19 +121,41 @@ public:
         wantAllNotesOff_.store(true);
     }
 
+    // May be called on the audio thread: only atomics here, the worker does the rest.
     void parameterChanged(int index, float plainValue) override
     {
-        (void)plainValue;
-        if (index == kPreset) requestedPreset_.store(presetIndex());
+        const bool pressed = plainValue > 0.5f;
+        switch (index)
+        {
+            case kPreset:     requestedPreset_.store(presetIndex()); break;
+            case kFolder:     if (!settingFolder_.load()) pendingFolder_.store(mpc::clamp((int)std::lround(plainValue), 0, std::max(0, (int)folders_.size() - 1))); break;
+            case kPresetPrev: if (pressed) pendingPresetSteps_.fetch_sub(1); break;
+            case kPresetNext: if (pressed) pendingPresetSteps_.fetch_add(1); break;
+            case kFolderPrev: if (pressed) pendingFolderSteps_.fetch_sub(1); break;
+            case kFolderNext: if (pressed) pendingFolderSteps_.fetch_add(1); break;
+            default: break;
+        }
     }
 
     bool formatValue(int index, float plainValue, std::string& out) override
     {
-        if (index != kPreset) return false;
-        if (presets_.empty()) { out = "(none)"; return true; }
-        const int i = mpc::clamp((int)std::lround(plainValue), 0, (int)presets_.size() - 1);
-        out = presets_[(size_t)i].substr(0, presets_[(size_t)i].size() - 4);   // without ".XML"
-        return true;
+        if (index == kPreset)
+        {
+            if (presets_.empty()) { out = "(none)"; return true; }
+            const std::string& path = presets_[(size_t)mpc::clamp((int)std::lround(plainValue), 0, (int)presets_.size() - 1)];
+            const size_t slash = path.rfind('/');
+            const size_t start = slash == std::string::npos ? 0 : slash + 1;
+            out = path.substr(start, path.size() - start - 4);   // file name without folder or ".XML"
+            return true;
+        }
+        if (index == kFolder)
+        {
+            if (folders_.empty()) { out = "(none)"; return true; }
+            const std::string& f = folders_[(size_t)mpc::clamp((int)std::lround(plainValue), 0, (int)folders_.size() - 1)];
+            out = f.empty() ? "(top)" : f;
+            return true;
+        }
+        return false;
     }
 
     // The project remembers the preset by its path under Content/SYNTHS, not by its position in
@@ -238,7 +275,31 @@ private:
     // Preset files under Content/SYNTHS, subfolders included, as paths relative to that folder
     // ("Pads/Warm.XML"), sorted so that a folder's presets sit together. Done once, in the
     // constructor.
-    void scanPresets() { scanFolder(mpc::contentPath("SYNTHS"), "", 0); std::sort(presets_.begin(), presets_.end(), lessIgnoringCase); if (presets_.size() > (size_t)kMaxPresets) presets_.resize((size_t)kMaxPresets); }
+    void scanPresets()
+    {
+        scanFolder(mpc::contentPath("SYNTHS"), "", 0);
+        std::sort(presets_.begin(), presets_.end(), lessIgnoringCase);
+        if (presets_.size() > (size_t)kMaxPresets) presets_.resize((size_t)kMaxPresets);
+        // The folders, in the order their presets appear, and where each one starts in the list.
+        for (size_t i = 0; i < presets_.size(); ++i)
+        {
+            const std::string folder = folderOf(presets_[i]);
+            if (folders_.empty() || folders_.back() != folder) { folders_.push_back(folder); folderStart_.push_back((int)i); }
+        }
+    }
+
+    static std::string folderOf(const std::string& path)
+    {
+        const size_t slash = path.rfind('/');
+        return slash == std::string::npos ? std::string() : path.substr(0, slash);
+    }
+
+    int folderIndexOfPreset(int preset) const
+    {
+        int f = 0;
+        for (size_t i = 0; i < folderStart_.size(); ++i) if (folderStart_[i] <= preset) f = (int)i;
+        return f;
+    }
 
     static bool lessIgnoringCase(const std::string& a, const std::string& b) { return strcasecmp(a.c_str(), b.c_str()) < 0; }
 
@@ -268,9 +329,41 @@ private:
     {
         while (!quit_.load())
         {
+            applyBrowsing();
             loadRequestedPreset();
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
         }
+    }
+
+    // Turns button presses and Folder changes into a new Preset value, puts the buttons back,
+    // and tells the MPC so its screen follows. Runs on the worker thread.
+    void applyBrowsing()
+    {
+        if (presets_.empty()) return;
+        const int presetSteps = pendingPresetSteps_.exchange(0);
+        const int folderSteps = pendingFolderSteps_.exchange(0);
+        const int folderSet = pendingFolder_.exchange(-1);
+        int preset = presetIndex();
+        const int before = preset;
+        if (presetSteps != 0) preset = mpc::clamp(preset + presetSteps, 0, (int)presets_.size() - 1);
+        if (folderSteps != 0)
+            preset = folderStart_[(size_t)mpc::clamp(folderIndexOfPreset(preset) + folderSteps, 0, (int)folders_.size() - 1)];
+        if (folderSet >= 0 && folderSet != folderIndexOfPreset(preset)) preset = folderStart_[(size_t)folderSet];
+
+        bool changed = false;
+        if (preset != before) { set(kPreset, (float)preset); notifyHostParameterChanged(kPreset); changed = true; }
+        const int folder = folderIndexOfPreset(presetIndex());
+        if (getInt(kFolder) != folder)
+        {
+            settingFolder_.store(true);
+            set(kFolder, (float)folder);
+            settingFolder_.store(false);
+            notifyHostParameterChanged(kFolder);
+            changed = true;
+        }
+        for (int button : {kFolderPrev, kFolderNext, kPresetPrev, kPresetNext})
+            if (getBool(button)) { set(button, 0.0f); notifyHostParameterChanged(button); changed = true; }
+        if (changed) requestDisplayUpdate();
     }
 
     void loadRequestedPreset()
@@ -331,6 +424,10 @@ private:
     }
 
     std::vector<std::string> presets_;
+    std::vector<std::string> folders_;       // distinct folders of presets_, in list order
+    std::vector<int>         folderStart_;   // index in presets_ of each folder's first preset
+    std::atomic<int>  pendingPresetSteps_{0}, pendingFolderSteps_{0}, pendingFolder_{-1};
+    std::atomic<bool> settingFolder_{false};
     std::thread       worker_;
     std::atomic<bool> quit_{false};
     std::atomic<int>  requestedPreset_{-1}, loadedPreset_{-1}, loadError_{0}, loads_{0};

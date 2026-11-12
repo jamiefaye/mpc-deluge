@@ -3,10 +3,14 @@
     {
       "name": "MAIN",
       "controls": [
+        { "param": "Folder", "widget": "slider" },
         { "param": "Preset", "widget": "slider" },
         { "widget": "empty" },
-        { "widget": "empty" },
-        { "param": "Volume", "widget": "fader" }
+        { "param": "Volume", "widget": "fader" },
+        { "param": "Folder -", "widget": "switch" },
+        { "param": "Folder +", "widget": "switch" },
+        { "param": "Preset -", "widget": "switch" },
+        { "param": "Preset +", "widget": "switch" }
       ]
     }
   ],
