@@ -14,6 +14,7 @@
 #include "engine.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace deluge_hosted {
@@ -40,6 +41,18 @@ void engineSampleCounts(int* loaded, int* failed) {
 	*loaded = 0;
 	*failed = 0;
 }
+
+bool engineKnobName(int knob, char* out, int outSize) {
+	std::snprintf(out, (size_t)outSize, "placeholder %d", knob + 1);
+	return true;
+}
+
+bool engineKnobGet(int, int* position) {
+	*position = 0;
+	return true;
+}
+
+void engineKnobSet(int, int) {}
 
 void engineNoteOn(int note, int velocity) {
 	Tone* slot = &tones[0];

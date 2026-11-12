@@ -19,7 +19,10 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
 
 - Only one instance per MPC project makes sound; a second one is silent.
 - No tempo sync (synced LFOs, arpeggiator and delay have no clock), pitch bend or mod wheel.
-- The Deluge's 16 gold-knob parameters are not exposed. Parameters: Volume, Preset.
+- Gold knobs whose assignment is a switch or a momentary action (stutter) only move a value.
+- Parameters: Volume; Preset, Folder and four stepping buttons; Gold 1-16, the preset's sixteen
+  gold-knob assignments (value text shows what each controls and its 0-50 position). The rest
+  of the Deluge's parameters are not exposed.
 - Changing preset stops all sound and rebuilds the engine's song; there is a short silence.
 
 ## Presets and samples

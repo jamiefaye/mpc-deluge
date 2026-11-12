@@ -15,6 +15,10 @@
 #include "model/model_stack.h"
 #include "model/settings/runtime_feature_settings.h"
 #include "model/song/song.h"
+#include "modulation/automation/auto_param.h"
+#include "modulation/params/param.h"
+#include "modulation/params/param_collection.h"
+#include "modulation/params/param_descriptor.h"
 #include "playback/mode/playback_mode.h"
 #include "playback/mode/session.h"
 #include "processing/engines/audio_engine.h"
@@ -212,6 +216,73 @@ void engineAllNotesOff() {
 	                                                ->addTimelineCounter(clip)
 	                                                ->addOtherTwoThingsButNoNoteRow(synth, &clip->paramManager);
 	synth->allNotesOff(modelStack, synth->getArp());
+}
+
+// The firmware finds "the parameter under gold knob N" through the instrument's current knob
+// button (modKnobMode); this selects the button, asks, and puts the selection back.
+static ModelStackWithAutoParam* knobParam(char* modelStackMemory, int knob) {
+	if (synth == nullptr || knob < 0 || knob >= kNumKnobs) {
+		return nullptr;
+	}
+	ModelStackWithThreeMainThings* modelStack = setupModelStackWithSong(modelStackMemory, song)
+	                                                ->addTimelineCounter(clip)
+	                                                ->addOtherTwoThingsButNoNoteRow(synth, &clip->paramManager);
+	uint8_t* mode = synth->getModKnobMode();
+	const uint8_t saved = *mode;
+	*mode = (uint8_t)(knob / 2);
+	// The firmware numbers the lower knob 0 and the upper knob 1.
+	ModelStackWithAutoParam* param = synth->getParamFromModEncoder(1 - (knob % 2), modelStack, false);
+	*mode = saved;
+	return (param != nullptr && param->autoParam != nullptr) ? param : nullptr;
+}
+
+bool engineKnobName(int knob, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	if (synth == nullptr || knob < 0 || knob >= kNumKnobs) {
+		return false;
+	}
+	namespace params = deluge::modulation::params;
+	const ParamDescriptor& descriptor = synth->modKnobs[knob / 2][1 - (knob % 2)].paramDescriptor;
+	if (descriptor.isJustAParam()) {
+		const int32_t p = descriptor.getJustTheParam();
+		const char* name = p >= params::UNPATCHED_START
+		                       ? params::getParamDisplayName(params::Kind::UNPATCHED_SOUND, p - params::UNPATCHED_START)
+		                       : params::getPatchedParamDisplayName(p);
+		std::snprintf(out, (size_t)outSize, "%s", name != nullptr ? name : "");
+	}
+	else {
+		// A patch cable's depth: "source -> destination".
+		ParamDescriptor copy = descriptor;
+		const char* destination = params::getPatchedParamDisplayName(copy.getJustTheParam());
+		std::snprintf(out, (size_t)outSize, "%s>%s", sourceToStringShort(copy.getBottomLevelSource()),
+		              destination != nullptr ? destination : "?");
+	}
+	return true;
+}
+
+bool engineKnobGet(int knob, int* position) {
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob);
+	if (param == nullptr) {
+		return false;
+	}
+	const int32_t value = param->autoParam->getValuePossiblyAtPos(0, param);
+	*position = std::clamp<int>(param->paramCollection->paramValueToKnobPos(value, param), kKnobMin, kKnobMax);
+	return true;
+}
+
+void engineKnobSet(int knob, int position) {
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob);
+	if (param == nullptr) {
+		return;
+	}
+	// As View::modEncoderAction_existentParam() does it, without the display and undo parts.
+	position = std::clamp(position, kKnobMin, kKnobMax);
+	const int32_t value = param->paramCollection->knobPosToParamValue(position, param);
+	param->autoParam->setValuePossiblyForRegion(value, param, 0, 0);
 }
 
 void engineRender(int32_t* out, int numFrames) {

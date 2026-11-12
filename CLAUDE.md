@@ -199,7 +199,14 @@ What running it taught (2026-11-12):
 - Debug text from the firmware (`D_PRINTLN`, and the hosted layer's own messages) is switched on
   by the environment variable `DELUGE_LOG` or by a file named `deluge-log` in the working
   directory; in the emulator, add `--file build/deluge-log=/deluge-log`.
-- Not wired up yet: the mod knobs, tempo, pitch bend, kits.
+- Gold knobs: `engineKnobName/Get/Set` reach "the parameter under gold knob N" the way the
+  firmware's `View::modEncoderAction` does: select the knob button (`modKnobMode`), call
+  `getParamFromModEncoder`, convert with the param collection's `paramValueToKnobPos` /
+  `knobPosToParamValue`, write with `setValuePossiblyForRegion`. The plugin exposes them as
+  parameters Gold 1-16 with the preset's name for each in the value text.
+- First CPU figures from the Force (2026-11-12, Deluge Synth, a few single notes and chords):
+  average 1.4% of one core over 135 s, worst single block 6.1%.
+- Not wired up yet: tempo, pitch bend, mod wheel, kits, the rest of the parameter matrix.
 
 Notes for step 2, from reading the firmware (2026-11-12):
 - Patch loading does not need a FAT filesystem. `FileReader` has a memory mode

@@ -11,7 +11,10 @@
 //     instance in the same MPC process stays silent.
 //   * Presets come from Content/SYNTHS/ inside the plugin folder, and their samples from
 //     Content/SAMPLES/ (the folder layout of a Deluge SD card). Samples are loaded whole into memory.
-//   * No tempo sync, pitch bend, mod wheel or gold-knob parameters yet.
+//   * No tempo sync, pitch bend or mod wheel yet.
+//
+// Gold knobs: parameters Gold 1..16 are the sixteen gold-knob assignments stored in the preset
+// (eight buttons times two knobs on a Deluge). Their value text names what each controls.
 //
 // Choosing a preset: the Preset parameter is the position in the sorted list of preset files, and
 // Folder is the folder it sits in. Four button parameters step through presets and folders.
@@ -50,7 +53,8 @@ enum ParamIndex
     kFolderNext,
     kPresetPrev,
     kPresetNext,
-    kNumParams
+    kGold,           // first of 16: the preset's gold-knob assignments, in the Deluge's order
+    kNumParams = kGold + deluge_hosted::kNumKnobs
 };
 
 // One engine per process (see the header comment).
@@ -78,6 +82,17 @@ public:
         addParam(mpc::boolParam("foldernext", "Folder +", false));
         addParam(mpc::boolParam("presetprev", "Preset -", false));
         addParam(mpc::boolParam("presetnext", "Preset +", false));
+        // The Deluge's gold knobs: what each one controls is part of the preset, so the names here
+        // are only positions; the value text carries the preset's own name for it.
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        {
+            char id[16], name[16];
+            std::snprintf(id, sizeof id, "gold%d", k + 1);
+            std::snprintf(name, sizeof name, "Gold %d", k + 1);
+            addParam(mpc::intParam(id, name, deluge_hosted::kKnobMin, deluge_hosted::kKnobMax, 0));
+            pendingKnob_[k].store(kNoKnobChange);
+            knobNames_[k][0] = 0;
+        }
     }
 
     ~DelugeSynth() override
@@ -133,7 +148,12 @@ public:
             case kPresetNext: if (pressed) pendingPresetSteps_.fetch_add(1); break;
             case kFolderPrev: if (pressed) pendingFolderSteps_.fetch_sub(1); break;
             case kFolderNext: if (pressed) pendingFolderSteps_.fetch_add(1); break;
-            default: break;
+            default:
+                // A gold knob moved by the user or the host (not by us mirroring the engine):
+                // process() hands it to the engine.
+                if (index >= kGold && index < kGold + deluge_hosted::kNumKnobs && !syncingKnobs_.load())
+                    pendingKnob_[index - kGold].store((int)std::lround(plainValue));
+                break;
         }
     }
 
@@ -146,6 +166,17 @@ public:
             const size_t slash = path.rfind('/');
             const size_t start = slash == std::string::npos ? 0 : slash + 1;
             out = path.substr(start, path.size() - start - 4);   // file name without folder or ".XML"
+            return true;
+        }
+        if (index >= kGold && index < kGold + deluge_hosted::kNumKnobs)
+        {
+            // "LPF frequency 25": the preset's name for the knob, and its position as the Deluge
+            // shows it (0 to 50).
+            const char* name = knobNames_[index - kGold];
+            if (name[0] == 0) { out = "-"; return true; }
+            char text[48];
+            std::snprintf(text, sizeof text, "%.22s %d", name, ((int)std::lround(plainValue) + 64) * 50 / 128);
+            out = text;
             return true;
         }
         if (index == kFolder)
@@ -169,6 +200,7 @@ public:
 
     void loadExtraState(const uint8_t* data, size_t size) override
     {
+        restoreKnobsOnNextLoad_.store(true);   // the gold values just restored are the user's
         const std::string wanted(reinterpret_cast<const char*>(data), size);
         for (size_t i = 0; i < presets_.size(); ++i)
         {
@@ -199,6 +231,11 @@ public:
         }
 
         if (wantAllNotesOff_.exchange(false)) deluge_hosted::engineAllNotesOff();
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        {
+            const int position = pendingKnob_[k].exchange(kNoKnobChange, std::memory_order_relaxed);
+            if (position != kNoKnobChange) deluge_hosted::engineKnobSet(k, position);
+        }
         const float targetGain = dbToGain(get(kVolume));
 
         int frame = 0;
@@ -379,6 +416,27 @@ private:
         samplesFailed_.store(samplesFailed);
         loadedPreset_.store(wanted);
         loads_.fetch_add(1);
+        syncKnobs();
+    }
+
+    // After a preset loads (engine lock held): make the 16 gold parameters agree with the engine.
+    // Normally the preset's own knob positions become the parameter values. When the MPC has
+    // just restored a project, it is the other way round: the saved parameter values are the
+    // user's tweaks and go to the engine.
+    void syncKnobs()
+    {
+        const bool restoring = restoreKnobsOnNextLoad_.exchange(false);
+        syncingKnobs_.store(true);
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        {
+            deluge_hosted::engineKnobName(k, knobNames_[k], (int)sizeof knobNames_[k]);
+            int position = 0;
+            if (restoring) deluge_hosted::engineKnobSet(k, getInt(kGold + k));
+            else if (deluge_hosted::engineKnobGet(k, &position)) { set(kGold + k, (float)position); notifyHostParameterChanged(kGold + k); }
+            pendingKnob_[k].store(kNoKnobChange);
+        }
+        syncingKnobs_.store(false);
+        requestDisplayUpdate();
     }
 
     void handleMidi(const mpc::MidiEvent& e)
@@ -419,6 +477,10 @@ private:
         if (FILE* f = std::fopen((folder + "/diagnostics.txt").c_str(), "w"))
         {
             std::fputs(text, f);
+            std::fputs("gold knobs (name, position -64..64):", f);
+            for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+                std::fprintf(f, "%s %d=[%s] %d", k % 4 == 0 ? "\n " : ",", k + 1, knobNames_[k], getInt(kGold + k));
+            std::fputs("\n", f);
             std::fclose(f);
         }
     }
@@ -427,6 +489,10 @@ private:
     std::vector<std::string> folders_;       // distinct folders of presets_, in list order
     std::vector<int>         folderStart_;   // index in presets_ of each folder's first preset
     std::atomic<int>  pendingPresetSteps_{0}, pendingFolderSteps_{0}, pendingFolder_{-1};
+    static constexpr int kNoKnobChange = -100000;
+    std::atomic<int>  pendingKnob_[deluge_hosted::kNumKnobs];
+    char              knobNames_[deluge_hosted::kNumKnobs][32];
+    std::atomic<bool> syncingKnobs_{false}, restoreKnobsOnNextLoad_{false};
     std::atomic<bool> settingFolder_{false};
     std::thread       worker_;
     std::atomic<bool> quit_{false};

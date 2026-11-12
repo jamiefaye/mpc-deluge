@@ -12,6 +12,19 @@
         { "param": "Preset -", "widget": "switch" },
         { "param": "Preset +", "widget": "switch" }
       ]
+    },
+    {
+      "name": "GOLD",
+      "controls": [
+        { "param": "Gold 1",  "widget": "slider" }, { "param": "Gold 3",  "widget": "slider" },
+        { "param": "Gold 5",  "widget": "slider" }, { "param": "Gold 7",  "widget": "slider" },
+        { "param": "Gold 2",  "widget": "slider" }, { "param": "Gold 4",  "widget": "slider" },
+        { "param": "Gold 6",  "widget": "slider" }, { "param": "Gold 8",  "widget": "slider" },
+        { "param": "Gold 9",  "widget": "slider" }, { "param": "Gold 11", "widget": "slider" },
+        { "param": "Gold 13", "widget": "slider" }, { "param": "Gold 15", "widget": "slider" },
+        { "param": "Gold 10", "widget": "slider" }, { "param": "Gold 12", "widget": "slider" },
+        { "param": "Gold 14", "widget": "slider" }, { "param": "Gold 16", "widget": "slider" }
+      ]
     }
   ],
   "style": { "background": "ff1e1d1e", "accent": "ffd31145", "text": "ffffffff", "muted": "ff6a6a6c" }

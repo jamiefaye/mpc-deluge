@@ -31,6 +31,20 @@ void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 void engineAllNotesOff(); // releases every held note (they still ring out through their release)
 
+// --- the gold knobs ---------------------------------------------------------------------------------
+// A Deluge has two gold knobs and eight buttons that choose what the pair controls: sixteen
+// assignments, stored in each preset. Knob numbers here run 0..15: (button 0, upper knob),
+// (button 0, lower knob), (button 1, upper knob) and so on.
+constexpr int kNumKnobs = 16;
+constexpr int kKnobMin = -64, kKnobMax = 64; // the firmware's knob positions; it displays them as 0..50
+
+// The name of what the knob controls in the loaded preset ("LPF frequency", "LFO1 -> pitch"), or
+// an empty string if it controls nothing that has a value. Returns false if nothing is loaded.
+bool engineKnobName(int knob, char* out, int outSize);
+// The knob's position, kKnobMin..kKnobMax. Returns false if the knob has no value to read.
+bool engineKnobGet(int knob, int* position);
+void engineKnobSet(int knob, int position);
+
 // Renders numFrames of interleaved stereo, replacing what is in `out`. numFrames must be a
 // multiple of 4 from 4 to kMaxRenderFrames: the firmware always renders in fours.
 // This is the firmware's whole output path: the sound, the song-level reverb fed by the sound's
