@@ -34,7 +34,7 @@ DEFINES = ["-DDELUGE_HOSTED=1", "-D_GNU_SOURCE", "-DUSE_TASK_MANAGER", "-DPRINTF
 COMMON = ["-O2", "-g1", "-fPIC", "-c", "-w", "-fsigned-char", "-ffunction-sections", "-fdata-sections",
           "-fvisibility=hidden"] + DEFINES
 INCLUDES = ["-I" + os.path.join(HERE, "hosted"), "-I" + os.path.join(HERE, "tests")] + ["-I" + os.path.join(FW, d) for d in (
-    "", "deluge", "OSLikeStuff", "lib", "NE10/inc", "fatfs", "deluge/version")] + [
+    "", "deluge", "OSLikeStuff", "lib", "NE10/inc", "NE10/common", "NE10/modules", "fatfs", "deluge/version")] + [
     "-I" + os.path.join(TP, "argon", "include"), "-I" + os.path.join(TP, "etl", "include")]
 
 # Firmware C and assembly that is plain code, not hardware access. (C++ under src/deluge and
@@ -43,9 +43,16 @@ FIRMWARE_C = [
     "deluge/util/cfunctions.c",
     "deluge/util/pack.c",
     "deluge/gui/fonts/fonts.c",
+    # NE10's fixed-point FFT, which the firmware bundles (wavetables and pitch detection use it).
+    "NE10/common/NE10_mask_table.c",
+    "NE10/modules/dsp/NE10_fft.c",
+    "NE10/modules/dsp/NE10_fft_int32.c",
+    "NE10/modules/dsp/NE10_fft_int32.neonintrinsic.c",
 ]
 FIRMWARE_CPP_EXTRA = [
     "fatfs/fatfs.cpp",
+    "NE10/modules/dsp/NE10_fft_generic_int32.cpp",
+    "NE10/modules/dsp/NE10_fft_generic_int32.neonintrinsic.cpp",
 ]
 FIRMWARE_ASM_ARM32 = [
     "deluge/dsp/dx/neon_fm_kernel.s",

@@ -9,7 +9,8 @@
 //   * 32-bit MPCs only (Force, MPC Live, X, One, Key). Other builds contain a placeholder tone.
 //   * One instance per project makes sound. The firmware keeps its state in globals, so a second
 //     instance in the same MPC process stays silent.
-//   * Presets come from Content/SYNTHS/ inside the plugin folder. Sample-based presets are silent.
+//   * Presets come from Content/SYNTHS/ inside the plugin folder, and their samples from
+//     Content/SAMPLES/ (the folder layout of a Deluge SD card). Samples are loaded whole into memory.
 //   * No tempo sync, pitch bend, mod wheel or gold-knob parameters yet.
 //
 // Threads: the engine must never be entered by two threads at once. process() (audio thread)
@@ -89,7 +90,10 @@ public:
         }
         if (gEngineOwner.load() == this && !worker_.joinable())
         {
+            // The first preset is loaded here, before processing starts, so the first notes are
+            // not lost while it loads. Later changes go through the worker thread.
             requestedPreset_.store(presetIndex());
+            loadRequestedPreset();
             worker_ = std::thread([this] { workerLoop(); });
         }
         leftoverFrames_ = 0;
@@ -264,17 +268,24 @@ private:
     {
         while (!quit_.load())
         {
-            const int wanted = requestedPreset_.load();
-            if (wanted >= 0 && wanted != loadedPreset_.load() && wanted < (int)presets_.size())
-            {
-                const std::string path = "SYNTHS/" + presets_[(size_t)wanted];
-                std::lock_guard<std::mutex> lock(gEngineLock);
-                loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
-                loadedPreset_.store(wanted);
-                loads_.fetch_add(1);
-            }
+            loadRequestedPreset();
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
         }
+    }
+
+    void loadRequestedPreset()
+    {
+        const int wanted = requestedPreset_.load();
+        if (wanted < 0 || wanted == loadedPreset_.load() || wanted >= (int)presets_.size()) return;
+        const std::string path = "SYNTHS/" + presets_[(size_t)wanted];
+        std::lock_guard<std::mutex> lock(gEngineLock);
+        loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
+        int samplesLoaded = 0, samplesFailed = 0;
+        deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
+        samplesLoaded_.store(samplesLoaded);
+        samplesFailed_.store(samplesFailed);
+        loadedPreset_.store(wanted);
+        loads_.fetch_add(1);
     }
 
     void handleMidi(const mpc::MidiEvent& e)
@@ -299,6 +310,7 @@ private:
                       "engine: %s build; this instance %s the engine\n"
                       "presets found in Content/SYNTHS: %d\n"
                       "loaded preset: %d (%s), load error %d, loads so far %d\n"
+                      "its samples: %d held in memory, %d could not be loaded (looked for under Content/, e.g. Content/SAMPLES/...)\n"
                       "process calls %u, of which silent (no engine or loading) %u; note-ons %u; peak out %.4f\n"
                       "time in process(): %.2f s of audio rendered, average %.2f%% of one core, worst block %.1f%%\n",
 #if defined(__arm__)
@@ -308,7 +320,7 @@ private:
 #endif
                       gEngineOwner.load() == this ? "owns" : "does NOT own",
                       (int)presets_.size(), loaded, loaded >= 0 && loaded < (int)presets_.size() ? presets_[(size_t)loaded].c_str() : "none",
-                      loadError_.load(), loads_.load(), statCalls_.load(), statSilentCalls_.load(), statNoteOns_.load(),
+                      loadError_.load(), loads_.load(), samplesLoaded_.load(), samplesFailed_.load(), statCalls_.load(), statSilentCalls_.load(), statNoteOns_.load(),
                       (double)statPeak_.load(), seconds, seconds > 0 ? 100.0 * ((double)ns * 1e-9) / seconds : 0.0,
                       (double)statWorstPermille_.load() * 0.1);
         if (FILE* f = std::fopen((folder + "/diagnostics.txt").c_str(), "w"))
@@ -322,6 +334,7 @@ private:
     std::thread       worker_;
     std::atomic<bool> quit_{false};
     std::atomic<int>  requestedPreset_{-1}, loadedPreset_{-1}, loadError_{0}, loads_{0};
+    std::atomic<int>  samplesLoaded_{0}, samplesFailed_{0};
     std::atomic<bool> wantAllNotesOff_{false};
 
     int32_t engineBuffer_[deluge_hosted::kMaxRenderFrames * 2];

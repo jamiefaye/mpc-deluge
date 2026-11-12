@@ -124,11 +124,12 @@ would. The GUI code is linked but never run.
    `InstrumentClip` and `SoundInstrument`; the clip is required, it holds the arpeggiator
    settings and the parameters). Loading is `StorageManager::loadInstrumentFromFile`, rendering
    is `SoundInstrument::renderOutput`.
-   **Corpus result:** `tests/engine_corpus.cpp` runs all 747 presets in `~/deluge/SDCard/SYNTHS`
-   (80 seconds in the emulator). With the firmware's full output path: all 747 load and render,
-   none crash or hang; 22 give only dither noise (21 of those are sample-based, expected until
-   samples load); median peak for one middle C at velocity 100 is -8 dBFS, and 114 presets reach
-   full scale, which needs checking against a real Deluge.
+   **Corpus result:** `tests/engine_corpus.cpp` runs all 747 presets in `~/deluge/SDCard/SYNTHS`,
+   with the 142 sample files they reference (196 MB, gathered into `build/corpus/sd`), in under
+   two minutes in the emulator: all 747 load and render, none crash or hang; 78 hold samples in
+   memory; 2 are silent because their sample files are not on the card copy. Median peak for one
+   middle C at velocity 100 is about -8 dBFS, and over a hundred presets reach full scale, which
+   needs checking against a real Deluge.
    Nothing has been checked against a real Deluge yet, and none of this has run on the Force.
 5. Compare against a Deluge: render the same notes on both and diff the audio.
 6. Then the plugin shell: patch file choice, the 16 mod-knob parameters, state chunk holding the
@@ -139,10 +140,17 @@ size and its single 400 MHz core for years; on an MPC we can avoid some of that)
 keep everything that makes the sound and drop what only exists to survive the hardware:
 - **Keep:** the fixed-point DSP, the patching and parameter maths, the voice code. Changing
   these changes the sound.
-- **Samples:** the firmware streams samples from the SD card in clusters and steals memory back
-  from caches under pressure. Here, load each sample fully into RAM and present it to the voice
-  code as already-loaded clusters. That removes the need to run the firmware's main loop for
-  disk polling.
+- **Samples (done 2026-11-12, memory-resident):** the firmware reads sample data by asking
+  FatFs which clusters a file occupies and reading those sectors itself. `hosted/files.c`
+  therefore invents a disk geometry in which every cluster and sector number encodes a file and
+  an offset (see the comment at its top), so the firmware's own loader runs unchanged. After a
+  preset loads, `engine.cpp` asks for every audio-bearing cluster of every sample with
+  `CLUSTER_LOAD_IMMEDIATELY` and keeps the "reason" that gives it, so nothing is streamed or
+  stolen later and the firmware's main loop is not needed for disk polling. The allocator's
+  external region is 256 MB (was 64) to hold them; pages are committed as touched. Wavetables
+  load through the firmware's ordinary file reads and need NE10's FFT, which is now compiled in.
+  Limits: 256 files open at once, 512 MB per file. Not done: MPC-style streaming for very long
+  samples, and the firmware's "alternate sample folder" search (its FAT directory calls fail).
 - **Allocator:** the firmware's `GeneralMemoryAllocator` manages fixed regions with "stealable"
   objects. Back it with the system allocator and never steal. This is also where most of the
   64-bit pointer problems live, so replacing it shrinks that job.
@@ -186,7 +194,12 @@ What running it taught (2026-11-12):
   LFOs, arps and delays have no clock to follow yet.
 - Check a preset's `bitCrush` and `sampleRateReduction` before judging a waveform by eye.
   `SYNT100.XML` has both on; its odd, one-sided output is what it should be.
-- Not wired up yet: sample loading, unloading or replacing a preset, the mod knobs, tempo.
+- More null reads patched while getting samples to play: `*cacheWritePos` in
+  `SampleLowLevelReader::readSamplesResampled` when no cache is being written.
+- Debug text from the firmware (`D_PRINTLN`, and the hosted layer's own messages) is switched on
+  by the environment variable `DELUGE_LOG` or by a file named `deluge-log` in the working
+  directory; in the emulator, add `--file build/deluge-log=/deluge-log`.
+- Not wired up yet: the mod knobs, tempo, pitch bend, kits.
 
 Notes for step 2, from reading the firmware (2026-11-12):
 - Patch loading does not need a FAT filesystem. `FileReader` has a memory mode

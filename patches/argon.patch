@@ -45,7 +45,7 @@ diff -ruN a/argon/include/argon/common.hpp b/argon/include/argon/common.hpp
        } else {
          return lane_;
 diff -ruN a/argon/include/argon/store.hpp b/argon/include/argon/store.hpp
---- a/argon/include/argon/store.hpp	2026-11-12 16:22:38
+--- a/argon/include/argon/store.hpp	2026-11-12 16:44:38
 +++ b/argon/include/argon/store.hpp	2026-11-12 16:07:59
 @@ -65,7 +65,8 @@
    simd::store1(ptr, vector);

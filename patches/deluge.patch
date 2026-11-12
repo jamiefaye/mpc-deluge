@@ -380,6 +380,20 @@ diff -ruN a/deluge/src/deluge/model/mod_controllable/mod_controllable_audio.cpp 
 +	}
  	grainFX->startSkippingRendering();
  }
+diff -ruN a/deluge/src/deluge/model/sample/sample_low_level_reader.cpp b/deluge/src/deluge/model/sample/sample_low_level_reader.cpp
+--- a/deluge/src/deluge/model/sample/sample_low_level_reader.cpp
++++ b/deluge/src/deluge/model/sample/sample_low_level_reader.cpp
+@@ -954,7 +954,9 @@
+ 
+ 	int32_t* __restrict__ oscBufferPosNow = *oscBufferPos;
+ 
+-	char* __restrict__ cacheWritePosNow = (char*)*cacheWritePos;
++	// mpc-deluge: cacheWritePos is null when not writing a cache (the end of this function checks
++	// for that); the Deluge reads through address 0 here and gets away with it.
++	char* __restrict__ cacheWritePosNow = cacheWritePos ? (char*)*cacheWritePos : nullptr;
+ 
+ 	int32_t const* const oscBufferEnd = oscBufferPosNow + numSamplesTotal * numChannelsAfterCondensing;
+ 
 diff -ruN a/deluge/src/deluge/model/voice/voice.cpp b/deluge/src/deluge/model/voice/voice.cpp
 --- a/deluge/src/deluge/model/voice/voice.cpp
 +++ b/deluge/src/deluge/model/voice/voice.cpp

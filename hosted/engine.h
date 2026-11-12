@@ -22,6 +22,11 @@ void engineInit(const char* root);
 // Not thread-safe against the other calls: the caller serialises them.
 int engineLoadSynth(const char* presetPath);
 
+// After a load: how many sample files the preset brought fully into memory, and how many it could
+// not (file missing, or not enough memory). Samples are looked up as the preset names them,
+// relative to the root, normally "SAMPLES/...".
+void engineSampleCounts(int* loaded, int* failed);
+
 void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 void engineAllNotesOff(); // releases every held note (they still ring out through their release)

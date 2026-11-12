@@ -127,7 +127,7 @@ def main():
     cpio = subprocess.run(["cpio", "-o", "-H", "newc", "--quiet"], cwd=stage, input=files, stdout=subprocess.PIPE, check=True).stdout
     open(initrd, "wb").write(subprocess.run(["gzip", "-1"], input=cpio, stdout=subprocess.PIPE, check=True).stdout)
 
-    qemu = ["qemu-system-arm", "-M", "virt", "-cpu", "cortex-a15", "-smp", "1", "-m", "1024",
+    qemu = ["qemu-system-arm", "-M", "virt", "-cpu", "cortex-a15", "-smp", "1", "-m", os.environ.get("ARMTEST_MEM", "1024"),
             "-kernel", os.path.join(CACHE, "vmlinuz"), "-initrd", initrd,
             "-append", "console=ttyAMA0 quiet panic=-1 rdinit=/init", "-nographic", "-no-reboot", "-monitor", "none"]
     try:

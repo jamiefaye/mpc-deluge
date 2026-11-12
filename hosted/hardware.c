@@ -10,12 +10,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // --- debug text ----------------------------------------------------------------------------------
 void deluge_hosted_log(const char* text) {
 	static int enabled = -1;
 	if (enabled < 0) {
-		enabled = getenv("DELUGE_LOG") != NULL;
+		// Also on when a file called deluge-log exists in the working directory, for places
+		// where setting an environment variable is awkward (the emulated test machine).
+		enabled = getenv("DELUGE_LOG") != NULL || access("deluge-log", F_OK) == 0;
 	}
 	if (enabled) {
 		fputs(text, stderr);
@@ -211,23 +214,3 @@ void* usb_hstd_get_usb_ip_adr(uint16_t ipno) {
 }
 void change_destination_of_send_pipe(void) {}
 void usb_send_start_rohan(void) {}
-
-// --- NE10 FFT ------------------------------------------------------------------------------------
-// Used for pitch detection and wavetable import. Not available yet: allocation fails, so the
-// callers take their "no memory" path.
-void* ne10_fft_alloc_r2c_int32(int32_t nfft) {
-	(void)nfft;
-	return NULL;
-}
-void ne10_fft_r2c_1d_int32_neon(void* fout, int32_t* fin, void* cfg, int32_t scaled_flag) {
-	(void)fout;
-	(void)fin;
-	(void)cfg;
-	(void)scaled_flag;
-}
-void ne10_fft_c2r_1d_int32_neon(int32_t* fout, void* fin, void* cfg, int32_t scaled_flag) {
-	(void)fout;
-	(void)fin;
-	(void)cfg;
-	(void)scaled_flag;
-}

@@ -37,6 +37,9 @@ int main(int argc, char** argv) {
 	if (error != 0) {
 		return 5;
 	}
+	int samplesLoaded = 0, samplesFailed = 0;
+	deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
+	std::fprintf(stderr, "samples: %d in memory, %d failed\n", samplesLoaded, samplesFailed);
 
 	stage("play");
 	const int frames = deluge_hosted::kMaxRenderFrames;

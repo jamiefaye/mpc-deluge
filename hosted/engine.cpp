@@ -19,11 +19,18 @@
 #include "playback/mode/session.h"
 #include "processing/engines/audio_engine.h"
 #include "processing/sound/sound_instrument.h"
+#include "model/sample/sample.h"
+#include "storage/audio/audio_file_manager.h"
+#include "storage/cluster/cluster.h"
 #include "storage/flash_storage.h"
 #include "storage/storage_manager.h"
 #include "util/functions.h"
 
+#include <algorithm>
 #include <array>
+#include <ranges>
+#include <vector>
+#include <cstdio>
 #include <cstring>
 #include <new>
 
@@ -42,6 +49,8 @@ bool started = false;
 Song* song = nullptr;
 InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
+std::vector<Cluster*> residentClusters; // sample data held in memory for the loaded preset
+int samplesLoaded = 0, samplesFailed = 0;
 } // namespace
 
 // setupBlankSong(), without the UI parts.
@@ -71,10 +80,60 @@ void engineInit(const char* root) {
 	// the PIC, which hosted/hardware.c swallows.
 	display = new deluge::hid::display::SevenSegment;
 	AudioEngine::init();
+	audioFileManager.init(); // "mounts the card": takes the cluster size from the hosted file layer
 	FlashStorage::resetSettings();
 	runtimeFeatureSettings.init();
 
 	makeBlankSong();
+}
+
+// The Deluge streams samples from its card, a cluster at a time, and may discard clusters it is
+// not using. Here every cluster of every sample is loaded now and held: asking for a cluster
+// with CLUSTER_LOAD_IMMEDIATELY gives it a "reason to be loaded", and keeping that reason stops
+// the firmware ever stealing the memory back.
+static void makeSamplesResident() {
+	samplesLoaded = 0;
+	samplesFailed = 0;
+	for (Sample* sample : audioFileManager.sampleFiles | std::views::values) {
+		bool ok = true;
+		int32_t numClusters = sample->clusters.getNumElements();
+		// Only the clusters that hold audio. A WAV file can carry other chunks after its audio
+		// (loop points, metadata); the firmware refuses to load a cluster with no audio in it.
+		if (sample->audioDataLengthBytes != 0 && sample->audioDataLengthBytes != 0x8FFFFFFFFFFFFFFF) {
+			const uint64_t audioEnd = (uint64_t)sample->audioDataStartPosBytes + sample->audioDataLengthBytes;
+			numClusters = std::min<int32_t>(numClusters, (int32_t)(((audioEnd - 1) >> Cluster::size_magnitude) + 1));
+		}
+		for (int32_t i = 0; i < numClusters; i++) {
+			SampleCluster* slot = sample->clusters.getElement(i);
+			if (slot->cluster != nullptr && slot->cluster->loaded) {
+				continue; // already in memory (and already counted, if we loaded it)
+			}
+			Error error = Error::NONE;
+			Cluster* cluster = slot->getCluster(sample, (uint32_t)i, CLUSTER_LOAD_IMMEDIATELY, 0xFFFFFFFF, &error);
+			if (cluster == nullptr) {
+				char text[200];
+				std::snprintf(text, sizeof text, "sample %s: cluster %d of %d would not load, error %d\n",
+				              sample->filePath.get(), (int)i, (int)numClusters, (int)error);
+				deluge_hosted_log(text);
+				ok = false;
+				break;
+			}
+			residentClusters.push_back(cluster);
+		}
+		(ok ? samplesLoaded : samplesFailed)++;
+	}
+}
+
+static void releaseResidentSamples() {
+	for (Cluster* cluster : residentClusters) {
+		audioFileManager.removeReasonFromCluster(*cluster, "HOST");
+	}
+	residentClusters.clear();
+}
+
+void engineSampleCounts(int* loaded, int* failed) {
+	*loaded = samplesLoaded;
+	*failed = samplesFailed;
 }
 
 int engineLoadSynth(const char* presetPath) {
@@ -88,6 +147,7 @@ int engineLoadSynth(const char* presetPath) {
 	// each time); the firmware's own way of swapping instruments runs through its UI code.
 	if (synth != nullptr) {
 		AudioEngine::killAllVoices(true);
+		releaseResidentSamples();
 		makeBlankSong();
 	}
 
@@ -113,6 +173,7 @@ int engineLoadSynth(const char* presetPath) {
 	synth = static_cast<SoundInstrument*>(instrument);
 
 	instrument->loadAllAudioFiles(true);
+	makeSamplesResident();
 	clip->setAudioInstrument(instrument, song, true, &newParamManager);
 	song->addOutput(instrument);
 	song->setCurrentClip(clip);

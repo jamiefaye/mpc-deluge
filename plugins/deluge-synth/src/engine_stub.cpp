@@ -36,6 +36,11 @@ int engineLoadSynth(const char*) {
 	return 0;
 }
 
+void engineSampleCounts(int* loaded, int* failed) {
+	*loaded = 0;
+	*failed = 0;
+}
+
 void engineNoteOn(int note, int velocity) {
 	Tone* slot = &tones[0];
 	for (Tone& t : tones) {

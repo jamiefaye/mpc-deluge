@@ -18,16 +18,21 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
 ## What it does not do yet
 
 - Only one instance per MPC project makes sound; a second one is silent.
-- Sample-based presets are silent (no sample loading).
 - No tempo sync (synced LFOs, arpeggiator and delay have no clock), pitch bend or mod wheel.
 - The Deluge's 16 gold-knob parameters are not exposed. Parameters: Volume, Preset.
 - Changing preset stops all sound and rebuilds the engine's song; there is a short silence.
 
-## Presets
+## Presets and samples
 
-Put Deluge SYNTH `.XML` files in `Content/SYNTHS/` before building; they are copied into the
-plugin folder and listed in name order by the Preset parameter. `Content/` is not in git: the
-presets on a Deluge SD card are not ours to redistribute.
+`Content/` inside the plugin folder is laid out like a Deluge SD card: SYNTH `.XML` files in
+`Content/SYNTHS/` (subfolders allowed; the Preset parameter lists them by path), and the samples
+they use in `Content/SAMPLES/...` at the paths the presets name. Samples are loaded whole into
+memory when a preset loads, not streamed as on the Deluge; a preset whose sample file is missing
+plays without it.
+
+`tools/bundle_presets.py <card> plugins/deluge-synth <subfolder> <preset>...` copies presets and
+their samples from a card into the project. `Content/` is not in git: those files are not ours to
+redistribute.
 
 ## Build and install
 

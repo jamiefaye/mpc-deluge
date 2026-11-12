@@ -5,8 +5,16 @@
 // (StorageManager::openFilePointer). So the start cluster here is an index into a table of host
 // paths, and every read finds its host file through it.
 //
-// The parts of FatFs the firmware reaches into directly for sample streaming (cluster chains,
-// raw sector reads) have no equivalent here and report failure; samples are not supported yet.
+// Samples: the firmware does not read sample data through f_read. It asks FatFs which clusters a
+// file occupies and reads those sectors itself. So this layer also invents a disk geometry. A
+// file's clusters are numbered from its start cluster upwards, and a sector number is a cluster
+// number times the sectors per cluster, which makes every cluster and sector number say which
+// file and which offset it stands for:
+//
+//   cluster number = (table slot + 1) << 14 | cluster index within the file     (32 KB clusters)
+//   sector number  = cluster number << 6    | sector within the cluster         (512-byte sectors)
+//
+// That allows 256 files of up to 512 MB each, in 28 bits of sector number.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hosted.h"
@@ -30,12 +38,17 @@ void deluge_hosted_dir_close(int handle);
 const char* deluge_hosted_dir_path(int handle);
 
 #define MAX_FILES 256
-#define FIRST_ID 2 // FatFs treats cluster 0 as "none"
+#define CLUSTER_INDEX_BITS 14
+#define SECTORS_PER_CLUSTER 64 // 32768-byte clusters, the firmware's preferred size
+#define SECTOR_BITS 6
+#define SLOT_OF(cluster) ((int)((cluster) >> CLUSTER_INDEX_BITS) - 1)
+#define START_CLUSTER(slot) ((DWORD)((slot) + 1) << CLUSTER_INDEX_BITS)
 
 static char rootFolder[PATH_MAX] = ".";
 static struct {
 	char* path; // host path, owned
 	int fd;     // -1 until first read or write
+	unsigned long long size;
 } files[MAX_FILES];
 static FATFS dummyVolume;
 
@@ -50,7 +63,8 @@ static void hostPath(const char* path, char* out, size_t outSize) {
 	snprintf(out, outSize, "%s/%s", rootFolder, path);
 }
 
-// Returns the table id for a host path, adding it if needed. 0 if the table is full.
+// Returns the start cluster standing for a host path, adding it to the table if needed. 0 if the
+// table is full.
 static DWORD idForPath(const char* host) {
 	int freeSlot = -1;
 	for (int i = 0; i < MAX_FILES; i++) {
@@ -60,7 +74,7 @@ static DWORD idForPath(const char* host) {
 			}
 		}
 		else if (strcmp(files[i].path, host) == 0) {
-			return (DWORD)(i + FIRST_ID);
+			return START_CLUSTER(i);
 		}
 	}
 	if (freeSlot < 0) {
@@ -68,24 +82,36 @@ static DWORD idForPath(const char* host) {
 	}
 	files[freeSlot].path = strdup(host);
 	files[freeSlot].fd = -1;
-	return (DWORD)(freeSlot + FIRST_ID);
+	struct stat st;
+	files[freeSlot].size = stat(host, &st) == 0 ? (unsigned long long)st.st_size : 0;
+	return START_CLUSTER(freeSlot);
+}
+
+static int slotFd(int slot, int flags) {
+	if (slot < 0 || slot >= MAX_FILES || files[slot].path == NULL) {
+		return -1;
+	}
+	if (files[slot].fd < 0) {
+		files[slot].fd = open(files[slot].path, flags, 0644);
+	}
+	return files[slot].fd;
 }
 
 static int fdFor(FIL* fp, int flags) {
-	DWORD id = fp->obj.sclust;
-	if (id < FIRST_ID || id >= FIRST_ID + MAX_FILES || files[id - FIRST_ID].path == NULL) {
-		return -1;
-	}
-	if (files[id - FIRST_ID].fd < 0) {
-		files[id - FIRST_ID].fd = open(files[id - FIRST_ID].path, flags, 0644);
-	}
-	return files[id - FIRST_ID].fd;
+	return slotFd(SLOT_OF(fp->obj.sclust), flags);
 }
 
 FRESULT f_mount(FATFS* fs, const TCHAR* path, BYTE opt) {
-	(void)fs;
 	(void)path;
 	(void)opt;
+	if (fs != NULL) {
+		// What the firmware reads from the mounted volume: the cluster size above all.
+		fs->fs_type = FS_FAT32;
+		fs->csize = SECTORS_PER_CLUSTER;
+		fs->n_fatent = 0x0FFFFFF0;
+		fs->free_clst = 0x00100000;
+		fs->database = 0;
+	}
 	return FR_OK;
 }
 
@@ -111,18 +137,20 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode) {
 	if (id == 0) {
 		return FR_TOO_MANY_OPEN_FILES;
 	}
+	const int slot = SLOT_OF(id);
 	if (writing) {
 		// Reopen so creation and truncation take effect.
-		if (files[id - FIRST_ID].fd >= 0) {
-			close(files[id - FIRST_ID].fd);
+		if (files[slot].fd >= 0) {
+			close(files[slot].fd);
 		}
 		int flags = O_RDWR | O_CREAT | ((mode & FA_CREATE_ALWAYS) ? O_TRUNC : 0);
-		files[id - FIRST_ID].fd = open(host, flags, 0644);
-		if (files[id - FIRST_ID].fd < 0) {
+		files[slot].fd = open(host, flags, 0644);
+		if (files[slot].fd < 0) {
 			return FR_DENIED;
 		}
-		fstat(files[id - FIRST_ID].fd, &st);
+		fstat(files[slot].fd, &st);
 	}
+	files[slot].size = (unsigned long long)st.st_size;
 	fp->obj.fs = &dummyVolume;
 	fp->obj.id = dummyVolume.id;
 	fp->obj.sclust = id;
@@ -134,11 +162,7 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode) {
 
 FRESULT f_close(FIL* fp) {
 	// The host file stays in the table: the firmware may come back to it through a FilePointer.
-	DWORD id = fp->obj.sclust;
-	if (id >= FIRST_ID && id < FIRST_ID + MAX_FILES && files[id - FIRST_ID].fd >= 0) {
-		close(files[id - FIRST_ID].fd);
-		files[id - FIRST_ID].fd = -1;
-	}
+	// (Its descriptor stays open too: sample clusters are read through it long after the close.)
 	fp->obj.fs = NULL;
 	return FR_OK;
 }
@@ -280,17 +304,49 @@ FRESULT f_readdir(DIR* dp, FILINFO* fno) {
 	return f_readdir_get_filepointer(dp, fno, NULL);
 }
 
-// --- FatFs internals the firmware calls for sample streaming: not available --------------------------
+// --- the invented disk geometry (see the top of this file) ------------------------------------------
 LBA_t clst2sect(FATFS* fs, DWORD clst) {
 	(void)fs;
-	(void)clst;
-	return 0; // "invalid cluster"
+	return (LBA_t)clst << SECTOR_BITS;
 }
+
+// The cluster after this one in its file's chain, or 0x0FFFFFFF at the end of the file.
 DWORD get_fat_from_fs(FATFS* fs, DWORD clst) {
 	(void)fs;
-	(void)clst;
-	return 0xFFFFFFFF; // "disk error"
+	const int slot = SLOT_OF(clst);
+	if (slot < 0 || slot >= MAX_FILES || files[slot].path == NULL) {
+		return 0xFFFFFFFF; // "disk error"
+	}
+	const unsigned long long nextIndex = (clst & ((1u << CLUSTER_INDEX_BITS) - 1)) + 1;
+	if (nextIndex * (SECTORS_PER_CLUSTER * 512ull) >= files[slot].size || nextIndex >= (1u << CLUSTER_INDEX_BITS)) {
+		return 0x0FFFFFFF;
+	}
+	return clst + 1;
 }
+
+// Reads whole sectors by the numbering above. Past the end of the file reads as zeros.
+DRESULT disk_read_without_streaming_first(BYTE pdrv, BYTE* buff, LBA_t sector, UINT count) {
+	(void)pdrv;
+	const DWORD cluster = (DWORD)(sector >> SECTOR_BITS);
+	const int fd = slotFd(SLOT_OF(cluster), O_RDONLY);
+	if (fd < 0) {
+		return RES_ERROR;
+	}
+	const unsigned long long offset = (unsigned long long)(cluster & ((1u << CLUSTER_INDEX_BITS) - 1))
+	                                      * (SECTORS_PER_CLUSTER * 512ull)
+	                                  + (unsigned long long)(sector & (SECTORS_PER_CLUSTER - 1)) * 512ull;
+	const size_t wanted = (size_t)count * 512;
+	ssize_t got = pread(fd, buff, wanted, (off_t)offset);
+	if (got < 0) {
+		return RES_ERROR;
+	}
+	if ((size_t)got < wanted) {
+		memset(buff + got, 0, wanted - (size_t)got);
+	}
+	return RES_OK;
+}
+
+// --- FatFs directory internals, used only for the firmware's "alternate sample folder" search -------
 DWORD ld_clust(FATFS* fs, const BYTE* dir) {
 	(void)fs;
 	(void)dir;
@@ -314,13 +370,6 @@ DSTATUS disk_status(BYTE pdrv) {
 	return 0; // present and initialised
 }
 DRESULT disk_write(BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count) {
-	(void)pdrv;
-	(void)buff;
-	(void)sector;
-	(void)count;
-	return RES_ERROR;
-}
-DRESULT disk_read_without_streaming_first(BYTE pdrv, BYTE* buff, LBA_t sector, UINT count) {
 	(void)pdrv;
 	(void)buff;
 	(void)sector;

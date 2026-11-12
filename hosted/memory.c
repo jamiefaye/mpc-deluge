@@ -10,8 +10,9 @@ uintptr_t deluge_hosted_internal_begin;
 uintptr_t deluge_hosted_internal_small_end;
 uintptr_t deluge_hosted_internal_end;
 
-// Sizes follow the Deluge for now, so the allocator behaves as it does there. They can grow.
-#define EXTERNAL_SIZE (64u << 20)
+// The Deluge has 64 MB of external RAM and streams samples through it. Here samples are kept
+// whole in memory, so the region is larger. The pages are only committed as they are touched.
+#define EXTERNAL_SIZE (256u << 20)
 #define INTERNAL_SMALL_SIZE (256u << 10)
 #define INTERNAL_SIZE (4u << 20)
 
