@@ -23,8 +23,17 @@
 #include "storage/storage_manager.h"
 #include "util/functions.h"
 
+#include <array>
 #include <cstring>
 #include <new>
+
+// Defined in audio_engine.cpp but, in the firmware's words, "deliberately not in header".
+namespace AudioEngine {
+void renderAudio(size_t numSamples);
+extern std::array<deluge::dsp::StereoSample<q31_t>, SSI_TX_BUFFER_NUM_SAMPLES> renderingMemory;
+extern int32_t masterVolumeAdjustmentL;
+extern int32_t masterVolumeAdjustmentR;
+} // namespace AudioEngine
 
 namespace deluge_hosted {
 
@@ -33,7 +42,6 @@ bool started = false;
 Song* song = nullptr;
 InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
-int32_t reverbBuffer[kMaxRenderFrames];
 } // namespace
 
 void engineInit(const char* root) {
@@ -120,18 +128,24 @@ void engineNoteOff(int note) {
 }
 
 void engineRender(int32_t* out, int numFrames) {
-	static_assert(sizeof(deluge::dsp::StereoSample<q31_t>) == 2 * sizeof(int32_t));
 	std::memset(out, 0, sizeof(int32_t) * 2 * (size_t)numFrames);
-	if (synth == nullptr || numFrames < 1 || numFrames > kMaxRenderFrames) {
+	if (song == nullptr || numFrames < 1 || numFrames > kMaxRenderFrames) {
 		return;
 	}
-	std::memset(reverbBuffer, 0, sizeof reverbBuffer);
-	char modelStackMemory[MODEL_STACK_MAX_SIZE];
-	auto* samples = reinterpret_cast<deluge::dsp::StereoSample<q31_t>*>(out);
-	synth->renderOutput(setupModelStackWithSong(modelStackMemory, song),
-	                    deluge::dsp::StereoBuffer<q31_t>{samples, (size_t)numFrames}, reverbBuffer, 0, 0, false, true);
-	// The firmware's clocks: its sample counter drives envelope and LFO timing between renders.
-	AudioEngine::audioSampleTimer += numFrames;
+	// The firmware's master render: every output in the song, then the song's reverb (fed by each
+	// sound's send), then the song-level filter, bit-crusher and compressor. This also advances
+	// the firmware's sample clock.
+	AudioEngine::renderAudio((size_t)numFrames);
+
+	// The firmware's output stage (the end of AudioEngine::routine_): master volume as a 32x32
+	// multiply with dither, then eight doublings with saturation on the way to the codec.
+	for (int i = 0; i < numFrames; i++) {
+		const auto& sample = AudioEngine::renderingMemory[(size_t)i];
+		int64_t l = (int64_t)sample.l * (int64_t)AudioEngine::masterVolumeAdjustmentL + (int64_t)getNoise();
+		int64_t r = (int64_t)sample.r * (int64_t)AudioEngine::masterVolumeAdjustmentR + (int64_t)getNoise();
+		out[2 * i] = lshiftAndSaturate<8>((int32_t)(l >> 32));     // AUDIO_OUTPUT_GAIN_DOUBLINGS
+		out[2 * i + 1] = lshiftAndSaturate<8>((int32_t)(r >> 32));
+	}
 	deluge_hosted_advance_samples((uint32_t)numFrames);
 }
 

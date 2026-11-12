@@ -52,8 +52,8 @@ static int runPreset(const char* root, const std::string& relativePath) {
 		}
 	}
 	double rms = std::sqrt(sumSquares / (blocks * deluge_hosted::kMaxRenderFrames * 2.0));
-	auto dB = [](double v) { return v > 0 ? 20.0 * std::log10(v / 2147483648.0) : -200.0; };
-	std::printf("PRESET %s: ok peak %.1f dB rms %.1f dB still sounding %.1f dB%s\n", relativePath.c_str(), dB((double)peak),
+	auto dB = [](double v) { return v > 0 ? 20.0 * std::log10(v / 2147483648.0) : -200.0; }; // dBFS at the Deluge's converter
+	std::printf("PRESET %s: ok peak %.1f dBFS rms %.1f dBFS still sounding %.1f dBFS%s\n", relativePath.c_str(), dB((double)peak),
 	            dB(rms), dB((double)peakTail), peak == 0 ? " SILENT" : "");
 	return 0;
 }

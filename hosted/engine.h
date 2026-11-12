@@ -24,9 +24,11 @@ int engineLoadSynth(const char* presetPath);
 void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 
-// Renders numFrames (1..kMaxRenderFrames) of interleaved stereo, in the firmware's own 32-bit
-// fixed-point scale, replacing what is in `out`. The song-level reverb is not mixed in yet: a
-// preset's reverb send goes nowhere.
+// Renders numFrames of interleaved stereo, replacing what is in `out`. numFrames must be a
+// multiple of 4 from 4 to kMaxRenderFrames: the firmware always renders in fours.
+// This is the firmware's whole output path: the sound, the song-level reverb fed by the sound's
+// reverb send, the song's own effects and master volume, and the final gain stage. The values are
+// what a Deluge sends to its converter: 32-bit, full scale = +/-2^31.
 void engineRender(int32_t* out, int numFrames);
 
 } // namespace deluge_hosted

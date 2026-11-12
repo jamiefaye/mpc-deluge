@@ -118,9 +118,11 @@ would. The GUI code is linked but never run.
    `InstrumentClip` and `SoundInstrument`; the clip is required, it holds the arpeggiator
    settings and the parameters). Loading is `StorageManager::loadInstrumentFromFile`, rendering
    is `SoundInstrument::renderOutput`.
-   **Corpus result:** `tests/engine_corpus.cpp` ran all 747 presets in `~/deluge/SDCard/SYNTHS`
-   (80 seconds in the emulator): 746 load and render, 724 make sound, 22 are silent (21 of those
-   are sample-based, which is expected), 1 hangs (`156 - ABSTRACT 5.XML`, not yet investigated).
+   **Corpus result:** `tests/engine_corpus.cpp` runs all 747 presets in `~/deluge/SDCard/SYNTHS`
+   (80 seconds in the emulator). With the firmware's full output path: all 747 load and render,
+   none crash or hang; 22 give only dither noise (21 of those are sample-based, expected until
+   samples load); median peak for one middle C at velocity 100 is -8 dBFS, and 114 presets reach
+   full scale, which needs checking against a real Deluge.
    Nothing has been checked against a real Deluge yet, and none of this has run on the Force.
 5. Compare against a Deluge: render the same notes on both and diff the audio.
 6. Then the plugin shell: patch file choice, the 16 mod-knob parameters, state chunk holding the
@@ -166,13 +168,19 @@ What running it taught (2026-11-12):
   destroyed on a Deluge and some destructors cannot run safely at exit.
 - All fixed-point primitives the firmware uses pass `tests/intrinsics_check.cpp` on arm32 with
   clang. `shift_left_saturate` is unused and is not equivalent to its fallback.
-- The engine's output is quiet in raw 32-bit terms (median peak about -44 dB re int32 full scale
-  for one note). The Deluge scales this up on the way to its codec; the right factor is not yet
-  taken from the firmware.
+- **Reverb is global** (one per song), with a send per sound: each sound adds its
+  send into a shared buffer, `AudioEngine::renderReverb` runs the song's one reverb on it and
+  mixes the result into the master output. So `engineRender` calls the firmware's own
+  `AudioEngine::renderAudio()` (song, then reverb, then song-level filter/bit-crush/compressor)
+  and then repeats the firmware's output stage from `routine_()`: master volume as a 32x32
+  multiply with dither, then `lshiftAndSaturate<8>`. Consequence for the plugin: the reverb
+  belongs to the engine, not to a preset, so two presets in one engine would share it.
+- The firmware always renders a multiple of 4 samples; `engineRender` requires the same.
+- Not done from `routine_()`: `tickSongFinalizeWindows` (the sequencer clock). Tempo-synced
+  LFOs, arps and delays have no clock to follow yet.
 - Check a preset's `bitCrush` and `sampleRateReduction` before judging a waveform by eye.
   `SYNT100.XML` has both on; its odd, one-sided output is what it should be.
-- Not wired up yet: the song-level reverb (a preset's reverb send goes nowhere), sample loading,
-  unloading or replacing a preset, the mod knobs.
+- Not wired up yet: sample loading, unloading or replacing a preset, the mod knobs, tempo.
 
 Notes for step 2, from reading the firmware (2026-11-12):
 - Patch loading does not need a FAT filesystem. `FileReader` has a memory mode
