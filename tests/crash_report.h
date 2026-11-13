@@ -10,8 +10,16 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <ucontext.h>
 #include <unistd.h>
+
+#if !defined(__linux__)
+// Anywhere else (the Mac) there is a debugger, and a crash report from the system.
+namespace crash_report {
+inline void install() {
+}
+} // namespace crash_report
+#else
+#include <ucontext.h>
 
 extern "C" char __executable_start;
 extern "C" char etext;
@@ -53,3 +61,4 @@ inline void install() {
 	}
 }
 } // namespace crash_report
+#endif

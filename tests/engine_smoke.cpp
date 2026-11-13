@@ -71,7 +71,9 @@ int main(int argc, char** argv) {
 	}
 	std::fprintf(stderr, "RESULT peak %.1f dBFS\n", peak ? 20.0 * std::log10((double)peak / 2147483648.0) : -200.0);
 
-	if (FILE* f = std::fopen("/out/engine_smoke.wav", "wb")) {
+	// Where the recording goes: /out in the emulated machine, or wherever ENGINE_SMOKE_OUT says.
+	const char* outPath = std::getenv("ENGINE_SMOKE_OUT");
+	if (FILE* f = std::fopen(outPath ? outPath : "/out/engine_smoke.wav", "wb")) {
 		const uint32_t dataBytes = sizeof recording, rate = 44100, byteRate = rate * 8;
 		const uint32_t riffSize = 36 + dataBytes, fmtSize = 16;
 		const uint16_t pcm = 1, channels = 2, blockAlign = 8, bits = 32;

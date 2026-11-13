@@ -6,6 +6,7 @@
 
 #include "definitions_cxx.hpp"
 #include "extern.h"
+#include "gui/views/view.h"
 #include "hid/display/display.h"
 #include "hid/display/seven_segment.h"
 #include "hosted.h"
@@ -146,13 +147,23 @@ int engineLoadSynth(const char* presetPath) {
 		return (int)Error::FILE_NOT_FOUND;
 	}
 
-	// Replacing a loaded preset: silence everything and start again from a blank song. The old
-	// song, clip and instrument are abandoned, not freed (a few kilobytes of the firmware's 64 MB
-	// each time); the firmware's own way of swapping instruments runs through its UI code.
-	if (synth != nullptr) {
+	// Replacing a loaded preset: silence everything, delete the old song (which deletes its clip
+	// and instrument, and lets go of their samples) and start again from a blank one. The order is
+	// the firmware's when it swaps songs (LoadSongUI, ClearSong): the new song is made current
+	// first and the old one deleted after, because destructors on the way down ask the current
+	// song questions. Abandoning the old song instead, as this did at first, runs the allocator
+	// dry after a hundred or so preset changes.
+	if (song != nullptr && (synth != nullptr || clip != nullptr)) {
 		AudioEngine::killAllVoices(true);
 		releaseResidentSamples();
+		view.activeModControllableModelStack.modControllable = nullptr;
+		view.activeModControllableModelStack.setTimelineCounter(nullptr);
+		view.activeModControllableModelStack.paramManager = nullptr;
+		Song* toDelete = song;
 		makeBlankSong();
+		void* toDealloc = dynamic_cast<void*>(toDelete);
+		toDelete->~Song();
+		delugeDealloc(toDealloc);
 	}
 
 	void* clipMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(InstrumentClip));

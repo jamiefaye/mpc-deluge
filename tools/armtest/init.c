@@ -64,6 +64,15 @@ int main(void) {
 		for (char* line = strtok(text, "\n"); line && argc < 63; line = strtok(NULL, "\n")) argv[argc++] = line;
 	}
 	argv[argc] = NULL;
+	// /env: NAME=VALUE lines for the command's environment (run.py --env).
+	static char envText[2048];
+	f = fopen("/env", "r");
+	if (f) {
+		size_t n = fread(envText, 1, sizeof envText - 1, f);
+		envText[n] = 0;
+		fclose(f);
+		for (char* line = strtok(envText, "\n"); line; line = strtok(NULL, "\n")) putenv(line);
+	}
 	int status = 255;
 	if (argc > 0) {
 		pid_t pid = fork();

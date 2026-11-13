@@ -2,7 +2,7 @@
 """Compile the vendored Deluge firmware, plus the hosted hardware layer in hosted/, into a static
 library that a plugin links against.
 
-    tools/build_firmware.py [arm32|arm64|native] [--clean] [--probe] [--test tests/<name>.cpp]
+    tools/build_firmware.py [arm32|arm64|native|debug] [--clean] [--probe] [--test tests/<name>.cpp]
 
 Output: build/firmware/<target>/libdeluge.a (objects in obj/, compiler messages in obj/*.err).
 --probe also links tools/sizing/root.cpp against the library with unused code dropped and writes
@@ -27,12 +27,21 @@ TARGETS = {
     "arm32": ["-target", "arm-linux-gnueabihf.2.31", "-mcpu=cortex_a17"],
     "arm64": ["-target", "aarch64-linux-gnu.2.31", "-mcpu=cortex_a55"],
     "native": [],
+    # This computer again, unoptimised with full debug information, for use under a debugger.
+    # (zig switches the undefined-behaviour sanitizer on without optimisation; the firmware
+    # overflows integers on purpose all over, so it has to be off.)
+    "debug": ["-O0", "-g", "-fno-sanitize=undefined"],
 }
 
 # The same definitions tools/build.py gives a plugin, so both sides agree on every struct.
 DEFINES = ["-DDELUGE_HOSTED=1", "-D_GNU_SOURCE", "-DUSE_TASK_MANAGER", "-DPRINTF_ALIAS_STANDARD_FUNCTION_NAMES=0"]
-COMMON = ["-O2", "-g1", "-fPIC", "-c", "-w", "-fsigned-char", "-ffunction-sections", "-fdata-sections",
-          "-fvisibility=hidden"] + DEFINES
+COMMON = ["-O2", "-g1", "-fPIC", "-c", "-Wno-everything", "-fsigned-char", "-ffunction-sections", "-fdata-sections",
+          "-fvisibility=hidden", "-ferror-limit=0",
+          # On a 64-bit target an integer turned into a pointer has lost its top half unless it went
+          # through deluge_hosted_ptr() (hosted.h). Warnings are off (-w would also silence this), so it is an error.
+          "-Werror=int-to-pointer-cast", "-Werror=int-to-void-pointer-cast",
+          # The other direction is already an error in C++; in C it is only a warning.
+          "-Werror=pointer-to-int-cast", "-Werror=void-pointer-to-int-cast"] + DEFINES
 INCLUDES = ["-I" + os.path.join(HERE, "hosted"), "-I" + os.path.join(HERE, "tests")] + ["-I" + os.path.join(FW, d) for d in (
     "", "deluge", "OSLikeStuff", "lib", "NE10/inc", "NE10/common", "NE10/modules", "fatfs", "deluge/version")] + [
     "-I" + os.path.join(TP, "argon", "include"), "-I" + os.path.join(TP, "etl", "include")]
@@ -150,7 +159,8 @@ def main():
         p = subprocess.run(command(os.path.abspath(src), obj, target))
         if p.returncode != 0:
             sys.exit(1)
-        p = subprocess.run(ZIG + ["c++"] + TARGETS[target] + ["-no-pie", "-Wl,--gc-sections", "-o", exe, obj, lib, "-ldl", "-lpthread"],
+        link = ["-Wl,-dead_strip"] if target in ("native", "debug") and sys.platform == "darwin" else ["-no-pie", "-Wl,--gc-sections"]
+        p = subprocess.run(ZIG + ["c++"] + TARGETS[target] + link + ["-o", exe, obj, lib, "-ldl", "-lpthread"],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         text = p.stdout.decode("utf-8", "replace")
         if p.returncode != 0:

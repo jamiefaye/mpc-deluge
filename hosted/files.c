@@ -14,7 +14,11 @@
 //   cluster number = (table slot + 1) << 14 | cluster index within the file     (32 KB clusters)
 //   sector number  = cluster number << 6    | sector within the cluster         (512-byte sectors)
 //
-// That allows 256 files of up to 512 MB each, in 28 bits of sector number.
+// A sector number is 32 bits, which leaves 12 for the slot: 4095 files of up to 512 MB each.
+// A slot is never given to another file, because the firmware keeps cluster and sector numbers
+// for as long as it keeps a sample (cached ones included) and nothing says when it has let go.
+// So 4095 is the number of different files one run of the engine can touch. Descriptors are a
+// separate matter: only MAX_OPEN host files are open at once, the least recently used is closed.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hosted.h"
@@ -37,7 +41,8 @@ int deluge_hosted_dir_next(int handle, char* name, size_t nameSize, int* isDir, 
 void deluge_hosted_dir_close(int handle);
 const char* deluge_hosted_dir_path(int handle);
 
-#define MAX_FILES 256
+#define MAX_FILES 4095
+#define MAX_OPEN 32
 #define CLUSTER_INDEX_BITS 14
 #define SECTORS_PER_CLUSTER 64 // 32768-byte clusters, the firmware's preferred size
 #define SECTOR_BITS 6
@@ -47,9 +52,14 @@ const char* deluge_hosted_dir_path(int handle);
 static char rootFolder[PATH_MAX] = ".";
 static struct {
 	char* path; // host path, owned
-	int fd;     // -1 until first read or write
+	int fd;     // -1 when not open
+	int writable; // the descriptor was opened for writing too
+	unsigned lastUse;
 	unsigned long long size;
 } files[MAX_FILES];
+static int numFiles;  // slots handed out so far; they are used in order
+static int numOpen;
+static unsigned useCounter;
 static FATFS dummyVolume;
 
 void deluge_hosted_set_root(const char* folder) {
@@ -66,34 +76,70 @@ static void hostPath(const char* path, char* out, size_t outSize) {
 // Returns the start cluster standing for a host path, adding it to the table if needed. 0 if the
 // table is full.
 static DWORD idForPath(const char* host) {
-	int freeSlot = -1;
-	for (int i = 0; i < MAX_FILES; i++) {
-		if (files[i].path == NULL) {
-			if (freeSlot < 0) {
-				freeSlot = i;
-			}
-		}
-		else if (strcmp(files[i].path, host) == 0) {
+	for (int i = 0; i < numFiles; i++) {
+		if (strcmp(files[i].path, host) == 0) {
 			return START_CLUSTER(i);
 		}
 	}
-	if (freeSlot < 0) {
+	if (numFiles >= MAX_FILES) {
+		deluge_hosted_log("hosted files: file table full\n");
 		return 0;
 	}
+	const int freeSlot = numFiles;
 	files[freeSlot].path = strdup(host);
+	if (files[freeSlot].path == NULL) {
+		return 0;
+	}
+	numFiles++;
 	files[freeSlot].fd = -1;
 	struct stat st;
 	files[freeSlot].size = stat(host, &st) == 0 ? (unsigned long long)st.st_size : 0;
 	return START_CLUSTER(freeSlot);
 }
 
+static void closeSlot(int slot) {
+	if (files[slot].fd >= 0) {
+		close(files[slot].fd);
+		files[slot].fd = -1;
+		numOpen--;
+	}
+}
+
+// Before opening one more host file: if MAX_OPEN are open already, close the one used longest ago.
+static void makeRoomForOpen(void) {
+	if (numOpen < MAX_OPEN) {
+		return;
+	}
+	int oldest = -1;
+	for (int i = 0; i < numFiles; i++) {
+		if (files[i].fd >= 0 && (oldest < 0 || (int)(files[i].lastUse - files[oldest].lastUse) < 0)) {
+			oldest = i;
+		}
+	}
+	if (oldest >= 0) {
+		closeSlot(oldest);
+	}
+}
+
+// The slot's descriptor, opened if need be. flags is O_RDONLY or O_RDWR; a file open for reading
+// that is now wanted for writing is reopened.
 static int slotFd(int slot, int flags) {
-	if (slot < 0 || slot >= MAX_FILES || files[slot].path == NULL) {
+	if (slot < 0 || slot >= numFiles) {
 		return -1;
 	}
-	if (files[slot].fd < 0) {
-		files[slot].fd = open(files[slot].path, flags, 0644);
+	const int wantWrite = (flags & O_ACCMODE) != O_RDONLY;
+	if (files[slot].fd >= 0 && wantWrite && !files[slot].writable) {
+		closeSlot(slot);
 	}
+	if (files[slot].fd < 0) {
+		makeRoomForOpen();
+		files[slot].fd = open(files[slot].path, flags, 0644);
+		if (files[slot].fd >= 0) {
+			files[slot].writable = wantWrite;
+			numOpen++;
+		}
+	}
+	files[slot].lastUse = ++useCounter;
 	return files[slot].fd;
 }
 
@@ -140,14 +186,16 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode) {
 	const int slot = SLOT_OF(id);
 	if (writing) {
 		// Reopen so creation and truncation take effect.
-		if (files[slot].fd >= 0) {
-			close(files[slot].fd);
-		}
+		closeSlot(slot);
+		makeRoomForOpen();
 		int flags = O_RDWR | O_CREAT | ((mode & FA_CREATE_ALWAYS) ? O_TRUNC : 0);
 		files[slot].fd = open(host, flags, 0644);
 		if (files[slot].fd < 0) {
 			return FR_DENIED;
 		}
+		numOpen++;
+		files[slot].writable = 1;
+		files[slot].lastUse = ++useCounter;
 		fstat(files[slot].fd, &st);
 	}
 	files[slot].size = (unsigned long long)st.st_size;
@@ -161,8 +209,9 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode) {
 }
 
 FRESULT f_close(FIL* fp) {
-	// The host file stays in the table: the firmware may come back to it through a FilePointer.
-	// (Its descriptor stays open too: sample clusters are read through it long after the close.)
+	// The host file stays in the table: the firmware may come back to it through a FilePointer, and
+	// reads sample clusters through it long after the close. Its descriptor is closed when it is
+	// the least recently used of too many (makeRoomForOpen) and reopened on demand.
 	fp->obj.fs = NULL;
 	return FR_OK;
 }
