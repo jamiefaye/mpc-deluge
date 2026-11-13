@@ -255,6 +255,7 @@ public:
     void saveExtraState(std::vector<uint8_t>& out) override
     {
         // The parameters have just been written into the project, before this was called.
+        statSaves_.fetch_add(1);
         const int i = presetIndex();
         const bool goldIsAnotherPresets = goldPreset_.load() != i;
         if (i >= 0)
@@ -275,6 +276,8 @@ public:
         const size_t pathSize = end != nullptr ? (size_t)(end - data) : size;
         const bool goldIsThisPresets = !(end != nullptr && std::memchr(end + 1, 'K', size - pathSize - 1) != nullptr);
         const std::string wanted(reinterpret_cast<const char*>(data), pathSize);
+        statRestores_.fetch_add(1);
+        if (!goldIsThisPresets) statRestoresWithoutKnobs_.fetch_add(1);
         for (size_t i = 0; i < presets_.size(); ++i)
         {
             if (presets_[i] == wanted) { set(kPreset, (float)i); break; }
@@ -383,6 +386,11 @@ public:
                 }
                 const int n = std::min(segmentEnd - frame, leftoverFrames_);
                 const int32_t* src = engineBuffer_ + 2 * leftoverStart_;
+                // The engine's output stage clips at full scale, as the Deluge's does on the way to
+                // its converter. Count the samples that sit on that ceiling.
+                uint32_t clipped = 0;
+                for (int i = 0; i < 2 * n; ++i) clipped += (src[i] >= 0x7FFFFF00 || src[i] == INT32_MIN) ? 1u : 0u;
+                if (clipped != 0) statClipped_.fetch_add(clipped, std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i)
                 {
                     smoothedGain_ += 0.002f * (targetGain - smoothedGain_);
@@ -404,6 +412,8 @@ public:
                                 std::chrono::steady_clock::now() - timeStart).count();
         statNs_.fetch_add(ns, std::memory_order_relaxed);
         statFrames_.fetch_add((uint64_t)numFrames, std::memory_order_relaxed);
+        if (numFrames < statMinBlock_.load(std::memory_order_relaxed)) statMinBlock_.store(numFrames, std::memory_order_relaxed);
+        if (numFrames > statMaxBlock_.load(std::memory_order_relaxed)) statMaxBlock_.store(numFrames, std::memory_order_relaxed);
         const uint32_t permille = numFrames > 0 ? (uint32_t)(ns * 441ull / (10000ull * (uint64_t)numFrames)) : 0u;
         if (permille > statWorstPermille_.load(std::memory_order_relaxed)) statWorstPermille_.store(permille, std::memory_order_relaxed);
     }
@@ -487,6 +497,15 @@ private:
             applyBrowsing();
             loadRequestedPreset();
             tellHostNow();
+            // Keep the diagnostics file a few seconds fresh while audio runs, so that it says
+            // something useful after a crash or a reset too.
+            const int64_t now = nowMs();
+            if (now - diagnosticsWrittenMs_ >= 3000 && statCalls_.load() != diagnosticsCalls_)
+            {
+                diagnosticsWrittenMs_ = now;
+                diagnosticsCalls_ = statCalls_.load();
+                writeDiagnostics();
+            }
             // Someone waiting on us (waitUntilSettled): look again at once.
             std::this_thread::sleep_for(std::chrono::milliseconds(waiters_.load() != 0 ? 1 : 15));
         }
@@ -535,14 +554,16 @@ private:
     {
         if (!workerRunning_.load()) return;
         waiters_.fetch_add(1);
+        bool done = false;
         for (int ms = 0; ms < 3000; ++ms)
         {
             const int requested = requestedPreset_.load();
             const bool settled = loadedPreset_.load() == requested && goldPreset_.load() == requested
                                  && !reloadPreset_.load() && !knobsBusy_.load();
-            if (settled || quit_.load()) break;
+            if (settled || quit_.load()) { done = true; break; }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+        if (!done) statWaitTimeouts_.fetch_add(1);
         waiters_.fetch_sub(1);
     }
 
@@ -642,18 +663,22 @@ private:
     {
         const std::string folder = mpc::pluginFolder();
         if (folder.empty()) return;
-        char text[1200];
+        std::lock_guard<std::mutex> lock(diagnosticsLock_);   // the MPC's thread and the worker both write it
+        char text[1600];
         const uint64_t frames = statFrames_.load(), ns = statNs_.load();
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
         std::snprintf(text, sizeof text,
-                      "Deluge Synth diagnostics (written on prepare and on project/preset save)\n"
+                      "Deluge Synth diagnostics (written on prepare, on project/preset save, and every 3 s while audio runs)\n"
                       "engine: %s build; this instance %s the engine\n"
                       "presets found in Content/SYNTHS: %d\n"
                       "loaded preset: %d (%s), load error %d, loads so far %d\n"
                       "its samples: %d held in memory, %d could not be loaded (looked for under Content/, e.g. Content/SAMPLES/...)\n"
                       "process calls %u, of which silent (no engine or loading) %u; note-ons %u; peak out %.4f\n"
-                      "time in process(): %.2f s of audio rendered, average %.2f%% of one core, worst block %.1f%%\n",
+                      "time in process(): %.2f s of audio rendered, average %.2f%% of one core, worst block %.1f%%\n"
+                      "block sizes asked for: %d to %d frames\n"
+                      "samples at the engine's clipping ceiling: %u of %llu (%.3f%%)\n"
+                      "project saves %u, restores %u (%u of them without usable knob values); waits that timed out %u\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
                       "Deluge firmware, 64-bit ARM",
@@ -669,7 +694,11 @@ private:
                       (int)presets_.size(), loaded, loaded >= 0 && loaded < (int)presets_.size() ? presets_[(size_t)loaded].c_str() : "none",
                       loadError_.load(), loads_.load(), samplesLoaded_.load(), samplesFailed_.load(), statCalls_.load(), statSilentCalls_.load(), statNoteOns_.load(),
                       (double)statPeak_.load(), seconds, seconds > 0 ? 100.0 * ((double)ns * 1e-9) / seconds : 0.0,
-                      (double)statWorstPermille_.load() * 0.1);
+                      (double)statWorstPermille_.load() * 0.1,
+                      statMinBlock_.load() == INT32_MAX ? 0 : statMinBlock_.load(), statMaxBlock_.load(),
+                      statClipped_.load(), (unsigned long long)(2 * frames),
+                      frames > 0 ? 100.0 * (double)statClipped_.load() / (double)(2 * frames) : 0.0,
+                      statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load());
         if (FILE* f = std::fopen((folder + "/diagnostics.txt").c_str(), "w"))
         {
             std::fputs(text, f);
@@ -718,6 +747,11 @@ private:
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
     std::atomic<uint64_t> statNs_{0}, statFrames_{0};
     std::atomic<float>    statPeak_{0.0f};
+    std::atomic<uint32_t> statClipped_{0}, statSaves_{0}, statRestores_{0}, statRestoresWithoutKnobs_{0}, statWaitTimeouts_{0};
+    std::atomic<int>      statMinBlock_{INT32_MAX}, statMaxBlock_{0};
+    std::mutex            diagnosticsLock_;
+    int64_t               diagnosticsWrittenMs_ = 0;   // worker thread only
+    uint32_t              diagnosticsCalls_ = 0;       // worker thread only
 };
 
 MPC_PLUGIN_ENTRY(DelugeSynth)
