@@ -73,4 +73,10 @@ void deluge_hosted_log(const char* text);
 
 #ifdef __cplusplus
 }
+// Called on entering and leaving each of the engine's functions (hosted/engine.h). While a thread
+// is between the two, operator new on it uses the firmware's allocator; see hosted/operators.cpp.
+// (Functions rather than a shared thread-local variable: one of those is reached through a helper
+// symbol that a plugin would have to import from the MPC, which does not have it.)
+void deluge_hosted_enter_engine() noexcept;
+void deluge_hosted_leave_engine() noexcept;
 #endif

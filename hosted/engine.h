@@ -3,6 +3,11 @@
 //
 // One engine per process: the firmware keeps its state in globals (see CLAUDE.md, "Globals").
 //
+// Threads: none of this is thread-safe. The caller makes sure only one thread is inside any of
+// these functions at a time (the plugin holds a lock around every call). Other threads may run
+// freely outside them: memory they allocate with new does not come from the firmware's allocator
+// (hosted/operators.cpp), which is the one thing in here every thread would otherwise share.
+//
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <cstdint>

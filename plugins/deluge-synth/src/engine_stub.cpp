@@ -1,15 +1,15 @@
 // Placeholder engine for the builds that cannot contain the real one.
 //
-// The Deluge firmware only builds for 32-bit ARM so far (it keeps pointers in 32-bit fields). The
-// SDK's build flow still needs this plugin to compile and run on the development computer (for the
-// parameter list, the generated screen and the host simulator) and for 64-bit MPCs. On those
-// targets the engine calls below are answered by a plain sine tone, so the tools have a plugin
-// that loads and makes a sound. It is not the Deluge and is not meant to be listened to.
-//
-// On 32-bit ARM this file compiles to nothing and the real engine comes from libdeluge.a.
+// The real engine is the firmware library, linked into the builds for 32-bit and 64-bit ARM MPCs
+// and into the native build on a 64-bit ARM computer (tools/build.py defines DELUGE_ENGINE_LINKED
+// for those, and this file then compiles to nothing). The firmware's signal processing is written
+// with ARM NEON, so it cannot be compiled for an Intel processor: the native build on an Intel
+// computer and the desktop VST (a universal binary) get the engine calls below instead, answered
+// by a plain sine tone, so that the SDK's tools still have a plugin that loads and makes a sound.
+// It is not the Deluge and is not meant to be listened to.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
-#if !defined(__arm__)
+#if !defined(DELUGE_ENGINE_LINKED)
 
 #include "engine.h"
 

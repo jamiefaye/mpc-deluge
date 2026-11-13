@@ -38,28 +38,43 @@ COMMON_SOURCES = sorted(
 _find_sources = sdk_build.find_sources
 sdk_build.find_sources = lambda project: _find_sources(project) + COMMON_SOURCES
 
-# A plugin whose folder holds a file called "link-firmware" gets the firmware library on its
-# arm32 link line (build it first: tools/build_firmware.py arm32). Its other builds must supply
-# the engine themselves; see plugins/deluge-synth/src/engine_stub.cpp.
-FIRMWARE_LIB = os.path.join(HERE, "build", "firmware", "arm32", "libdeluge.a")
-_build_arm = sdk_build.Builder.build_arm
+# A plugin whose folder holds a file called "link-firmware" gets the firmware library on its link
+# line: build/firmware/<target>/libdeluge.a for arm32, arm64 and, on a 64-bit ARM computer, the
+# native build (tools/build_firmware.py makes them; build.sh calls it first). Those builds are
+# compiled with DELUGE_ENGINE_LINKED defined. A build without the library (the native build on an
+# Intel computer, where the firmware's NEON code cannot be compiled, and the desktop VST) has to
+# supply the engine itself; see plugins/deluge-synth/src/engine_stub.cpp.
+import platform  # noqa: E402
+
+NATIVE_IS_ARM64 = platform.machine().lower() in ("arm64", "aarch64")
 
 
-def build_arm_with_firmware(self, target, output):
-    wants = target == "arm32" and os.path.exists(os.path.join(self.project, "link-firmware"))
-    if not wants:
-        return _build_arm(self, target, output)
-    if not os.path.exists(FIRMWARE_LIB):
-        raise sdk_build.BuildError("this plugin links the firmware: run tools/build_firmware.py arm32 first")
+def firmware_lib(target):
+    return os.path.join(HERE, "build", "firmware", target, "libdeluge.a")
+
+
+def with_firmware(self, target, build):
+    """Run build() with the firmware library for target added to the link, if this plugin wants it."""
+    if not os.path.exists(os.path.join(self.project, "link-firmware")):
+        return build()
+    if target == "native" and not NATIVE_IS_ARM64:
+        return build()
+    lib = firmware_lib(target)
+    if not os.path.exists(lib):
+        raise sdk_build.BuildError("this plugin links the firmware: run tools/build_firmware.py %s first" % target)
     saved = self.sources
-    self.sources = saved + [FIRMWARE_LIB, "-ldl", "-lpthread"]
+    self.sources = saved + [lib, "-DDELUGE_ENGINE_LINKED=1", "-lpthread"] + ([] if sys.platform == "darwin" else ["-ldl"])
     try:
-        return _build_arm(self, target, output)
+        return build()
     finally:
         self.sources = saved
 
 
-sdk_build.Builder.build_arm = build_arm_with_firmware
+_build_arm = sdk_build.Builder.build_arm
+_build_native = sdk_build.Builder.build_native
+sdk_build.Builder.build_arm = lambda self, target, output: with_firmware(
+    self, target, lambda: _build_arm(self, target, output))
+sdk_build.Builder.build_native = lambda self, output: with_firmware(self, "native", lambda: _build_native(self, output))
 
 if __name__ == "__main__":
     sys.exit(sdk_build.main())

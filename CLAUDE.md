@@ -2,7 +2,8 @@
 
 Plugins for Akai MPC standalone hardware (Jamie's targets: Force and a first-generation MPC Live,
 both 32-bit ARM), built with inMusic's MPC Plugin SDK. Started 2026-11-12. The aim is the Deluge
-synth engine on the MPC; so far the Deluge oscillators and filters run in a prototype plugin.
+synth engine on the MPC: "Deluge Synth" is the whole firmware engine playing SYNTH presets, on
+32-bit and (since 2026-11-13) 64-bit ARM.
 
 ## Layout
 
@@ -10,10 +11,12 @@ synth engine on the MPC; so far the Deluge oscillators and filters run in a prot
   toolchain check with no Deluge code; MIT.
 - `plugins/deluge-synth/` - "Deluge Synth" (uid `F6wM`): the real engine. A shell around
   `hosted/engine.h` that picks a preset from `Content/SYNTHS/` (gitignored), feeds notes and
-  copies audio out. Its arm32 build links `libdeluge.a` (the `link-firmware` marker file tells
-  `tools/build.py`); the native and arm64 builds get `src/engine_stub.cpp`, a placeholder sine,
-  because the SDK flow needs a native build and the firmware is not 64-bit clean. One instance
-  per process owns the engine; presets load on a worker thread while `process()` try-locks.
+  copies audio out. Its arm32, arm64 and (on a 64-bit ARM computer) native builds link
+  `build/firmware/<target>/libdeluge.a` (the `link-firmware` marker file tells `tools/build.py`,
+  which defines `DELUGE_ENGINE_LINKED` for them). Only a build that cannot contain the firmware
+  gets `src/engine_stub.cpp`, a placeholder sine: the native build on an Intel computer (the
+  firmware's DSP is NEON) and the desktop VST. One instance per process owns the engine;
+  presets load on a worker thread while `process()` try-locks. See "The plugin's threads".
 - `plugins/deluge-proto/` - "Deluge Proto" (uid `FT6q`): Deluge firmware oscillators and filter
   set compiled from source, with stand-in voices, envelope and parameter scaling. GPL-3.0. Its
   README says exactly what is firmware code and what is not. Not yet run on hardware.
@@ -25,11 +28,13 @@ synth engine on the MPC; so far the Deluge oscillators and filters run in a prot
 - `tools/build.py` - wraps the SDK's `build.py`: C++23, `-DDELUGE_HOSTED=1`, and `-isystem` paths
   into `third_party/`. `build.sh` calls it for every plugin.
 - `common/` - sources added to every plugin by `tools/build.py` (see "Static destructors").
-- `tools/build_firmware.py [arm32]` - compiles the whole vendored firmware plus `hosted/` into
-  `build/firmware/<target>/libdeluge.a`; `--probe` links the sizing probe against it and lists
-  what is still undefined (none, as of 2026-11-12). `hosted/` is the replacement hardware
-  layer, compiled into the same library; `hosted/hosted.h` is its interface.
-- `tools/armtest/` - see "Testing arm32 without the hardware".
+- `tools/build_firmware.py [arm32|arm64|native|debug]` - compiles the whole vendored firmware
+  plus `hosted/` into `build/firmware/<target>/libdeluge.a`; `--test tests/x.cpp` also builds a
+  test program against it; `--probe` links the sizing probe and lists what is still undefined
+  (none). `debug` is native, unoptimised, for lldb. `hosted/` is the replacement hardware layer,
+  compiled into the same library; `hosted/hosted.h` is its interface.
+- `tools/armtest/` - see "Testing without the hardware". `tools/corpus.sh`,
+  `tools/corpus_compare.py`, `tools/wavdiff.py` - see "Comparing builds".
 - `tools/gen_headers.sh` - writes the two headers the firmware's CMake build generates; called
   by `vendor.sh` and `mkpatch.sh`.
 - `tools/sizing/` - the probe described below; output in `build/sizing/` (gitignored).
@@ -61,10 +66,8 @@ patch, plays a note and renders):
   `getSystemTime`), fonts, `util/cfunctions.c` and `util/pack.c` (plain C, just compile them),
   NE10's FFT, the DX7 assembly kernel (`neon_fm_kernel`, 32-bit ARM assembly), and linker-script
   symbols for the allocator's regions (`__heap_start`, `__sdram_bss_end`...).
-- arm64 macOS: 333 of 380 at the first measurement, not re-run since. The failures there are
-  about 140 pointer-to-`uint32_t` casts in 28 files, concentrated in the memory allocator, the
-  resizeable arrays and the sample/cluster code. That code keeps addresses in 32-bit fields, so
-  it needs real changes, not just casts. It does not affect arm32.
+- 64-bit ARM (Linux and macOS): all of it compiles, links and runs since 2026-11-13; see
+  "64-bit".
 - **Alignment on arm32.** The simulator cannot catch this, because arm64 has no alignment
   faults. clang emits NEON loads with an alignment requirement taken from the pointer type, and
   the firmware reads 32-bit values from 16-bit wave tables; the first Deluge Proto build crashed
@@ -149,11 +152,15 @@ keep everything that makes the sound and drop what only exists to survive the ha
   stolen later and the firmware's main loop is not needed for disk polling. The allocator's
   external region is 256 MB (was 64) to hold them; pages are committed as touched. Wavetables
   load through the firmware's ordinary file reads and need NE10's FFT, which is now compiled in.
-  Limits: 256 files open at once, 512 MB per file. Not done: MPC-style streaming for very long
+  Limits: 4095 different files per run of the engine (a slot is never reused, because the
+  firmware keeps sector numbers for as long as it keeps a sample), 32 open at once, 512 MB per
+  file. Not done: MPC-style streaming for very long
   samples, and the firmware's "alternate sample folder" search (its FAT directory calls fail).
-- **Allocator:** the firmware's `GeneralMemoryAllocator` manages fixed regions with "stealable"
-  objects. Back it with the system allocator and never steal. This is also where most of the
-  64-bit pointer problems live, so replacing it shrinks that job.
+- **Allocator:** the firmware's `GeneralMemoryAllocator` stays (2026-11-13). The first idea was
+  to back it with the system allocator; but the firmware uses "the address of this object" as a
+  32-bit key in sorted arrays and hash tables, and on 64-bit that only works if all its objects
+  live in one block (see "64-bit"), which its own allocator gives for free. It is not
+  thread-safe: see "The plugin's threads".
 - **CPU load shedding:** `AudioEngine::cpuDireness` makes the firmware cull voices and drop
   quality (for example the drive filter's oversampling) when it is late. Leave it at 0 unless
   measurement on the hardware says otherwise; at 0 the sound is the Deluge's best case.
@@ -303,28 +310,113 @@ Notes for step 2, from reading the firmware (2026-11-12):
 - **Open:** sample selection (the `file0SelectorMenu` pad is a file browser on the Deluge; no
   equivalent found in MPC skins yet).
 
-Next up (decided 2026-11-12): **make the firmware 64-bit clean**, ahead of tempo sync. A
-successor to the Force has leaked (reported as "Force G2", unannounced) and will presumably be
-64-bit like the MPC Live III and XL, where Deluge Synth currently plays only its placeholder
-tone. The work: the roughly 140 pointer-as-32-bit sites in 28 files (allocator, resizeable
-arrays, sample and cluster code; re-measure with `tools/sizing/run.sh native`), the
-`add_saturate` fallback, and the C fallback for `neon_fm_kernel`. It also lets the engine run
-natively on the Mac, which removes `engine_stub.cpp` and puts the real engine under the SDK's
-host simulator. Check the result against arm32 with the corpus test: outputs should match.
+### 64-bit (done 2026-11-13)
 
-Open problems, in the order they will bite:
-- **Testing.** Solved for arm32 by `tools/armtest` (emulated). The full engine still cannot
-  run natively on the Mac until the firmware is 64-bit clean, which also blocks the SDK's own
-  build flow: `build.py` wants a native library for the parameter dump and UI generation, so a
-  full-engine plugin needs a native build with the engine stubbed out, or the 64-bit work.
+The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
+"Force G2") and macOS, and produces the same audio as the 32-bit build, sample for sample, for
+all 747 SYNTH presets on Jamie's card (see "Comparing builds"). Not yet run on a 64-bit MPC:
+Jamie has none.
+
+- **Addresses in 32-bit fields.** The allocator's free list, and arrays and hash tables keyed by
+  an object's address (`Song::backedUpParamManagers`, `Kit::drumsWithRenderingActive`, the
+  session's output tables), hold addresses as `uint32_t`. Widening them would change structures
+  the engine's behaviour depends on. Instead `hosted/memory.c` puts the allocator's whole block
+  inside one 4 GB-aligned window of the address space, 256 MB in (where the Deluge's RAM sits in
+  its own map). The low 32 bits of an address in the block are then unique, ordered, non-zero
+  and positive as `int32_t`: pointer to 32 bits is plain truncation, and 32 bits to pointer is
+  `deluge_hosted_ptr()` (`hosted.h`). 183 `(uint32_t)pointer` casts became `(uintptr_t)`.
+  `tools/build_firmware.py` makes integer-to-pointer casts (and, in C, pointer-to-integer
+  truncation) compile errors, so a new one cannot slip in. This holds only for memory from the
+  firmware's allocator; `operator new` falls back to `malloc` when that is full
+  (`hosted/operators.cpp`), and an object from there must not be used as such a key.
+- **What the compiler could not find**, found by comparing output with arm32:
+  `String::getNumReasons` read its 4-byte count as `intptr_t` (and wiped the first four
+  characters on every write); `Cluster::setSize` did `32 - countl_zero(size_t)`; the fallbacks of
+  `add_saturate`, `subtract_saturate` and `unsigned_saturate` were wrong; and
+  `FixedPoint<31>`'s `FastApproximation` defaulted to "is this ARMv7", so a 64-bit build did
+  exact arithmetic where a Deluge approximates (wavetables differed by an LSB). All patched.
+- **`neon_fm_kernel`** (the DX7 operator kernel, 32-bit NEON assembly) is `hosted/fm_kernel.c` on
+  other targets: the same float polynomial, operation for operation. `tests/fm_kernel_check.cpp`
+  compares the two on arm32 (200,000 random cases, none differ) and prints a checksum that must
+  match everywhere.
+- Intel is not a target for the engine: its DSP is NEON through Argon. An Intel Mac gets the
+  placeholder in the native build, so the SDK's host simulator there exercises the plugin shell
+  only; the arm32 and arm64 runs in `build.sh` still test the real engine.
+
+### Firmware bugs found on the way (2026-11-13; all in `patches/`, worth sending upstream)
+
+- `Patcher::performInitialPatching` writes past `paramFinalValues` when the cable list holds a
+  destination with the placeholder parameter "range" (89): presets from before V3.2 can have a
+  `<destination>range</destination>` cable with no range-adjustable cable to attach it to (73
+  presets on Jamie's card mention "range"). The write lands 34 `int32_t` past the end: on arm32
+  on the vtable pointer of `modKnobs[4][1]`, on 64-bit on `modKnobs[2][0]`'s parameter (found
+  because a gold knob of `SYNT040` controlled the wrong thing). `performPatching` already skips
+  such entries; now the initial pass does too. This is very likely the layout-dependent bug the
+  comment above `Sound::modKnobs` describes ("we don't know why aligning this fixes it").
+- `ImpulseResponseProcessor::buffer_` (in every `Delay`) is never initialised, so a sound's
+  delay starts by playing what was in its memory before. Now zeroed.
+- `Voice::noteOn` patches from `sourceValues[ENVELOPE_*]` before the envelopes have set them, so
+  they hold whatever the voice object last held. Left alone: it is how a Deluge behaves (the
+  previous note's levels), and changing it would change the sound. It makes 34 of the 747
+  presets sensitive to the contents of fresh memory (`DELUGE_SCRUB`, below).
+- `LiveInputBuffer` is used before anything is written to it, divides by zero on digital silence,
+  and `LivePitchShifter::hopEnd` can search without end on it. Not fixed: see "Audio input".
+- `Clip::~Clip` asks `currentSong` a question, so a song must not be deleted while
+  `currentSong` is null (`deleteOldSongBeforeLoadingNew` does exactly that; harmless on a
+  Deluge, where address 0 is readable).
+
+### Audio input
+
+The Deluge's input oscillators (`inLeft` and so on; 2 of the 747 presets) are silent in the
+plugin: `DELUGE_HOSTED_AUDIO_INPUT` is 0 and `Voice::renderBasicSource` skips them. Before that
+they played leftover memory. Wiring an input up means feeding the firmware's receive buffer
+(`getRxBufferStart`, `AudioEngine::i2sRXBufferPos`) every block from the plugin's input, sizing
+`ssiRxBuffer` in `hosted/hardware.c` to what the firmware assumes (`SSI_RX_BUFFER_NUM_SAMPLES` x 2,
+not 8192), and dealing with the three problems listed above, which a real converter's noise
+floor hides on a Deluge.
+
+### The plugin's threads (2026-11-13)
+
+- **The firmware's allocator is not thread-safe**, and the firmware replaces global
+  `operator new`, so until 2026-11-13 every `new` in the plugin file, on any of the MPC's
+  threads, went through it while the engine ran on another. A second thread finds the allocator
+  "locked" and gets null. Now (`hosted/operators.cpp`) `new` uses the firmware's allocator only
+  on a thread that is inside one of `engine.h`'s functions (each calls
+  `deluge_hosted_enter_engine()`), and `malloc` otherwise; `delete` goes by the address. The
+  plugin holds `gEngineLock` around every engine call, so one thread at a time is in there. The
+  build deployed to the Force on 2026-11-12 has the old behaviour.
+- **A preset change deletes the old song** (`engineLoadSynth`), new song current first. It used
+  to abandon it, and the allocator ran dry after about 130 changes.
+- **Preset, Folder and the buttons** are settled inside `parameterChanged`, on whatever thread
+  the MPC calls it; the worker thread only tells the MPC afterwards, turns a button off after
+  0.1 s, and loads. (The SDK's parameter dump sets a parameter and reads its text back to decide
+  its kind, so a button must stay on for a moment or it is taken for a float and `gen_ui.py`
+  refuses the switch.)
+- **Whose are the gold values?** `goldPreset_` is the preset the sixteen gold parameters belong
+  to. After a load: if it is the loaded preset the parameters go to the engine (the user's
+  values, or a restored project's); if not, and the loaded preset is the one asked for, the
+  preset's own knob positions become the parameters. A project saved between a preset change and
+  that hand-over carries a flag (`K` after the path in the extra state) saying its gold values
+  are not this preset's. `saveExtraState` and `loadExtraState` wait (up to 3 s) for the worker to
+  settle, and while they wait the worker makes no calls into the MPC.
+- A note-off that arrives while the worker has the engine is kept for the next block.
+- Checked by running the SDK's simulator 300 times against the native build, half of them with
+  every core busy: no failure. Two warnings come and go with timing and are harmless: the
+  simulator resets every parameter to 0, which for a gold knob is mid-travel (a long release
+  still sounding), and a chunk re-saved after such a restore differs by the two flag bytes.
+
+Next up: tempo sync (the sequencer clock; `tickSongFinalizeWindows`), then the editing design
+above. Before either, the Force should hear this build: the thread and allocator changes have
+only run in the emulator.
+
+Open problems:
 - **Globals.** The firmware assumes one of everything (`AudioEngine`, the voice pool, the
   allocator, `currentSong`). Two plugin instances in one MPC project share one copy of the
-  library. They either share a single engine behind a lock or the globals have to be made
-  per-instance.
-- **Samples.** Sample-based patches go through the firmware's SD-card cluster loader; see
-  above for the plan to feed it whole files. Oscillator and FM patches first.
-- **Size and load time.** The whole firmware is several MB of code. The MPC checks free memory
+  library, so only the first makes sound. They either share a single engine behind a lock or
+  the globals have to be made per-instance.
+- **Size and load time.** The arm32 library is 2.5 MB, arm64 3.3 MB. The MPC checks free memory
   before loading a plugin; unmeasured.
+- **Not compared with a real Deluge yet.**
 
 What a skin can show is wider than the SDK docs suggest. Loopop's Grain Synth (in
 `~/audio/plugin-examples`, proprietary: read it, do not copy from it) drives about 2,300 display
@@ -338,7 +430,7 @@ tools/vendor.sh              # once, and after changing patches/: fill third_par
 ./build.sh                  # plugins/hello: build, validate, host_sim test
 ./build.sh plugins/<name>    # e.g. plugins/deluge-proto
 tools/mkpatch.sh             # after editing files under third_party/: rewrite patches/
-tools/sizing/run.sh arm32    # how much of the firmware compiles and links; see build/sizing/
+tools/corpus.sh              # every preset on the card, on arm32, arm64 and this computer; must match
 python3 ../mpc-plugin-builder-sdk/tools/new_plugin.py "<Name>" --vendor "Fentonia" --kind instrument --dir plugins
 python3 ../mpc-plugin-builder-sdk/tools/package.py plugins/<name>     # zip for sharing
 ```
@@ -347,14 +439,43 @@ The deployable folder is `plugins/<name>/build/<Manufacturer> - VST - <Name>/`; 
 `VST2 Plugins` folder at the root of a USB stick or SD card. The MPC needs OS 3.10.1 or later with
 Preferences > Enhancements > Enable Enhancements and External Plugin Support switched on.
 
-## Testing arm32 without the hardware
+## Testing without the hardware
 
-`tools/armtest/run.py plugins/<name> [host_sim options]` boots an emulated 32-bit ARM Linux
-machine (qemu-system-arm, a Debian armhf kernel and C library kept in `build/armtest/cache`) and
-runs the SDK's simulator, built for arm32, against the plugin's real arm32 `.so`. About 15
-seconds. `build.sh` runs it after the native simulator and fails on a FAIL or CRASH. What comes
-back lands in `build/armtest/out/` (`test.wav`, the plugin's `diagnostics.txt`); the full console
-is `build/armtest/console.log`. `--exe <program> [args]` runs any arm32 glibc program instead.
+`tools/armtest/run.py [--arm64] plugins/<name> [host_sim options]` boots an ARM Linux machine and
+runs the SDK's simulator, built for that target, against the plugin's real `.so`: by default
+emulated 32-bit ARM (qemu-system-arm, about 15 seconds), with `--arm64` a 64-bit one
+(qemu-system-aarch64; on an Apple Silicon Mac under the hypervisor, at about native speed). Each
+uses a Debian kernel and C library kept in `build/armtest/cache` or `build/armtest64/cache`.
+`build.sh` runs both after the native simulator and fails on a FAIL or CRASH. What comes back
+lands in `build/armtest/out/` or `build/armtest64/out/` (`test.wav`, the plugin's
+`diagnostics.txt`); the full console is `console.log` beside it. `--exe <program> [args]` runs
+any glibc program for that target instead; `--file host=guest` gives it files, `--env NAME=VALUE`
+an environment variable.
+
+On a 64-bit ARM Mac the native simulator run uses the real engine too, and the engine's test
+programs run directly (`tools/build_firmware.py native --test tests/x.cpp`, or `debug` for lldb).
+
+## Comparing builds
+
+`tools/corpus.sh [card]` runs `tests/engine_corpus.cpp` on arm32, arm64 and this computer and
+compares them with `tools/corpus_compare.py`. Two passes: each preset in its own process (one
+note for a second), and all presets one after another in one process (a chord, every gold knob
+moved, bend and mod wheel), which is how a plugin is used and what exercises loading over a
+loaded preset. Every line ends in a checksum of all the output samples. arm32 is the reference
+and the others must match it exactly; 2026-11-13: 747 of 747 on both, in both passes. About a
+minute and a half.
+
+The second pass runs with `DELUGE_SCRUB=165`, which fills newly allocated memory with that byte
+(`hosted.h`). The firmware reads a little memory before writing it (see the bug list), and what
+is there differs between a 32-bit and a 64-bit build because their objects differ in size;
+without the fill two presets differ for that reason alone.
+
+`tools/wavdiff.py a.wav b.wav` compares two recordings from `tests/engine_smoke.cpp` and says
+where they first differ (`ENGINE_SMOKE_OUT=path` makes the native run write one).
+
+When two builds differ: find the first differing render block with `wavdiff.py`, then narrow it
+down with temporary prints in `third_party/` on both sides (the firmware's own `D_PRINTLN` is
+compiled out). `lldb` on the `debug` build gives backtraces but no variables.
 
 It catches load failures (a missing import), 32-bit-only crashes, arithmetic differences and
 NEON alignment faults (`tests/alignment_probe.cpp` confirms qemu raises SIGBUS for them, as the

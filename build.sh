@@ -17,6 +17,9 @@ cd "$here"
 # A plugin that links the firmware (see tools/build.py) needs the library up to date first.
 if [ -f "$project/link-firmware" ]; then
   python3 "$here/tools/build_firmware.py" arm32
+  python3 "$here/tools/build_firmware.py" arm64
+  # The native build has the real engine only where the firmware's NEON code compiles.
+  case $(uname -m) in arm64|aarch64) python3 "$here/tools/build_firmware.py" native ;; esac
 fi
 MPC_SDK="$sdk" python3 "$here/tools/build.py" "$project"
 
@@ -47,4 +50,17 @@ if command -v qemu-system-arm >/dev/null 2>&1; then
   fi
 else
   echo "warning: qemu-system-arm not found; skipping the arm32 emulator run" >&2
+fi
+
+# And the arm64 .so, the file an MPC Live III or XL loads, in a 64-bit ARM Linux machine.
+if command -v qemu-system-aarch64 >/dev/null 2>&1; then
+  echo
+  echo "== arm64 in the virtual machine (tools/armtest --arm64) =="
+  "$here/tools/armtest/run.py" --arm64 "$project" | grep -E '^(PASS|FAIL|WARN|CRASH|Result|INFO  (main pass|block of)|       )' || true
+  if ! grep -q '^Result: PASS' "$here/build/armtest64/console.log" || grep -q '^CRASH' "$here/build/armtest64/console.log"; then
+    echo "arm64 run failed (see build/armtest64/console.log)" >&2
+    exit 1
+  fi
+else
+  echo "warning: qemu-system-aarch64 not found; skipping the arm64 run" >&2
 fi

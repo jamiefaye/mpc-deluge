@@ -3,7 +3,9 @@
 # root.cpp (load a patch, play a note, render) against all of it with unused code dropped, and
 # list the symbols still missing. Output goes to build/sizing/<target>/.
 #   tools/sizing/run.sh arm32     (the MPC/Force target; default)
-#   tools/sizing/run.sh native    (arm64 macOS: shows the 64-bit problems)
+#   tools/sizing/run.sh native    (arm64 macOS)
+# The first measuring tool (2026-11-12), from before hosted/ existed. tools/build_firmware.py
+# builds the real library and its --probe does the same link; use that.
 set -u
 here=$(cd "$(dirname "$0")/../.." && pwd)
 sdk=${MPC_SDK:-$here/../mpc-plugin-builder-sdk}
@@ -19,7 +21,7 @@ esac
 out=$here/build/sizing/$which
 rm -rf "$out"; mkdir -p "$out/obj"
 flags="-std=c++23 -O1 -fPIC -c -w -ffunction-sections -fdata-sections -fsigned-char -D_GNU_SOURCE -DUSE_TASK_MANAGER -DDELUGE_HOSTED=1 -DPRINTF_ALIAS_STANDARD_FUNCTION_NAMES=0 $target"
-inc="-Isrc -Isrc/deluge -Isrc/OSLikeStuff -Isrc/lib -Isrc/NE10/inc -Isrc/fatfs -Isrc/deluge/version -I$tp/argon/include -I$tp/etl/include"
+inc="-I$here/hosted -Isrc -Isrc/deluge -Isrc/OSLikeStuff -Isrc/lib -Isrc/NE10/inc -Isrc/fatfs -Isrc/deluge/version -I$tp/argon/include -I$tp/etl/include"
 cd "$tp/deluge"
 export zig flags inc out
 compile_one() {

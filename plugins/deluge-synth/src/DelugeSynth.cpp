@@ -6,7 +6,8 @@
 // (hosted/engine.h, built from the firmware into libdeluge.a).
 //
 // Limits of this first version:
-//   * 32-bit MPCs only (Force, MPC Live, X, One, Key). Other builds contain a placeholder tone.
+//   * The real engine is in the builds for 32-bit and 64-bit ARM MPCs and for a 64-bit ARM
+//     computer. An Intel build contains a placeholder tone (engine_stub.cpp).
 //   * One instance per project makes sound. The firmware keeps its state in globals, so a second
 //     instance in the same MPC process stays silent.
 //   * Presets come from Content/SYNTHS/ inside the plugin folder, and their samples from
@@ -77,11 +78,13 @@ public:
         addParam(mpc::intParam("preset", "Preset", 0, std::max(0, (int)presets_.size() - 1), 0));
         addParam(mpc::intParam("folder", "Folder", 0, std::max(0, (int)folders_.size() - 1), 0));
         // The MPC has no list widget, so stepping is done with buttons. Each is a parameter that
-        // the worker thread sets back to off after acting on it.
+        // is acted on when it goes on (parameterChanged) and that the worker thread puts back to
+        // off a moment later.
         addParam(mpc::boolParam("folderprev", "Folder -", false));
         addParam(mpc::boolParam("foldernext", "Folder +", false));
         addParam(mpc::boolParam("presetprev", "Preset -", false));
         addParam(mpc::boolParam("presetnext", "Preset +", false));
+        for (auto& since : buttonOnSince_) since.store(0);
         // The Deluge's gold knobs: what each one controls is part of the preset, so the names here
         // are only positions; the value text carries the preset's own name for it.
         for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
@@ -91,6 +94,7 @@ public:
             std::snprintf(name, sizeof name, "Gold %d", k + 1);
             addParam(mpc::intParam(id, name, deluge_hosted::kKnobMin, deluge_hosted::kKnobMax, 0));
             pendingKnob_[k].store(kNoKnobChange);
+            hostKnob_[k].store(0);
             knobNames_[k][0] = 0;
         }
     }
@@ -99,6 +103,7 @@ public:
     {
         quit_.store(true);
         if (worker_.joinable()) worker_.join();
+        workerRunning_.store(false);
         if (gEngineOwner.load() == this)
         {
             std::lock_guard<std::mutex> lock(gEngineLock);
@@ -124,6 +129,7 @@ public:
             // not lost while it loads. Later changes go through the worker thread.
             requestedPreset_.store(presetIndex());
             loadRequestedPreset();
+            workerRunning_.store(true);
             worker_ = std::thread([this] { workerLoop(); });
         }
         leftoverFrames_ = 0;
@@ -136,24 +142,74 @@ public:
         wantAllNotesOff_.store(true);
     }
 
-    // May be called on the audio thread: only atomics here, the worker does the rest.
+    // May be called on the audio thread, so only atomics and the preset lists, which never change
+    // after the constructor. Browsing is settled here and now: by the time this returns, Preset
+    // and Folder hold their final values, so a project saved at any moment has the right preset.
+    // What waits for the worker thread: telling the MPC about values we changed (it does not
+    // expect to be called back from inside its own call), putting a button back to off, and
+    // loading the preset.
     void parameterChanged(int index, float plainValue) override
     {
         const bool pressed = plainValue > 0.5f;
         switch (index)
         {
-            case kPreset:     requestedPreset_.store(presetIndex()); break;
-            case kFolder:     if (!settingFolder_.load()) pendingFolder_.store(mpc::clamp((int)std::lround(plainValue), 0, std::max(0, (int)folders_.size() - 1))); break;
-            case kPresetPrev: if (pressed) pendingPresetSteps_.fetch_sub(1); break;
-            case kPresetNext: if (pressed) pendingPresetSteps_.fetch_add(1); break;
-            case kFolderPrev: if (pressed) pendingFolderSteps_.fetch_sub(1); break;
-            case kFolderNext: if (pressed) pendingFolderSteps_.fetch_add(1); break;
+            case kPreset:     requestedPreset_.store(presetIndex()); followFolder(); break;
+            case kFolder:     if (!tSettingFolder) browse(0, 0, mpc::clamp((int)std::lround(plainValue), 0, std::max(0, (int)folders_.size() - 1))); break;
+            case kPresetPrev: buttonSet(index, plainValue); if (pressed) browse(-1, 0, -1); break;
+            case kPresetNext: buttonSet(index, plainValue); if (pressed) browse(+1, 0, -1); break;
+            case kFolderPrev: buttonSet(index, plainValue); if (pressed) browse(0, -1, -1); break;
+            case kFolderNext: buttonSet(index, plainValue); if (pressed) browse(0, +1, -1); break;
             default:
-                // A gold knob moved by the user or the host (not by us mirroring the engine):
-                // process() hands it to the engine.
-                if (index >= kGold && index < kGold + deluge_hosted::kNumKnobs && !syncingKnobs_.load())
-                    pendingKnob_[index - kGold].store((int)std::lround(plainValue));
+                // A gold knob moved by the user or the host (not by this thread mirroring the
+                // engine): remember it, and process() hands it to the engine.
+                if (index >= kGold && index < kGold + deluge_hosted::kNumKnobs && !tMirroringKnobs)
+                {
+                    const int position = (int)std::lround(plainValue);
+                    hostKnob_[index - kGold].store(position);
+                    pendingKnob_[index - kGold].store(position);
+                }
                 break;
+        }
+    }
+
+    // A button is a momentary request. It stays on for a tenth of a second, so that the MPC's
+    // screen shows the press (and the SDK's tools, which set it and read it back to find out what
+    // kind of parameter it is, see a switch), then the worker thread puts it back to off.
+    void buttonSet(int index, float plainValue)
+    {
+        if (plainValue != 0.0f && !tReleasingButton) buttonOnSince_[index - kFolderPrev].store(nowMs());
+    }
+    static int64_t nowMs()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    // Moves the Preset parameter by a number of presets or folders, or to a folder's first preset.
+    void browse(int presetSteps, int folderSteps, int folderSet)
+    {
+        if (presets_.empty()) return;
+        int preset = presetIndex();
+        const int before = preset;
+        if (presetSteps != 0) preset = mpc::clamp(preset + presetSteps, 0, (int)presets_.size() - 1);
+        if (folderSteps != 0)
+            preset = folderStart_[(size_t)mpc::clamp(folderIndexOfPreset(preset) + folderSteps, 0, (int)folders_.size() - 1)];
+        if (folderSet >= 0 && folderSet != folderIndexOfPreset(preset)) preset = folderStart_[(size_t)folderSet];
+        if (preset != before) set(kPreset, (float)preset);   // comes back through parameterChanged(kPreset)
+        else followFolder();
+        browseChanged_.store(true);
+    }
+
+    // Folder always shows the folder of the selected preset.
+    void followFolder()
+    {
+        if (presets_.empty()) return;
+        const float folder = (float)folderIndexOfPreset(presetIndex());
+        if (get(kFolder) != folder)
+        {
+            tSettingFolder = true;
+            set(kFolder, folder);
+            tSettingFolder = false;
+            browseChanged_.store(true);
         }
     }
 
@@ -191,27 +247,71 @@ public:
 
     // The project remembers the preset by its path under Content/SYNTHS, not by its position in
     // the list, so adding or removing preset files does not change what a project plays.
+    //
+    // Format: the path, then optionally a zero byte and flags. The one flag so far, 'K', says the
+    // gold values saved alongside do NOT belong to this preset: the save came after a change of
+    // preset and before the new preset's knob positions had been taken, so they are still the
+    // previous preset's. (A project from before the flag existed has the path alone.)
     void saveExtraState(std::vector<uint8_t>& out) override
     {
+        // The parameters have just been written into the project, before this was called.
         const int i = presetIndex();
-        if (i >= 0) out.assign(presets_[(size_t)i].begin(), presets_[(size_t)i].end());
+        const bool goldIsAnotherPresets = goldPreset_.load() != i;
+        if (i >= 0)
+        {
+            out.assign(presets_[(size_t)i].begin(), presets_[(size_t)i].end());
+            if (goldIsAnotherPresets) { out.push_back(0); out.push_back('K'); }
+        }
+        // If a preset is on its way in, let it arrive before returning, so that what the MPC
+        // looks at next is the settled state.
+        waitUntilSettled();
         writeDiagnostics();   // a project save is a convenient moment to refresh the file
     }
 
+    // Runs on the MPC's thread, straight after it has set every parameter from the project.
     void loadExtraState(const uint8_t* data, size_t size) override
     {
-        restoreKnobsOnNextLoad_.store(true);   // the gold values just restored are the user's
-        const std::string wanted(reinterpret_cast<const char*>(data), size);
+        const uint8_t* end = static_cast<const uint8_t*>(std::memchr(data, 0, size));
+        const size_t pathSize = end != nullptr ? (size_t)(end - data) : size;
+        const bool goldIsThisPresets = !(end != nullptr && std::memchr(end + 1, 'K', size - pathSize - 1) != nullptr);
+        const std::string wanted(reinterpret_cast<const char*>(data), pathSize);
         for (size_t i = 0; i < presets_.size(); ++i)
         {
-            if (presets_[i] == wanted)
-            {
-                set(kPreset, (float)i);
-                requestedPreset_.store((int)i);
-                return;
-            }
+            if (presets_[i] == wanted) { set(kPreset, (float)i); break; }
         }
-        // Not found (the file was removed or renamed): keep whatever the Preset number selects.
+        // (Not found: the file was removed or renamed. Keep whatever the Preset number selects.)
+
+        if (goldIsThisPresets)
+        {
+            // The gold values the MPC has just set are the user's settings for this preset: they
+            // go to the engine, the preset's own do not replace them. The worker thread may be
+            // in the middle of copying some other preset's positions into the parameters: put
+            // back what the MPC set (syncKnobs sees knobChanges_ move and does the same).
+            goldPreset_.store(presetIndex());
+            knobChanges_.fetch_add(1);
+            putBackHostKnobs(false);
+        }
+        else
+        {
+            // Nothing of the user's to keep: load the preset afresh and take its own positions.
+            goldPreset_.store(-1);
+            reloadPreset_.store(true);
+        }
+        waitUntilSettled();
+    }
+
+    // Makes the gold parameters hold again the values last set from outside (by the MPC).
+    void putBackHostKnobs(bool tellHost)
+    {
+        tMirroringKnobs = true;
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        {
+            const int wanted = hostKnob_[k].load();
+            if (getInt(kGold + k) == wanted) continue;
+            set(kGold + k, (float)wanted);
+            if (tellHost) tellHostLater(kGold + k);
+        }
+        tMirroringKnobs = false;
     }
 
     void process(mpc::ProcessContext& ctx) override
@@ -222,15 +322,33 @@ public:
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
         statCalls_.fetch_add(1, std::memory_order_relaxed);
 
-        // Silence (the outputs are already zero) when this instance does not own the engine or a
-        // preset is being loaded.
-        if (gEngineOwner.load(std::memory_order_relaxed) != this || !gEngineLock.try_lock())
+        // Silence (the outputs are already zero) when this instance does not own the engine or
+        // the worker thread has it (loading a preset, or handing it a restored project's knobs).
+        const bool owner = gEngineOwner.load(std::memory_order_relaxed) == this;
+        if (!owner || !gEngineLock.try_lock())
         {
             statSilentCalls_.fetch_add(1, std::memory_order_relaxed);
+            // The notes in this block are lost, but a note-off must not be: its note would sound
+            // until the next preset change. Keep it for the next block that gets the engine.
+            if (owner)
+            {
+                for (int i = 0; i < ctx.numMidiEvents; ++i)
+                {
+                    const mpc::MidiEvent& e = ctx.midi[i];
+                    if (e.isNoteOff()) missedNoteOff_[(e.note() >> 6) & 1] |= uint64_t(1) << (e.note() & 63);
+                    else if (e.isAllNotesOff()) wantAllNotesOff_.store(true);
+                }
+            }
             return;
         }
 
         if (wantAllNotesOff_.exchange(false)) deluge_hosted::engineAllNotesOff();
+        if ((missedNoteOff_[0] | missedNoteOff_[1]) != 0)
+        {
+            for (int note = 0; note < 128; ++note)
+                if (missedNoteOff_[note >> 6] & (uint64_t(1) << (note & 63))) deluge_hosted::engineNoteOff(note);
+            missedNoteOff_[0] = missedNoteOff_[1] = 0;
+        }
         for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
         {
             const int position = pendingKnob_[k].exchange(kNoKnobChange, std::memory_order_relaxed);
@@ -368,45 +486,82 @@ private:
         {
             applyBrowsing();
             loadRequestedPreset();
-            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            tellHostNow();
+            // Someone waiting on us (waitUntilSettled): look again at once.
+            std::this_thread::sleep_for(std::chrono::milliseconds(waiters_.load() != 0 ? 1 : 15));
         }
     }
 
-    // Turns button presses and Folder changes into a new Preset value, puts the buttons back,
-    // and tells the MPC so its screen follows. Runs on the worker thread.
+    // Tells the MPC about the parameters parameterChanged() moved, so its screen follows. Runs on
+    // the worker thread.
     void applyBrowsing()
     {
-        if (presets_.empty()) return;
-        const int presetSteps = pendingPresetSteps_.exchange(0);
-        const int folderSteps = pendingFolderSteps_.exchange(0);
-        const int folderSet = pendingFolder_.exchange(-1);
-        int preset = presetIndex();
-        const int before = preset;
-        if (presetSteps != 0) preset = mpc::clamp(preset + presetSteps, 0, (int)presets_.size() - 1);
-        if (folderSteps != 0)
-            preset = folderStart_[(size_t)mpc::clamp(folderIndexOfPreset(preset) + folderSteps, 0, (int)folders_.size() - 1)];
-        if (folderSet >= 0 && folderSet != folderIndexOfPreset(preset)) preset = folderStart_[(size_t)folderSet];
-
-        bool changed = false;
-        if (preset != before) { set(kPreset, (float)preset); notifyHostParameterChanged(kPreset); changed = true; }
-        const int folder = folderIndexOfPreset(presetIndex());
-        if (getInt(kFolder) != folder)
+        bool changed = browseChanged_.exchange(false);
+        if (changed) for (int index : {kPreset, kFolder}) tellHostLater(index);
+        const int64_t now = nowMs();
+        for (int button = kFolderPrev; button <= kPresetNext; ++button)
         {
-            settingFolder_.store(true);
-            set(kFolder, (float)folder);
-            settingFolder_.store(false);
-            notifyHostParameterChanged(kFolder);
-            changed = true;
+            if (get(button) == 0.0f || now - buttonOnSince_[button - kFolderPrev].load() < 100) continue;
+            tReleasingButton = true;
+            set(button, 0.0f);
+            tReleasingButton = false;
+            tellHostLater(button);
         }
-        for (int button : {kFolderPrev, kFolderNext, kPresetPrev, kPresetNext})
-            if (getBool(button)) { set(button, 0.0f); notifyHostParameterChanged(button); changed = true; }
-        if (changed) requestDisplayUpdate();
+    }
+
+    // The worker thread never calls the MPC directly while the MPC's own thread may be inside
+    // saveExtraState() or loadExtraState() waiting for it (waitUntilSettled): the MPC could be
+    // holding something its callbacks need, and each would wait for the other. So what the MPC
+    // has to be told is noted here and passed on by the worker loop when nobody is waiting.
+    void tellHostLater(int index)
+    {
+        hostToTell_.fetch_or(uint32_t(1) << index);
+    }
+    void tellHostNow()
+    {
+        if (waiters_.load() != 0) return;
+        const uint32_t which = hostToTell_.exchange(0);
+        if (which == 0) return;
+        for (int index = 0; index < numParams() && index < 32; ++index)
+            if (which & (uint32_t(1) << index)) notifyHostParameterChanged(index);
+        requestDisplayUpdate();
+    }
+
+    // Called on the MPC's thread around a project save or load: gives the worker thread time to
+    // finish a preset load and the knob hand-over that follows, so that what is saved, or what the
+    // MPC reads back after a load, is the settled state and not a moment in between. Gives up
+    // after three seconds (a very large sample preset on a slow card) and carries on.
+    void waitUntilSettled()
+    {
+        if (!workerRunning_.load()) return;
+        waiters_.fetch_add(1);
+        for (int ms = 0; ms < 3000; ++ms)
+        {
+            const int requested = requestedPreset_.load();
+            const bool settled = loadedPreset_.load() == requested && goldPreset_.load() == requested
+                                 && !reloadPreset_.load() && !knobsBusy_.load();
+            if (settled || quit_.load()) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        waiters_.fetch_sub(1);
     }
 
     void loadRequestedPreset()
     {
         const int wanted = requestedPreset_.load();
-        if (wanted < 0 || wanted == loadedPreset_.load() || wanted >= (int)presets_.size()) return;
+        if (wanted < 0 || wanted >= (int)presets_.size()) return;
+        const bool reload = reloadPreset_.exchange(false);
+        if (wanted == loadedPreset_.load() && !reload)
+        {
+            // Nothing to load. But the gold parameters may still be another preset's: the user
+            // went to a different preset and came back while this one was on its way in.
+            if (goldPreset_.load() != wanted)
+            {
+                std::lock_guard<std::mutex> lock(gEngineLock);
+                syncKnobs();
+            }
+            return;
+        }
         const std::string path = "SYNTHS/" + presets_[(size_t)wanted];
         std::lock_guard<std::mutex> lock(gEngineLock);
         loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
@@ -419,24 +574,56 @@ private:
         syncKnobs();
     }
 
-    // After a preset loads (engine lock held): make the 16 gold parameters agree with the engine.
-    // Normally the preset's own knob positions become the parameter values. When the MPC has
-    // just restored a project, it is the other way round: the saved parameter values are the
-    // user's tweaks and go to the engine.
+    // With a preset in the engine (engine lock held): make the 16 gold parameters and the engine
+    // agree. goldPreset_ says which preset the parameter values belong to:
+    //
+    //   the loaded one     they are the user's (set on the MPC, or restored with a project) and
+    //                      go to the engine
+    //   another, and the   the user has changed preset: the loaded preset's own knob positions
+    //   loaded one is the  become the parameter values, and from now on belong to it
+    //   one asked for
+    //   another, and the   this preset was already on its way in when the user chose again; it
+    //   user has moved on  is about to be replaced, so nothing is copied either way
     void syncKnobs()
     {
-        const bool restoring = restoreKnobsOnNextLoad_.exchange(false);
-        syncingKnobs_.store(true);
+        const int loaded = loadedPreset_.load();
+        const bool keep = goldPreset_.load() == loaded;
+        const bool adopt = !keep && loaded == requestedPreset_.load();
+        const int changesBefore = knobChanges_.load();
+        knobsBusy_.store(true);
+        tMirroringKnobs = true;
         for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
         {
             deluge_hosted::engineKnobName(k, knobNames_[k], (int)sizeof knobNames_[k]);
             int position = 0;
-            if (restoring) deluge_hosted::engineKnobSet(k, getInt(kGold + k));
-            else if (deluge_hosted::engineKnobGet(k, &position)) { set(kGold + k, (float)position); notifyHostParameterChanged(kGold + k); }
-            pendingKnob_[k].store(kNoKnobChange);
+            if (keep)
+            {
+                pendingKnob_[k].store(kNoKnobChange);
+                deluge_hosted::engineKnobSet(k, getInt(kGold + k));
+            }
+            else if (adopt && deluge_hosted::engineKnobGet(k, &position))
+            {
+                pendingKnob_[k].store(kNoKnobChange);
+                if (getInt(kGold + k) != position) { set(kGold + k, (float)position); tellHostLater(kGold + k); }
+                hostKnob_[k].store(position);
+            }
         }
-        syncingKnobs_.store(false);
-        requestDisplayUpdate();
+        tMirroringKnobs = false;
+        if (adopt)
+        {
+            if (knobChanges_.load() == changesBefore) goldPreset_.store(loaded);
+            else
+            {
+                // A project restore arrived while the loop above was running, and wins: the
+                // values it set are in hostKnob_. If they are for this preset they also have to
+                // reach the engine; if for another, that preset's load will see to it.
+                putBackHostKnobs(true);
+                if (goldPreset_.load() == loaded)
+                    for (int k = 0; k < deluge_hosted::kNumKnobs; ++k) deluge_hosted::engineKnobSet(k, getInt(kGold + k));
+            }
+        }
+        knobsBusy_.store(false);
+        tellHostLater(kPreset);   // the knob names changed: have the MPC read the texts again
     }
 
     void handleMidi(const mpc::MidiEvent& e)
@@ -467,10 +654,16 @@ private:
                       "its samples: %d held in memory, %d could not be loaded (looked for under Content/, e.g. Content/SAMPLES/...)\n"
                       "process calls %u, of which silent (no engine or loading) %u; note-ons %u; peak out %.4f\n"
                       "time in process(): %.2f s of audio rendered, average %.2f%% of one core, worst block %.1f%%\n",
-#if defined(__arm__)
-                      "Deluge firmware (32-bit ARM)",
+#if defined(DELUGE_ENGINE_LINKED)
+#if defined(__aarch64__)
+                      "Deluge firmware, 64-bit ARM",
+#elif defined(__arm__)
+                      "Deluge firmware, 32-bit ARM",
 #else
-                      "PLACEHOLDER TONE (not 32-bit ARM)",
+                      "Deluge firmware",
+#endif
+#else
+                      "PLACEHOLDER TONE (the firmware is not in this build)",
 #endif
                       gEngineOwner.load() == this ? "owns" : "does NOT own",
                       (int)presets_.size(), loaded, loaded >= 0 && loaded < (int)presets_.size() ? presets_[(size_t)loaded].c_str() : "none",
@@ -491,17 +684,32 @@ private:
     std::vector<std::string> presets_;
     std::vector<std::string> folders_;       // distinct folders of presets_, in list order
     std::vector<int>         folderStart_;   // index in presets_ of each folder's first preset
-    std::atomic<int>  pendingPresetSteps_{0}, pendingFolderSteps_{0}, pendingFolder_{-1};
+    std::atomic<bool> browseChanged_{false};   // parameterChanged moved Preset, Folder or a button: tell the MPC
     static constexpr int kNoKnobChange = -100000;
-    std::atomic<int>  pendingKnob_[deluge_hosted::kNumKnobs];
+    std::atomic<int>  pendingKnob_[deluge_hosted::kNumKnobs];   // set from outside, not yet given to the engine
+    std::atomic<int>  hostKnob_[deluge_hosted::kNumKnobs];      // the last value set from outside
     char              knobNames_[deluge_hosted::kNumKnobs][32];
-    std::atomic<bool> syncingKnobs_{false}, restoreKnobsOnNextLoad_{false};
-    std::atomic<bool> settingFolder_{false};
+    // Set while this thread is the one writing a parameter, so parameterChanged() can tell our own
+    // writes from the MPC's. Per thread: the MPC may be setting parameters on another at the same time.
+    static inline thread_local bool tMirroringKnobs = false;
+    static inline thread_local bool tSettingFolder = false;
+    static inline thread_local bool tReleasingButton = false;
+    std::atomic<int64_t> buttonOnSince_[4];   // when each of the four buttons last went on, in ms
+    // The preset the values of the gold parameters belong to (see syncKnobs). -1: none yet, so
+    // the first preset loaded brings its own knob positions.
+    std::atomic<int>  goldPreset_{-1};
+    std::atomic<int>  knobChanges_{0};       // counts project restores, so syncKnobs can tell one arrived
+    std::atomic<bool> knobsBusy_{false};     // the worker is copying knob positions between engine and parameters
+    std::atomic<bool> reloadPreset_{false};  // load the requested preset even if it is the one loaded
+    std::atomic<uint32_t> hostToTell_{0};    // parameters (one bit each) whose new value the MPC has yet to be told
+    std::atomic<int>  waiters_{0};           // threads inside waitUntilSettled()
+    std::atomic<bool> workerRunning_{false};
     std::thread       worker_;
     std::atomic<bool> quit_{false};
     std::atomic<int>  requestedPreset_{-1}, loadedPreset_{-1}, loadError_{0}, loads_{0};
     std::atomic<int>  samplesLoaded_{0}, samplesFailed_{0};
     std::atomic<bool> wantAllNotesOff_{false};
+    uint64_t          missedNoteOff_[2] = {0, 0};   // audio thread only: note-offs that arrived while the engine was busy
 
     int32_t engineBuffer_[deluge_hosted::kMaxRenderFrames * 2];
     int     leftoverFrames_ = 0, leftoverStart_ = 0;

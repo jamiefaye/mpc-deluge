@@ -7,24 +7,36 @@ The sound comes from the Deluge community firmware's own code (voices, oscillato
 envelopes, LFOs, patching, effects, the song-level reverb and the output stage), compiled from
 source with the hardware replaced. See the repository's `CLAUDE.md` for how.
 
-## Status (2026-11-12)
+## Status (2026-11-13)
 
-- In the 32-bit ARM emulator: loads, plays and switches presets; passes the SDK host simulator.
-  The engine alone has rendered all 747 presets of a Deluge SD card without a crash.
+- Builds for 32-bit ARM MPCs (Force, MPC Live, X, One, Key) and 64-bit ARM MPCs (Live III, XL),
+  and for a 64-bit ARM computer, with the same engine in each. The three produce the same audio,
+  sample for sample, for all 747 presets of a Deluge SD card (`tools/corpus.sh`).
+- Heard on a Force (32-bit) in its first form on 2026-11-12. The current build, which changes
+  how the plugin's threads share the engine, has only run in the emulated 32-bit and 64-bit
+  machines and on the Mac, where it passes the SDK host simulator. Not tried on a 64-bit MPC.
 - Not yet compared against a real Deluge, so "sounds the same" is the aim, not a measured fact.
-- 32-bit MPCs only (Force, MPC Live, X, One, Key). The 64-bit and desktop builds contain a
-  placeholder sine tone, because the firmware is not 64-bit clean yet.
+- An Intel build (the native build on an Intel computer, and the desktop VST) contains a
+  placeholder sine tone: the firmware's signal processing is ARM NEON code.
 
 ## What it does not do yet
 
 - Only one instance per MPC project makes sound; a second one is silent.
 - No tempo sync (synced LFOs, arpeggiator and delay have no clock) and no MPE. Pitch bend, mod
   wheel and channel pressure work, as a Deluge treats them on a synth's input channel.
+- An oscillator that plays the Deluge's audio input is silent: the plugin has no input.
 - Gold knobs whose assignment is a switch or a momentary action (stutter) only move a value.
 - Parameters: Volume; Preset, Folder and four stepping buttons; Gold 1-16, the preset's sixteen
   gold-knob assignments (value text shows what each controls and its 0-50 position). The rest
   of the Deluge's parameters are not exposed.
 - Changing preset stops all sound and rebuilds the engine's song; there is a short silence.
+
+## Projects
+
+A project stores the preset by its path and the sixteen gold values. Loading it puts those
+values back on the preset's knobs. A project saved in the moment between choosing a preset and
+that preset arriving stores the preset's name only, and loads with the preset's own knob
+positions.
 
 ## Presets and samples
 
@@ -42,7 +54,7 @@ redistribute.
 
 ```
 tools/vendor.sh                      # once
-./build.sh plugins/deluge-synth      # builds the firmware library first, then the plugin
+./build.sh plugins/deluge-synth      # builds the firmware libraries first, then the plugin, then tests it
 ./deploy.sh plugins/deluge-synth     # over the network; see CLAUDE.md, "Deploying"
 ```
 

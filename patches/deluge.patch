@@ -801,6 +801,19 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	/*
  	uint16_t endTime = *TCNT[TIMER_SYSTEM_FAST];
+diff -ruN a/deluge/src/deluge/memory/operators.cpp b/deluge/src/deluge/memory/operators.cpp
+--- a/deluge/src/deluge/memory/operators.cpp	2026-01-09 15:14:15
++++ b/deluge/src/deluge/memory/operators.cpp	2026-11-13 13:36:31
+@@ -2,7 +2,8 @@
+ #include <new>
+ 
+ // todo - make this work in unit tests, need to remove hard coded addresses in GMA
+-#if !IN_UNIT_TESTS
++// mpc-deluge: the hosted build defines the complete set in hosted/operators.cpp.
++#if !IN_UNIT_TESTS && !defined(DELUGE_HOSTED)
+ void* operator new(std::size_t n) noexcept(false) {
+ 	// allocate on external RAM
+ 	return GeneralMemoryAllocator::get().allocExternal(n);
 diff -ruN a/deluge/src/deluge/memory/sdram_allocator.h b/deluge/src/deluge/memory/sdram_allocator.h
 --- a/deluge/src/deluge/memory/sdram_allocator.h	2026-01-09 15:14:15
 +++ b/deluge/src/deluge/memory/sdram_allocator.h	2026-11-12 16:07:59

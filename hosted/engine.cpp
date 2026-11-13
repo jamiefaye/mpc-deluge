@@ -56,6 +56,12 @@ InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
 std::vector<Cluster*> residentClusters; // sample data held in memory for the loaded preset
 int samplesLoaded = 0, samplesFailed = 0;
+
+// Marks this thread as being inside the engine for the length of a call: see operators.cpp.
+struct InEngine {
+	InEngine() { deluge_hosted_enter_engine(); }
+	~InEngine() { deluge_hosted_leave_engine(); }
+};
 } // namespace
 
 // setupBlankSong(), without the UI parts.
@@ -73,6 +79,7 @@ static void makeBlankSong() {
 }
 
 void engineInit(const char* root) {
+	InEngine inEngine;
 	deluge_hosted_set_root(root);
 	if (started) {
 		return;
@@ -137,11 +144,13 @@ static void releaseResidentSamples() {
 }
 
 void engineSampleCounts(int* loaded, int* failed) {
+	InEngine inEngine;
 	*loaded = samplesLoaded;
 	*failed = samplesFailed;
 }
 
 int engineLoadSynth(const char* presetPath) {
+	InEngine inEngine;
 	FilePointer filePointer;
 	if (!StorageManager::fileExists(presetPath, &filePointer)) {
 		return (int)Error::FILE_NOT_FOUND;
@@ -211,14 +220,17 @@ static void sendNote(bool on, int note, int velocity) {
 }
 
 void engineNoteOn(int note, int velocity) {
+	InEngine inEngine;
 	sendNote(true, note, velocity);
 }
 
 void engineNoteOff(int note) {
+	InEngine inEngine;
 	sendNote(false, note, 0);
 }
 
 void engineAllNotesOff() {
+	InEngine inEngine;
 	if (synth == nullptr) {
 		return;
 	}
@@ -241,14 +253,17 @@ static void channelExpression(int32_t cc, int32_t value) {
 }
 
 void enginePitchBend(int value) {
+	InEngine inEngine;
 	channelExpression(CC_NUMBER_PITCH_BEND, (int32_t)std::clamp(value, -8192, 8191) << 18);
 }
 
 void engineModWheel(int value) {
+	InEngine inEngine;
 	channelExpression(CC_NUMBER_Y_AXIS, (int32_t)std::clamp(value, 0, 127) << 24);
 }
 
 void engineChannelPressure(int value) {
+	InEngine inEngine;
 	channelExpression(CC_NUMBER_AFTERTOUCH, (int32_t)std::clamp(value, 0, 127) << 24);
 }
 
@@ -271,6 +286,7 @@ static ModelStackWithAutoParam* knobParam(char* modelStackMemory, int knob) {
 }
 
 bool engineKnobName(int knob, char* out, int outSize) {
+	InEngine inEngine;
 	if (outSize > 0) {
 		out[0] = 0;
 	}
@@ -297,6 +313,7 @@ bool engineKnobName(int knob, char* out, int outSize) {
 }
 
 bool engineKnobGet(int knob, int* position) {
+	InEngine inEngine;
 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
 	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob);
 	if (param == nullptr) {
@@ -308,6 +325,7 @@ bool engineKnobGet(int knob, int* position) {
 }
 
 void engineKnobSet(int knob, int position) {
+	InEngine inEngine;
 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
 	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob);
 	if (param == nullptr) {
@@ -320,6 +338,7 @@ void engineKnobSet(int knob, int position) {
 }
 
 void engineRender(int32_t* out, int numFrames) {
+	InEngine inEngine;
 	std::memset(out, 0, sizeof(int32_t) * 2 * (size_t)numFrames);
 	if (song == nullptr || numFrames < 1 || numFrames > kMaxRenderFrames) {
 		return;
