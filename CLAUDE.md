@@ -234,6 +234,37 @@ Notes for step 2, from reading the firmware (2026-11-12):
   inside the MPC application, in archive order. Expect start-up-order problems; this is what the
   emulator is for.
 
+### Editing design: presets, the pad matrix, patching (Jamie, 2026-11-13; nothing built yet)
+
+- **Preset choice belongs in the MPC's preset selector**, where people look for it: one program
+  (`addProgram`) per SYNTH XML found at start-up. Untested: whether the MPC accepts a program
+  list that differs between sessions. Folder/Preset knobs stay until that is proven.
+- **Only the SYNTH XML configures the engine.** Motion over time (automation) is the MPC's
+  business, from its clips; we do not read Deluge song or clip data.
+- **Q-Links: gold knobs normally; a pad press re-points them.** The plugin pages the knobs itself
+  (`notifyHostParameterChanged` + `requestDisplayUpdate`, as the Gold parameters already do on
+  preset change); `Q-Links.json` tabs are static and cannot be driven by a press. Keep the
+  paged knobs as their own parameters, separate from Gold 1-16, so MPC automation recorded on
+  a gold knob always means that gold knob.
+- **The pad matrix is in the firmware**, `gui/ui/menus.cpp`: `paramShortcutsForSounds[16][8]`
+  (x = column, y = row from the bottom) and `paramShortcutsForSoundsSecondLayer` (second press:
+  env 3/4, LFO 3/4 and a few more). Each column is one module with up to eight entries (sample
+  1/2, osc 1/2, FM modulator 1/2, master, voice, env1+LPF, env2+HPF, sidechain+bass,
+  arp+treble, LFO1+mod FX, LFO2+reverb, delay, randomizer), so a pressed pad's column fits a
+  row of eight knobs and two neighbouring columns fill sixteen. Entries are `MenuItem`s, which
+  read and write through `soundEditor`'s current sound and param manager: drive them the way
+  `SoundEditor::potentialShortcutPadAction` does rather than re-deriving each parameter.
+- **Mod matrix patching, as on the Deluge:** while a parameter is selected, a source pad opens
+  that source's cable to it. Sources are `modSourceShortcuts[2][8]` in `gui/ui/sound_editor.cpp`
+  (pads x = 14, y >= 5 and x = 15: LFO1, env1, X; aftertouch, velocity, random, note,
+  sidechain, LFO2, env2, Y; second layer LFO3/4, env3/4), via
+  `MenuItem::patchingSourceShortcutPress`.
+- **Other references for the matrix:** Downrush (`~/deluge/DelugeWeb/downrush`) draws the grid in
+  HTML with each parameter's value in its box; the "Synth Dog" manual has illustrations.
+- **Redraw cost is not a worry** (Jamie): Loopop's skin animates far more than this needs.
+- **Open:** sample selection (the `file0SelectorMenu` pad is a file browser on the Deluge; no
+  equivalent found in MPC skins yet).
+
 Next up (decided 2026-11-12): **make the firmware 64-bit clean**, ahead of tempo sync. A
 successor to the Force has leaked (reported as "Force G2", unannounced) and will presumably be
 64-bit like the MPC Live III and XL, where Deluge Synth currently plays only its placeholder
