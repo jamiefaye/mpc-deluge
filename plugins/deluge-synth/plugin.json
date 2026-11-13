@@ -10,7 +10,7 @@
   "category": "Synth",
   "file32": "VST/deluge-synth-arm32.so",
   "file64": "VST/deluge-synth-arm64.so",
-  "description": "Deluge Synth: the Synthstrom Deluge synth engine (community firmware code) playing Deluge SYNTH presets. 32-bit MPCs only; other builds hold a placeholder.",
+  "description": "Deluge Synth: the Synthstrom Deluge synth engine (community firmware code) playing Deluge SYNTH presets. 32-bit and 64-bit ARM MPCs; only an Intel desktop build holds a placeholder tone.",
   "author": "Fentonia",
   "url": "",
   "license": "GPL-3.0-or-later"
