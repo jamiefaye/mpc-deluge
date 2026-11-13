@@ -286,6 +286,19 @@ Notes for step 2, from reading the firmware (2026-11-12):
   It reads the XML and predates the community firmware, so it lacks what came later (filter
   morph, wave index, fold, compressor, the randomizer column, the second-press layer); where
   the two differ, the firmware tables win. The "Synth Dog" manual has illustrations too.
+- **The grid is a fixed size and layout** (Jamie, 2026-11-13): the screen is finite. A tab is
+  1280 x 628 on every model, so 16 columns are 80 px each; proposed 64 px rows (grid 1280 x
+  512) with a 116 px strip for the selected parameter. Labels and module colours baked into a
+  background image, one `Label` of type `Value` per cell (128 display parameters), a
+  transparent XY pad over the grid as the touch sensor. Whether values are legible in the
+  cells is unproven; a static mock-up on the Force decides. Fallback: labels only, values in
+  the strip and on the knobs.
+- **Fallback for showing patching: flash the pads, as the Deluge does** (Jamie, 2026-11-13),
+  instead of writing destinations and amounts into the source boxes. The firmware already
+  works out which source pads flash for the selected parameter, and how
+  (`SoundEditor::updateSourceBlinks` fills `sourceShortcutBlinkFrequencies` and
+  `sourceShortcutBlinkColours` from `MenuItem::shouldBlinkPatchingSourceShortcut`, in
+  `gui/ui/sound_editor.cpp`): read those, do not re-derive them.
 - **Redraw cost is not a worry** (Jamie): Loopop's skin animates far more than this needs.
 - **Open:** sample selection (the `file0SelectorMenu` pad is a file browser on the Deluge; no
   equivalent found in MPC skins yet).
