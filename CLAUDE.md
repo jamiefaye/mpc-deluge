@@ -275,8 +275,17 @@ Notes for step 2, from reading the firmware (2026-11-12):
   The site's source is `website/src/content/docs/` in the firmware repo; the local checkout
   at `bef6d9df3` has `reference/shortcuts.mdx` and `reference/menu_hierarchies.mdx` but
   predates the Guidebook.
-- **Other references for the matrix:** Downrush (`~/deluge/DelugeWeb/downrush`) draws the grid in
-  HTML with each parameter's value in its box; the "Synth Dog" manual has illustrations.
+- **Downrush is the model for the on-screen grid.** Jamie's own project (github
+  jamiefaye/downrush, 2018, BSD 2-clause, so its code may be reused here; local copies at
+  `~/deluge/downrush/xmlView/src/` and, identical, `~/deluge/DelugeWeb/downrush/viewScore/src/`).
+  `SoundGrid.jsx` draws the 16 x 8 grid with the panel's printed label and the current value in
+  every box, top row first (its first row is the firmware tables' y = 7), a module name under
+  each column, and in each mod-source box the list of that source's destinations with amounts
+  (`overlayRouting`). `FmtSound.js` has the display formatting (hex to 0-50, pan, phase, sync
+  levels, sidechain times); `ModKnobs.jsx` the gold knobs; `SampleRange.jsx` the sample zones.
+  It reads the XML and predates the community firmware, so it lacks what came later (filter
+  morph, wave index, fold, compressor, the randomizer column, the second-press layer); where
+  the two differ, the firmware tables win. The "Synth Dog" manual has illustrations too.
 - **Redraw cost is not a worry** (Jamie): Loopop's skin animates far more than this needs.
 - **Open:** sample selection (the `file0SelectorMenu` pad is a file browser on the Deluge; no
   equivalent found in MPC skins yet).
