@@ -55,10 +55,10 @@ Enable Enhancements and External Plugin Support switched on.
 
 GPL-3.0-or-later, because it contains Deluge firmware code.
 
-- Deluge community firmware, github SynthstromAudible/DelugeFirmware, branch `community`, commit
-  `v1.3.0` (`156500e7c`). Copyright Synthstrom Audible Limited and contributors. GPL-3.0-or-later.
+- Deluge community firmware, github SynthstromAudible/DelugeFirmware, tag `v1.3.0`
+  (commit `156500e7c`). Copyright Synthstrom Audible Limited and contributors. GPL-3.0-or-later.
   `quickLog` and `instantTan` in `src/deluge_engine.cpp` are copied from its `util/functions.cpp`.
-- Argon (NEON wrapper), github stellar-aria/argon, commit `3779c53`. MIT.
+- Argon (NEON wrapper), github stellar-aria/argon, commit `4b8efc4`. MIT.
 - ETL, github ETLCPP/etl, 20.40.0. MIT.
 - MPC Plugin SDK framework, github inmusic-software/mpc-plugin-builder-sdk. MIT.
 
