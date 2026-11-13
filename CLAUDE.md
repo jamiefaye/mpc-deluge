@@ -456,7 +456,11 @@ Open problems:
   the oscillators free-run, so no two notes line up exactly). Consequence for the plugin: MPC
   pads and sequences play much harder than a Deluge's 64, so presets clip on an MPC unless the
   velocity is brought down; a velocity scale or headroom control is worth considering.
-  Not yet done: any preset other than `SYNT000`, chords, and sample-based presets.
+  `SYNT008` (FM) the same way: no flat-topping on either, energy per band within about 1 dB
+  below 12 kHz, and both put the same strong component at 21-23 kHz, next to the engine's 22.05
+  kHz Nyquist (FM sidebands folding there; the Deluge's converter lets 2.5 dB more of it
+  through). The Deluge's channel touched the mixer's own full scale in that take (126 samples).
+  Not yet done: chords, sample-based presets, and the presets Jamie found harshest.
 
 What a skin can show is wider than the SDK docs suggest. Loopop's Grain Synth (in
 `~/audio/plugin-examples`, proprietary: read it, do not copy from it) drives about 2,300 display
