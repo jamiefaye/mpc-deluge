@@ -1,53 +1,7 @@
-diff -ruN a/argon/include/argon/common.hpp b/argon/include/argon/common.hpp
---- a/argon/include/argon/common.hpp
-+++ b/argon/include/argon/common.hpp
-@@ -584,7 +584,9 @@
-   ace argon_type each_lane(FuncType body) {
-     vector_type out = vec_;
-     for (size_t i = 0; i < lanes; ++i) {
--      body(out[i]);
-+      scalar_type lane_value = out[i];  // mpc-deluge: clang cannot bind a reference to a vector lane
-+      body(lane_value);
-+      out[i] = lane_value;
-     }
-     return out;
-   }
-@@ -594,7 +596,9 @@
-   ace argon_type each_lane_with_index(FuncType body) {
-     vector_type out = vec_;
-     for (size_t i = 0; i < lanes; ++i) {
--      body(out[i], i);
-+      scalar_type lane_value = out[i];  // mpc-deluge: clang cannot bind a reference to a vector lane
-+      body(lane_value, i);
-+      out[i] = lane_value;
-     }
-     return out;
-   }
-@@ -694,9 +698,9 @@
-       return vec_;
-     } else if constexpr (simd::is_quadword_v<vector_type>) {
-       if (lane_ >= ArgonHalf<scalar_type>::lanes) {
--        return simd::get_high(vec);
-+        return simd::get_high(vec_);  // mpc-deluge: was vec
-       } else {
--        return simd::get_low(vec);
-+        return simd::get_low(vec_);  // mpc-deluge: was vec
-       }
-     }
-   }
-@@ -704,7 +708,7 @@
-     if constexpr (simd::is_doubleword_v<vector_type>) {
-       return lane_;
-     } else if constexpr (simd::is_quadword_v<vector_type>) {
--      if (lane >= ArgonHalf<scalar_type>::lanes) {
-+      if (lane_ >= ArgonHalf<scalar_type>::lanes) {  // mpc-deluge: was lane
-         return (lane_ - ArgonHalf<scalar_type>::lanes);
-       } else {
-         return lane_;
 diff -ruN a/argon/include/argon/store.hpp b/argon/include/argon/store.hpp
 --- a/argon/include/argon/store.hpp
 +++ b/argon/include/argon/store.hpp
-@@ -65,7 +65,8 @@
+@@ -108,7 +108,8 @@
    simd::store1(ptr, vector);
  }
  
@@ -60,9 +14,9 @@ diff -ruN a/argon/include/argon/store.hpp b/argon/include/argon/store.hpp
 diff -ruN a/argon/include/arm_simd/neon/a32.hpp b/argon/include/arm_simd/neon/a32.hpp
 --- a/argon/include/arm_simd/neon/a32.hpp
 +++ b/argon/include/arm_simd/neon/a32.hpp
-@@ -1,6 +1,13 @@
- #pragma once
+@@ -2,6 +2,13 @@
  #include "vfpv4.hpp"
+ 
  #include "arm_simd/shared/a32_float.hpp"
 +// mpc-deluge: clang declares the CRC and scalar half-float intrinsics in these headers
 +#if defined(__clang__)
@@ -72,12 +26,12 @@ diff -ruN a/argon/include/arm_simd/neon/a32.hpp b/argon/include/arm_simd/neon/a3
 +#endif
 +#endif
  
- #ifdef __cplusplus
- #ifdef __clang__
+ #ifdef __ARM_ACLE
+ #include <arm_acle.h>
 diff -ruN a/argon/include/arm_simd/neon/a64.hpp b/argon/include/arm_simd/neon/a64.hpp
 --- a/argon/include/arm_simd/neon/a64.hpp
 +++ b/argon/include/arm_simd/neon/a64.hpp
-@@ -1694,8 +1694,11 @@
+@@ -1676,8 +1676,11 @@
  [[gnu::always_inline]] nce float16_t reciprocal_sqrt_estimate(float16_t a) { return vrsqrteh_f16(a); }
  [[gnu::always_inline]] nce float16_t reciprocal_sqrt_step(float16_t a, float16_t b) { return vrsqrtsh_f16(a, b); }
  [[gnu::always_inline]] nce float16_t reciprocal_step(float16_t a, float16_t b) { return vrecpsh_f16(a, b); }
@@ -89,40 +43,3 @@ diff -ruN a/argon/include/arm_simd/neon/a64.hpp b/argon/include/arm_simd/neon/a6
  [[gnu::always_inline]] nce float16_t multiply_extended(float16_t a, float16_t b) { return vmulxh_f16(a, b); }
  [[gnu::always_inline]] nce uint16_t equal_to_zero(float16_t a) { return vceqzh_f16(a); }
  [[gnu::always_inline]] nce uint16_t greater_than_or_equal_to_zero(float16_t a) { return vcgezh_f16(a); }
-diff -ruN a/argon/include/arm_simd/neon/vfpv3.hpp b/argon/include/arm_simd/neon/vfpv3.hpp
---- a/argon/include/arm_simd/neon/vfpv3.hpp
-+++ b/argon/include/arm_simd/neon/vfpv3.hpp
-@@ -1674,7 +1674,7 @@
- template <int lane>[[gnu::always_inline]] nce int8x8x4_t load4_lane(int8_t const *ptr, int8x8x4_t src) { return vld4_lane_s8(ptr, src, lane); }
- template <int lane>[[gnu::always_inline]] nce uint8x8x4_t load4_lane(uint8_t const *ptr, uint8x8x4_t src) { return vld4_lane_u8(ptr, src, lane); }
- template <int lane>[[gnu::always_inline]] nce poly8x8x4_t load4_lane(poly8_t const *ptr, poly8x8x4_t src) { return vld4_lane_p8(ptr, src, lane); }
--#ifdef __clang__
-+#if defined(__clang__) && defined(__aarch64__)  // mpc-deluge: clang has these only on AArch64
- template <int lane>[[gnu::always_inline]] nce int8x16x2_t load2_lane_quad(int8_t const *ptr, int8x16x2_t src) { return vld2q_lane_s8(ptr, src, lane); }
- template <int lane>[[gnu::always_inline]] nce uint8x16x2_t load2_lane_quad(uint8_t const *ptr, uint8x16x2_t src) { return vld2q_lane_u8(ptr, src, lane); }
- template <int lane>[[gnu::always_inline]] nce int8x16x3_t load3_lane_quad(int8_t const *ptr, int8x16x3_t src) { return vld3q_lane_s8(ptr, src, lane); }
-diff -ruN a/argon/include/arm_simd/neon/vfpv4.hpp b/argon/include/arm_simd/neon/vfpv4.hpp
---- a/argon/include/arm_simd/neon/vfpv4.hpp
-+++ b/argon/include/arm_simd/neon/vfpv4.hpp
-@@ -65,7 +65,9 @@
- template <> [[gnu::always_inline]] nce float16x4_t reinterpret(int16x4_t a) { return vreinterpret_f16_s16(a); }
- template <> [[gnu::always_inline]] nce float16x4_t reinterpret(int32x2_t a) { return vreinterpret_f16_s32(a); }
- template <> [[gnu::always_inline]] nce float16x4_t reinterpret(uint64x1_t a) { return vreinterpret_f16_u64(a); }
-+#ifdef __aarch64__  // mpc-deluge: no float64 vectors on 32-bit ARM
- template <> [[gnu::always_inline]] nce float64x2_t reinterpret(uint64x2_t a) { return vreinterpretq_f64_u64(a); }
-+#endif
- template <> [[gnu::always_inline]] nce float16x4_t reinterpret(uint32x2_t a) { return vreinterpret_f16_u32(a); }
- template <> [[gnu::always_inline]] nce float32x4_t convert(float16x4_t a) { return vcvt_f32_f16(a); }
- template <> [[gnu::always_inline]] nce int8x8_t reinterpret(float16x4_t a) { return vreinterpret_s8_f16(a); }
-@@ -169,9 +171,9 @@
- [[gnu::always_inline]] nce float32x4_t multiply_add_fused(float32x4_t a, float32x4_t b, float32x4_t c) { return vfmaq_f32(a, b, c);}
- [[gnu::always_inline]] nce float32x4_t multiply_subtract_fused(float32x4_t a, float32x4_t b, float32x4_t c) { return vfmsq_f32(a, b, c); }
- [[gnu::always_inline]] nce float32x2_t multiply_add_fused(float32x2_t a, float32x2_t b, float32_t c) { return vfma_n_f32(a, b, c);}
--[[gnu::always_inline]] nce float32x2_t multiply_subtract_fused(float32x2_t a, float32x2_t b, float32_t c) { return vfms_n_f32(a, b, c); }
-+[[gnu::always_inline]] nce float32x2_t multiply_subtract_fused(float32x2_t a, float32x2_t b, float32_t c) { return vfms_f32(a, b, vdup_n_f32(c)); }  // mpc-deluge: clang lacks vfms_n_f32 on 32-bit ARM
- [[gnu::always_inline]] nce float32x4_t multiply_add_fused(float32x4_t a, float32x4_t b, float32_t c) { return vfmaq_n_f32(a, b, c);}
--[[gnu::always_inline]] nce float32x4_t multiply_subtract_fused(float32x4_t a, float32x4_t b, float32_t c) { return vfmsq_n_f32(a, b, c); }
-+[[gnu::always_inline]] nce float32x4_t multiply_subtract_fused(float32x4_t a, float32x4_t b, float32_t c) { return vfmsq_f32(a, b, vdupq_n_f32(c)); }  // mpc-deluge: clang lacks vfmsq_n_f32 on 32-bit ARM
- // clang-format on
- }  // namespace neon
- #undef nce

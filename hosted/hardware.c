@@ -132,6 +132,21 @@ void oledRoutine(void) {}
 void oledSelectingComplete(void) {}
 void oledDeselectionComplete(void) {}
 void oledLowLevelTimerCallback(void) {}
+// The OLED frame queue (drivers/oled/oled.c in the firmware): frames are dropped.
+volatile bool spiBusCurrentlySending = false;
+volatile uint8_t oledFrameQueueReadPos = 0;
+uint8_t oledFrameQueueWritePos = 0;
+void enqueueOLEDFrame(const uint8_t* image) {
+	(void)image;
+}
+void oledAcknowledgementReceived(uint8_t message) {
+	(void)message;
+}
+// The processor's cache control (RZA1/cache): nothing to do under an operating system.
+void invalidate_range_all_caches(uintptr_t start, uintptr_t end) {
+	(void)start;
+	(void)end;
+}
 void enqueueSPITransfer(int32_t whichOled, uint8_t const* image) {
 	(void)whichOled;
 	(void)image;
@@ -214,3 +229,18 @@ void* usb_hstd_get_usb_ip_adr(uint16_t ipno) {
 }
 void change_destination_of_send_pipe(void) {}
 void usb_send_start_rohan(void) {}
+void usb_receive_start_rohan_midi(uint16_t pipe) {
+	(void)pipe;
+}
+void usb_cstd_usb_task(void) {}
+
+// --- trigger clock input, interrupts --------------------------------------------------------------
+// The firmware's main.c owns these on a Deluge: times of rising edges on the trigger clock input,
+// filled in by an interrupt. There is no such input here, so the counters never move.
+uint32_t triggerClockRisingEdgeTimes[4]; // TRIGGER_CLOCK_INPUT_NUM_TIMES_STORED
+uint32_t triggerClockRisingEdgesReceived = 0;
+uint32_t triggerClockRisingEdgesProcessed = 0;
+// Interrupts off and on around short critical sections. Nothing interrupts the engine here: the
+// caller lets one thread in at a time (hosted/engine.h).
+void ENTER_CRITICAL_SECTION(void) {}
+void EXIT_CRITICAL_SECTION(void) {}

@@ -42,11 +42,11 @@
 // Defined in audio_engine.cpp but, in the firmware's words, "deliberately not in header".
 namespace AudioEngine {
 void renderAudio(size_t numSamples);
-extern std::array<deluge::dsp::StereoSample<q31_t>, SSI_TX_BUFFER_NUM_SAMPLES> renderingMemory;
+extern std::array<StereoSample, SSI_TX_BUFFER_NUM_SAMPLES> renderingMemory;
 extern int32_t masterVolumeAdjustmentL;
 extern int32_t masterVolumeAdjustmentR;
 // What the firmware's routine() and routine_() keep up to date around each renderAudio() call.
-extern int voicesStartedThisRender;
+extern volatile int voices_started_this_render;
 extern int32_t numSamplesLastTime;
 extern int32_t sideChainHitPending;
 } // namespace AudioEngine
@@ -110,7 +110,12 @@ void engineInit(const char* root) {
 static void makeSamplesResident() {
 	samplesLoaded = 0;
 	samplesFailed = 0;
-	for (Sample* sample : audioFileManager.sampleFiles | std::views::values) {
+	for (int32_t f = 0; f < audioFileManager.audioFiles.getNumElements(); f++) {
+		AudioFile* file = (AudioFile*)audioFileManager.audioFiles.getElement(f);
+		if (file == nullptr || file->type != AudioFileType::SAMPLE) {
+			continue; // wavetables are read whole when they load
+		}
+		Sample* sample = static_cast<Sample*>(file);
 		bool ok = true;
 		int32_t numClusters = sample->clusters.getNumElements();
 		// Only the clusters that hold audio. A WAV file can carry other chunks after its audio
@@ -355,9 +360,10 @@ void engineRender(int32_t* out, int numFrames) {
 	// order:
 	//
 	// - The firmware starts at most four voices per cycle (allowedToStartVoice) and counts them
-	//   from zero each cycle, or from higher when it is short of CPU time. Without this reset the
-	//   fifth note-on after a preset load, and every one after it, was silently dropped.
-	AudioEngine::voicesStartedThisRender = std::max<int>(AudioEngine::cpuDireness - 12, 0);
+	//   from zero each cycle. Without this reset the fifth note-on after a preset load, and every
+	//   one after it, was silently dropped. (Upstream met the same thing in its offline stem
+	//   export, which also renders without routine_(): firmware issue #5010.)
+	AudioEngine::voices_started_this_render = 0;
 	// (Not done: setDireness(), which measures lateness against the hardware timer and has no
 	// meaning here, so cpuDireness stays 0; and tickSongFinalizeWindows(), the sequencer clock,
 	// which is the missing tempo sync.)

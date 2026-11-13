@@ -1,4 +1,4 @@
-// Check the firmware's fixed-point primitives (util/intrinsics.h) against plain 64-bit arithmetic.
+// Check the firmware's fixed-point primitives (util/fixedpoint.h) against plain 64-bit arithmetic.
 // On 32-bit ARM they are inline assembly written for GCC; this build uses clang.
 //   tools/build_firmware.py arm32 --test tests/intrinsics_check.cpp
 //   tools/armtest/run.py --exe build/firmware/arm32/intrinsics_check
@@ -54,8 +54,7 @@ int main() {
 		CHECK("signed_saturate<24>", signed_saturate<24>(va), clamp64(a, -(1LL << 23), (1LL << 23) - 1), a, 0);
 		CHECK("signed_saturate<16>", signed_saturate<16>(va), clamp64(a, -(1LL << 15), (1LL << 15) - 1), a, 0);
 		CHECK("signed_saturate<31>", signed_saturate<31>(va), clamp64(a, -(1LL << 30), (1LL << 30) - 1), a, 0);
-		CHECK("unsigned_saturate<16>", (uint32_t)unsigned_saturate<16>((uint32_t)va),
-		      (int64_t)((int64_t)a < 0 ? 0 : clamp64(a, 0, 65535)), a, 0);
+		// (unsigned_saturate<> and int32_to_float() went away in firmware 1.3.0.)
 		// shift_left_saturate<> is not checked: no firmware code calls it, and on ARM it does not
 		// saturate at 32 bits (SSAT shifts in 32 bits first), unlike its portable fallback.
 		CHECK("add_saturate", add_saturate(va, vb), clamp64((int64_t)a + b, INT32_MIN, INT32_MAX), a, b);
@@ -67,11 +66,11 @@ int main() {
 		want = (double)f >= 0 ? want : -std::floor(-(double)f * 2147483648.0);
 		want = want > 2147483647.0 ? 2147483647.0 : want < -2147483648.0 ? -2147483648.0 : want;
 		CHECK("q31_from_float", q31_from_float(vf), (int64_t)want, a, 0);
-		float back = int32_to_float(va);
+		float back = q31_to_float(va);
 		float wantBack = (float)((double)a / 2147483648.0);
 		if (back != wantBack) {
 			if (failures < 40) {
-				std::printf("FAIL int32_to_float(%d) = %.9g, want %.9g\n", (int)a, (double)back, (double)wantBack);
+				std::printf("FAIL q31_to_float(%d) = %.9g, want %.9g\n", (int)a, (double)back, (double)wantBack);
 			}
 			failures++;
 		}

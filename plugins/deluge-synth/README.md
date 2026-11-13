@@ -68,5 +68,5 @@ error, note and call counts, and time spent rendering. `mpc_remote.py export` br
 ## Licence and sources
 
 GPL-3.0-or-later. Deluge community firmware (SynthstromAudible/DelugeFirmware, `community`,
-commit `bef6d9df3`), patched as recorded in `patches/`; Argon and ETL (MIT); the MPC Plugin SDK
+tag `v1.3.0`, commit `156500e7c`), patched as recorded in `patches/`; Argon and ETL (MIT); the MPC Plugin SDK
 framework (MIT).

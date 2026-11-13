@@ -143,7 +143,7 @@ void Engine::render(int voice, float* out, int numFrames, const Params& p, float
 	deluge::dsp::Oscillator::renderOsc(oscType, amplitude, buffer, buffer + numFrames, numFrames, v.phaseIncrement,
 	                                   pulseWidth, &v.phase, true, 0, false, 0, 0, 0, 0, 0, nullptr);
 
-	v.filterSet.renderLong(std::span{buffer, (size_t)numFrames});
+	v.filterSet.renderLong(buffer, buffer + numFrames, numFrames, 1);
 
 	// Fixed point to float. The scale is chosen by ear and meter, not taken from the firmware:
 	// 2^-23 puts one full-velocity saw voice near -8 dBFS before the volume parameter.
@@ -163,7 +163,12 @@ void Engine::selfTest(std::string& report) {
 	auto add = [&](const char* text) { report += text; };
 
 	std::snprintf(line, sizeof line, "pointer %d bits, ARMv7a asm paths %s, clang %s\n", (int)(sizeof(void*) * 8),
-	              ARMv7a ? "on" : "off", __clang_version__);
+#if defined(__arm__)
+	              "on"
+#else
+	              "off"
+#endif
+	              , __clang_version__);
 	add(line);
 	std::snprintf(line, sizeof line,
 	              "multiply_32x32_rshift32(2^30,2^30)=%d (want 268435456)  signed_saturate<24>(2^30)=%d (want 8388607)  "
@@ -213,7 +218,7 @@ void Engine::selfTest(std::string& report) {
 				if (block == 0) {
 					std::memcpy(firstOsc, buffer + 8, sizeof firstOsc);
 				}
-				v->filterSet.renderLong(std::span{buffer, (size_t)kMaxChunk});
+				v->filterSet.renderLong(buffer, buffer + kMaxChunk, kMaxChunk, 1);
 				for (int i = 0; i < kMaxChunk; ++i) {
 					outPeak = std::max<int64_t>(outPeak, std::abs((int64_t)buffer[i]));
 				}

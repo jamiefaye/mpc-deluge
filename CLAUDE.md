@@ -49,7 +49,8 @@ The SDK compiles `src/*.cpp` in one command. A plugin's `src/deluge_engine.cpp` 
 Symbols that live in firmware files too entangled to compile (`util/functions.cpp`,
 `audio_engine.cpp`) are copied or stubbed in that file, each with a comment saying which.
 
-What is known about the firmware as of commit `bef6d9df3` (measured 2026-11-12 with
+What was learnt about the firmware at the first pin, `bef6d9df3` (the build moved to `v1.3.0` on
+2026-11-13, see "Which firmware version"; counts below are the old pin's; measured 2026-11-12 with
 `tools/sizing/run.sh`, which compiles every firmware `.cpp` and then links a probe that loads a
 patch, plays a note and renders):
 - arm32 Linux (Force, MPC Live): **all 380 files compile** (step 1 of the plan, done
@@ -100,6 +101,45 @@ patch, plays a note and renders):
 - The firmware needs the pinned Argon; Argon `main` has renamed the API.
 - The native test build is arm64 macOS, so it has NEON. An Intel Mac has no NEON and cannot build
   the firmware DSP natively.
+
+## Which firmware version (2026-11-13)
+
+The engine is DelugeFirmware **`v1.3.0`** (tag on branch `release/1.3`, commit `156500e7c`,
+2026-11-03), with the Argon commit and ETL tag that release pins; all in `tools/pins.sh`. Jamie
+chose a release so that the plugin and a Deluge flashed with the same release can be compared.
+Until then it was `bef6d9df3` (2026-01-09), the tip of the `community` branch, which upstream has
+abandoned (the default branch is `main`).
+
+- **The nightly was about 10 dB too loud.** In `bef6d9df3` the master compressor
+  (`RMSFeedbackCompressor::render`) worked on a copy of each sample (`auto sample =
+  reinterpret_cast<...&>(...)`), so the song-level volume and compressor did nothing and the
+  output stage clipped far more than it should. `v1.3.0` is right. Over the 747 presets the
+  median peak fell 10.7 dB; voices are sample-identical before that stage. The loud, clipped
+  takes recorded from the Force on 2026-11-13 were this build, so the level findings under
+  "Compared with a real Deluge" need redoing on `v1.3.0` (the Deluge's own version then was
+  unknown).
+- **Moving the pin** (how this one went): `tools/pristine.sh` old and new trees into a scratch
+  git repo, commit old, commit old+patch, cherry-pick that onto new; 38 files merged by
+  themselves, 29 conflicted and were redone by hand (mostly casts, which the scratch script
+  that rewrites compiler-reported `(uint32_t)pointer` casts does again), then `hosted/` for
+  renamed or new symbols. Half a day. A reference build of the old pin in a second worktree
+  (`git worktree add`, `tools/vendor.sh`) with the same temporary prints in both made the two
+  problems below quick to find.
+- **Argon's `lane.Set(x)` no longer writes**: it returns a new vector; `vector[i] = x` writes.
+  Our alignment fix in `vector_rendering_function.h` used `Set` and rendered silence from every
+  table-based oscillator until changed.
+- Upstream fixed by itself, so no longer in `patches/`: the null reads (`grainFX`,
+  `audioFileHolder`, `cacheWritePos`), `Clip::~Clip` with no current song, the saturating
+  fallbacks and `FixedPoint`'s `FastApproximation` default (`util/intrinsics.h` is gone; the
+  primitives are in `util/fixedpoint.h`). Still ours: the `range` cable overrun in `Patcher`,
+  `ImpulseResponseProcessor::buffer_`, `String`'s count, the unaligned table reads, silent input
+  oscillators, and everything for clang, Linux and 64-bit.
+- New in `routine_()` since the old pin, not done by `engineRender`: input-monitoring warm-up
+  (no input here). The voice counter is now `voices_started_this_render`, reset to 0.
+- Checked 2026-11-13 on `v1.3.0`: `tools/corpus.sh` 747 of 747 identical on arm32, arm64 and the
+  Mac in both passes, 400-note pass clean; `intrinsics_check`, `fm_kernel_check` (same
+  checksum); all three plugins build and pass the simulator on all three targets. Not yet on
+  the Force.
 
 ## Plan for the full engine ("Deluge Synth": load a SYNTH XML, sound the same)
 
@@ -372,7 +412,7 @@ Jamie has none.
 take the amount to render from the codec's buffer position. Until 2026-11-13 none of that was
 done, and on the Force a pattern played once and went quiet. What `engineRender` now does, as
 the firmware does:
-- `voicesStartedThisRender = max(cpuDireness - 12, 0)` before. The firmware starts at most four
+- `voices_started_this_render = 0` before (`voicesStartedThisRender` at the old pin). The firmware starts at most four
   voices per cycle (`allowedToStartVoice`); never reset, the fifth note-on after a preset load
   and all later ones were dropped without a word. (It was reset only when a load called
   `routineWithClusterLoading`, which is why changing preset brought sound back for a moment.)
@@ -425,9 +465,9 @@ floor hides on a Deluge.
   simulator resets every parameter to 0, which for a gold knob is mid-travel (a long release
   still sounding), and a chunk re-saved after such a restore differs by the two flag bytes.
 
-Next up: tempo sync (the sequencer clock; `tickSongFinalizeWindows`), then the editing design
-above. First the Force has to confirm this build (installed 2026-11-13 after the audio-cycle
-fix): the thread and allocator changes have otherwise only run in the emulator.
+Next up: install the `v1.3.0` build on the Force and compare with a Deluge running 1.3.0; then
+tempo sync (the sequencer clock; `tickSongFinalizeWindows`), then the editing design above.
+The Force currently runs the last `bef6d9df3` build (2026-11-13, with diagnostics).
 
 Open problems:
 - **Globals.** The firmware assumes one of everything (`AudioEngine`, the voice pool, the
