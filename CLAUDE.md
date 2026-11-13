@@ -460,7 +460,7 @@ Open problems:
   below 12 kHz, and both put the same strong component at 21-23 kHz, next to the engine's 22.05
   kHz Nyquist (FM sidebands folding there; the Deluge's converter lets 2.5 dB more of it
   through). The Deluge's channel touched the mixer's own full scale in that take (126 samples).
-  A sustained two-note chord (C1 and E1; preset not noted): 57 spectral components matched
+  A sustained two-note chord (C1 and E1, Factory `SYNT005`): 57 spectral components matched
   between the devices by frequency, median level difference 0.6 dB; peak above rms 15.6 dB on
   both; no flat-topping.
   Not yet done: sample-based presets, and the presets Jamie found harshest.
