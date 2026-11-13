@@ -9,6 +9,7 @@
 # (tests/engine_corpus.cpp): every preset in a process of its own, and every preset one after
 # another in one process, which is how a plugin is used and what exercises memory management.
 # 32-bit ARM is the reference; any preset whose checksum differs on another target is listed.
+# Then a long run of notes on each preset, on this computer (tests/engine_notes.cpp).
 #
 # The second pass runs with DELUGE_SCRUB set (hosted.h): newly allocated memory is filled with a
 # fixed byte. The firmware reads a little memory before writing it (at note-on a voice patches
@@ -69,4 +70,12 @@ for mode in each switch; do
     tools/corpus_compare.py "$out/$mode-arm32.txt" "$out/$mode-$target.txt" || status=1
   done
 done
+# Third pass, on this computer only: 400 notes in a row on every preset (tests/engine_notes.cpp).
+# The passes above play a few notes; this one is the step sequencer, and catches an engine that
+# stops answering note-ons after a while.
+echo "== pass: 400 notes on each preset"
+tools/build_firmware.py native --test tests/engine_notes.cpp | tail -1
+build/firmware/native/engine_notes "$out/root" SYNTHS > "$out/notes-native.txt" 2>&1 || status=1
+grep -E 'FADED|CRASHED|load error' "$out/notes-native.txt" | head -20
+printf '%-7s %s\n' native "$(grep '^NOTES [0-9]' "$out/notes-native.txt" || echo 'did not finish (see the file)')"
 exit $status

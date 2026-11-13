@@ -365,6 +365,26 @@ Jamie has none.
   `currentSong` is null (`deleteOldSongBeforeLoadingNew` does exactly that; harmless on a
   Deluge, where address 0 is readable).
 
+### The firmware's audio cycle (2026-11-13)
+
+`engineRender` calls `AudioEngine::renderAudio()`, which is the render but not the whole cycle:
+`routine()` and `routine_()` keep state around it, and cannot be called themselves because they
+take the amount to render from the codec's buffer position. Until 2026-11-13 none of that was
+done, and on the Force a pattern played once and went quiet. What `engineRender` now does, as
+the firmware does:
+- `voicesStartedThisRender = max(cpuDireness - 12, 0)` before. The firmware starts at most four
+  voices per cycle (`allowedToStartVoice`); never reset, the fifth note-on after a preset load
+  and all later ones were dropped without a word. (It was reset only when a load called
+  `routineWithClusterLoading`, which is why changing preset brought sound back for a moment.)
+- `numSamplesLastTime = numFrames` before; `sideChainHitPending = 0`,
+  `audioSampleTimer += numFrames`, `bypassCulling = false` after. The sample clock had been
+  standing still: reverb and effect tails, an idle sound's LFOs catching up, voice age.
+- Still not done: `setDireness()` (lateness against the hardware timer; `cpuDireness` stays 0)
+  and `tickSongFinalizeWindows()` (the sequencer clock: tempo sync).
+No one-second test could see this. `tests/engine_notes.cpp` plays 400 notes in a row on every
+preset and fails if the last are 30 dB below the first; `tools/corpus.sh` runs it as a third
+pass. When adding to `engineRender`, read `routine()` and `routine_()` again first.
+
 ### Audio input
 
 The Deluge's input oscillators (`inLeft` and so on; 2 of the 747 presets) are silent in the
@@ -406,8 +426,8 @@ floor hides on a Deluge.
   still sounding), and a chunk re-saved after such a restore differs by the two flag bytes.
 
 Next up: tempo sync (the sequencer clock; `tickSongFinalizeWindows`), then the editing design
-above. Before either, the Force should hear this build: the thread and allocator changes have
-only run in the emulator.
+above. First the Force has to confirm this build (installed 2026-11-13 after the audio-cycle
+fix): the thread and allocator changes have otherwise only run in the emulator.
 
 Open problems:
 - **Globals.** The firmware assumes one of everything (`AudioEngine`, the voice pool, the
@@ -463,7 +483,8 @@ note for a second), and all presets one after another in one process (a chord, e
 moved, bend and mod wheel), which is how a plugin is used and what exercises loading over a
 loaded preset. Every line ends in a checksum of all the output samples. arm32 is the reference
 and the others must match it exactly; 2026-11-13: 747 of 747 on both, in both passes. About a
-minute and a half.
+minute and a half for those two, then about six minutes for a third pass on this computer only:
+`tests/engine_notes.cpp`, 400 notes in a row on every preset (see "The firmware's audio cycle").
 
 The second pass runs with `DELUGE_SCRUB=165`, which fills newly allocated memory with that byte
 (`hosted.h`). The firmware reads a little memory before writing it (see the bug list), and what
@@ -472,6 +493,10 @@ without the fill two presets differ for that reason alone.
 
 `tools/wavdiff.py a.wav b.wav` compares two recordings from `tests/engine_smoke.cpp` and says
 where they first differ (`ENGINE_SMOKE_OUT=path` makes the native run write one).
+
+`tools/build_firmware.py` tracks headers (compiler `.d` files), so an edited header rebuilds what
+includes it. Before it did (until 2026-11-13) a header reverted for an experiment left one
+target's library stale and "the Mac differs from Linux" cost an hour.
 
 When two builds differ: find the first differing render block with `wavdiff.py`, then narrow it
 down with temporary prints in `third_party/` on both sides (the firmware's own `D_PRINTLN` is

@@ -8,8 +8,8 @@ Output: build/firmware/<target>/libdeluge.a (objects in obj/, compiler messages 
 --probe also links tools/sizing/root.cpp against the library with unused code dropped and writes
 the symbols still missing to build/firmware/<target>/undefined.txt.
 
-An object is rebuilt when its source is newer or the flags changed. Header edits are not
-tracked: use --clean after changing a header or a patch.
+An object is rebuilt when its source, or any header it included last time, is newer, or when the
+flags changed. --clean rebuilds everything.
 """
 import concurrent.futures
 import hashlib
@@ -97,12 +97,50 @@ def command(src, obj, target):
         lang = ["cc", "-std=gnu17"]
     else:
         return ZIG + ["cc", "-c", "-fPIC"] + TARGETS[target] + [src, "-o", obj]
-    return ZIG + lang + COMMON + TARGETS[target] + INCLUDES + [src, "-o", obj]
+    # -MD: the compiler also writes the list of headers it read, for up_to_date().
+    return ZIG + lang + COMMON + TARGETS[target] + INCLUDES + ["-MD", "-MF", obj[:-2] + ".d", src, "-o", obj]
+
+
+def up_to_date(src, obj):
+    """True if obj is newer than its source and than every header listed in its .d file."""
+    if not os.path.exists(obj):
+        return False
+    built = os.path.getmtime(obj)
+    if os.path.getmtime(src) > built:
+        return False
+    dep = obj[:-2] + ".d"
+    if not os.path.exists(dep):
+        return not src.endswith((".c", ".cpp"))  # assembly has none; C and C++ without one: rebuild
+    # A make rule: "obj: file file \\\n file ...", spaces in names escaped with a backslash.
+    text = open(dep, errors="replace").read().replace("\\\n", " ")
+    names, word, i = [], "", text.find(":") + 1
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and i + 1 < len(text) and text[i + 1] == " ":
+            word += " "
+            i += 2
+            continue
+        if c.isspace():
+            if word:
+                names.append(word)
+            word = ""
+        else:
+            word += c
+        i += 1
+    if word:
+        names.append(word)
+    for name in names:
+        try:
+            if os.path.getmtime(name) > built:
+                return False
+        except OSError:
+            return False  # a header that has gone away
+    return True
 
 
 def compile_one(job):
     src, obj, target, stamp = job
-    if os.path.exists(obj) and os.path.getmtime(obj) >= os.path.getmtime(src):
+    if up_to_date(src, obj):
         return src, True, False
     p = subprocess.run(command(src, obj, target), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with open(obj[:-2] + ".err", "wb") as f:

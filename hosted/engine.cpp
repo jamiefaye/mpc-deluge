@@ -45,6 +45,10 @@ void renderAudio(size_t numSamples);
 extern std::array<deluge::dsp::StereoSample<q31_t>, SSI_TX_BUFFER_NUM_SAMPLES> renderingMemory;
 extern int32_t masterVolumeAdjustmentL;
 extern int32_t masterVolumeAdjustmentR;
+// What the firmware's routine() and routine_() keep up to date around each renderAudio() call.
+extern int voicesStartedThisRender;
+extern int32_t numSamplesLastTime;
+extern int32_t sideChainHitPending;
 } // namespace AudioEngine
 
 namespace deluge_hosted {
@@ -343,10 +347,29 @@ void engineRender(int32_t* out, int numFrames) {
 	if (song == nullptr || numFrames < 1 || numFrames > kMaxRenderFrames) {
 		return;
 	}
-	// The firmware's master render: every output in the song, then the song's reverb (fed by each
-	// sound's send), then the song-level filter, bit-crusher and compressor. This also advances
-	// the firmware's sample clock.
+	// One cycle of the firmware's audio routine. renderAudio() is its master render (every output
+	// in the song, then the song's reverb fed by each sound's send, then the song-level filter,
+	// bit-crusher and compressor), but it is not the whole cycle: AudioEngine::routine() and
+	// routine_() do bookkeeping before and after it, and they cannot be called here because they
+	// take the amount to render from the codec's buffer position. So the same steps, in the same
+	// order:
+	//
+	// - The firmware starts at most four voices per cycle (allowedToStartVoice) and counts them
+	//   from zero each cycle, or from higher when it is short of CPU time. Without this reset the
+	//   fifth note-on after a preset load, and every one after it, was silently dropped.
+	AudioEngine::voicesStartedThisRender = std::max<int>(AudioEngine::cpuDireness - 12, 0);
+	// (Not done: setDireness(), which measures lateness against the hardware timer and has no
+	// meaning here, so cpuDireness stays 0; and tickSongFinalizeWindows(), the sequencer clock,
+	// which is the missing tempo sync.)
+	AudioEngine::numSamplesLastTime = numFrames;
 	AudioEngine::renderAudio((size_t)numFrames);
+	// - A sidechain hit registered by a note-on is for one cycle only; left set, it would hit
+	//   again every cycle.
+	AudioEngine::sideChainHitPending = 0;
+	// - The firmware's clock, in samples. Reverb and effect tails, LFOs catching up after a sound
+	//   has been idle, voice stealing order and more are timed by it.
+	AudioEngine::audioSampleTimer += (uint32_t)numFrames;
+	AudioEngine::bypassCulling = false;
 
 	// The firmware's output stage (the end of AudioEngine::routine_): master volume as a 32x32
 	// multiply with dither, then eight doublings with saturation on the way to the codec.

@@ -12,9 +12,10 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
 - Builds for 32-bit ARM MPCs (Force, MPC Live, X, One, Key) and 64-bit ARM MPCs (Live III, XL),
   and for a 64-bit ARM computer, with the same engine in each. The three produce the same audio,
   sample for sample, for all 747 presets of a Deluge SD card (`tools/corpus.sh`).
-- Heard on a Force (32-bit) in its first form on 2026-11-12. The current build, which changes
-  how the plugin's threads share the engine, has only run in the emulated 32-bit and 64-bit
-  machines and on the Mac, where it passes the SDK host simulator. Not tried on a 64-bit MPC.
+- Heard on a Force (32-bit) in its first form on 2026-11-12; that form went silent after four
+  notes (fixed 2026-11-13, see CLAUDE.md, "The firmware's audio cycle"). The current build has
+  run in the emulated 32-bit and 64-bit machines and on the Mac, where it passes the SDK host
+  simulator and plays 400 notes in a row on every preset. Not tried on a 64-bit MPC.
 - Not yet compared against a real Deluge, so "sounds the same" is the aim, not a measured fact.
 - An Intel build (the native build on an Intel computer, and the desktop VST) contains a
   placeholder sine tone: the firmware's signal processing is ARM NEON code.
