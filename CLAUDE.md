@@ -259,6 +259,22 @@ Notes for step 2, from reading the firmware (2026-11-12):
   (pads x = 14, y >= 5 and x = 15: LFO1, env1, X; aftertouch, velocity, random, note,
   sidechain, LFO2, env2, Y; second layer LFO3/4, env3/4), via
   `MenuItem::patchingSourceShortcutPress`.
+- **A sound holds at most 32 patch cables** (`kMaxNumPatchCables`, `definitions_cxx.hpp`). The
+  Deluge's MOD MATRIX menu (`patchCablesMenu`, `gui/menu_item/patch_cables.cpp`) lists every
+  existing cable as source, amount, destination; the plugin wants the same list on screen.
+  Depth is signed, 0 means no cable, shown to two decimals; a cable is unipolar or bipolar;
+  a cable's depth can itself be a destination (start from the destination, as on the Deluge).
+- **Firmware documentation: https://delugecommunity.com/** (Jamie, 2026-11-13). Read 2026-11-13:
+  the Guidebook (Synthdawg's manual, written for C1.0, being updated to C1.3) is the useful
+  part: `/guidebook/07-synthesizers/05-sound-editor-synthesizer-parameters`, `/06-oscillators`,
+  `/07-filters`, `/10-modulation/01`..`04` (routing, mod matrix, depth modulation),
+  `/02-basics/07-custom-parameter-affect-controls` (gold knobs, Learn). The changelog's
+  "Layered Shortcuts" section explains the second-press layer. The site does not give the pad
+  map in text (it is in images and the JavaScript "Companion"), nor the preset XML format or
+  SD card layout (those pages are unwritten): for those the firmware source is the reference.
+  The site's source is `website/src/content/docs/` in the firmware repo; the local checkout
+  at `bef6d9df3` has `reference/shortcuts.mdx` and `reference/menu_hierarchies.mdx` but
+  predates the Guidebook.
 - **Other references for the matrix:** Downrush (`~/deluge/DelugeWeb/downrush`) draws the grid in
   HTML with each parameter's value in its box; the "Synth Dog" manual has illustrations.
 - **Redraw cost is not a worry** (Jamie): Loopop's skin animates far more than this needs.
