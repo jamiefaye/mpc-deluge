@@ -436,7 +436,18 @@ Open problems:
   the globals have to be made per-instance.
 - **Size and load time.** The arm32 library is 2.5 MB, arm64 3.3 MB. The MPC checks free memory
   before loading a plugin; unmeasured.
-- **Not compared with a real Deluge yet.**
+- **Compared with a real Deluge once, roughly** (2026-11-13): Factory `SYNT000`, short low notes
+  from each device's own sequencer (not the same pattern), both through the Zoom L6 into the
+  Mac (`ffmpeg -f avfoundation -i ":ZOOM L6"`, 48 kHz; takes in `build/capture/`). Per note,
+  Force plugin against Deluge: longest flat run at a waveform extreme 86 against 89 samples,
+  samples at an extreme 4.4% against 5.2%, rms below peak 4.6 against 4.1 dB, share of energy
+  at 500 Hz-2 kHz -11.9 against -12.0 dB, 2-6 kHz -18.5 against -18.0, above 6 kHz -22.6
+  against -22.3. So the flat-topped, hard-edged waveform Jamie heard as "harsh" on the Force is
+  what the Deluge does with this preset too: the output stage clips at full scale on both
+  (a single low note of `SYNT000` at velocity 100 reaches it; in the corpus 16% of presets do
+  with one note and 43% with a three-note chord). The Deluge arrived 6 dB hotter at the mixer,
+  which is analogue gain and says nothing. Not yet done: the same notes on both, sample-aligned,
+  and any preset other than `SYNT000`.
 
 What a skin can show is wider than the SDK docs suggest. Loopop's Grain Synth (in
 `~/audio/plugin-examples`, proprietary: read it, do not copy from it) drives about 2,300 display
