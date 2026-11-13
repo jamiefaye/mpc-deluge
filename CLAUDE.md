@@ -446,8 +446,17 @@ Open problems:
   what the Deluge does with this preset too: the output stage clips at full scale on both
   (a single low note of `SYNT000` at velocity 100 reaches it; in the corpus 16% of presets do
   with one note and 43% with a three-note chord). The Deluge arrived 6 dB hotter at the mixer,
-  which is analogue gain and says nothing. Not yet done: the same notes on both, sample-aligned,
-  and any preset other than `SYNT000`.
+  which is analogue gain and says nothing.
+  **The "harshness" was velocity.** The Force was sending velocity 127; a Deluge's sequencer
+  defaults to 64. At 64 neither device flat-tops (longest flat run 3 and 9 samples). A third
+  take with both at G2, the same tempo and matched level (note peaks -9.2 and -8.3 dBFS; taken
+  to be Force first, Deluge second): energy per band agrees within 0.8 dB in all nine bands from
+  0 to 24 kHz, rms below peak 9.1 against 9.3 dB, and one note from each device is as alike in
+  shape (correlation 0.56 median, 0.84 best) as two notes from the same device (0.52 and 0.61;
+  the oscillators free-run, so no two notes line up exactly). Consequence for the plugin: MPC
+  pads and sequences play much harder than a Deluge's 64, so presets clip on an MPC unless the
+  velocity is brought down; a velocity scale or headroom control is worth considering.
+  Not yet done: any preset other than `SYNT000`, chords, and sample-based presets.
 
 What a skin can show is wider than the SDK docs suggest. Loopop's Grain Synth (in
 `~/audio/plugin-examples`, proprietary: read it, do not copy from it) drives about 2,300 display
