@@ -9,14 +9,15 @@
 # (tests/engine_corpus.cpp): every preset in a process of its own, and every preset one after
 # another in one process, which is how a plugin is used and what exercises memory management.
 # 32-bit ARM is the reference; any preset whose checksum differs on another target is listed.
-# Then a long run of notes on each preset, on this computer (tests/engine_notes.cpp).
+# Then a long run of notes on each preset, on this computer (tests/engine_notes.cpp), and every
+# pad of the shortcut grid and every gold knob written on each preset, on all three.
 #
 # The second pass runs with DELUGE_SCRUB set (hosted.h): newly allocated memory is filled with a
 # fixed byte. The firmware reads a little memory before writing it (at note-on a voice patches
 # from envelope levels it has not set yet, so it uses what the last occupant of that memory left
 # there), and what is left there differs between 32-bit and 64-bit builds because their objects
 # differ in size. Without the fill a handful of presets differ for that reason alone.
-# Results are left in build/corpus/. Takes about ten minutes, nearly all of it the 32-bit emulator.
+# Results are left in build/corpus/. Takes about a quarter of an hour, nearly all of it the 32-bit emulator.
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
 card=${1:-$HOME/deluge/SDCard}
@@ -78,4 +79,35 @@ tools/build_firmware.py native --test tests/engine_notes.cpp | tail -1
 build/firmware/native/engine_notes "$out/root" SYNTHS > "$out/notes-native.txt" 2>&1 || status=1
 grep -E 'FADED|CRASHED|load error' "$out/notes-native.txt" | head -20
 printf '%-7s %s\n' native "$(grep '^NOTES [0-9]' "$out/notes-native.txt" || echo 'did not finish (see the file)')"
+# Fourth pass: the shortcut grid and the gold knobs (tests/matrix_sweep.cpp). Every pad that
+# applies to a preset is set to its lowest, highest, middle and original value, and every gold
+# knob to every position, reading back each time. All three targets must report the same, line
+# for line. (The one expected kind of line: the compressor ratio's and the pulse widths' top
+# values read back one lower.) Then the checked-in table of pads against what the firmware says.
+echo "== pass: every grid pad and gold knob written on each preset"
+for target in arm32 arm64 native; do
+  tools/build_firmware.py $target --test tests/matrix_sweep.cpp | tail -1
+done
+# shellcheck disable=SC2086
+ARMTEST_TIMEOUT=1800 tools/armtest/run.py --exe build/firmware/arm32/matrix_sweep /sd SYNTHS $files > "$out/grid-arm32.raw" 2>&1 || true
+# shellcheck disable=SC2086
+tools/armtest/run.py --arm64 --exe build/firmware/arm64/matrix_sweep /sd SYNTHS $files > "$out/grid-arm64.raw" 2>&1 || true
+build/firmware/native/matrix_sweep "$out/root" SYNTHS > "$out/grid-native.raw" 2>&1 || true
+for target in arm32 arm64 native; do
+  tr -d '\r' < "$out/grid-$target.raw" | grep -E '^(PRESET|SWEEP|  MISMATCH|  NOT RESTORED)' > "$out/grid-$target.txt" || true
+  printf '%-7s %s; %s values read back differently, %s not restored\n' "$target" \
+    "$(grep '^SWEEP' "$out/grid-$target.txt" || echo 'did not finish (see the .raw file)')" \
+    "$(grep -c '^  MISMATCH' "$out/grid-$target.txt")" "$(grep -c '^  NOT RESTORED' "$out/grid-$target.txt")"
+  grep -q '^SWEEP.* 0 with firmware error stops, 0 crashed' "$out/grid-$target.txt" || status=1
+  grep -q '^  NOT RESTORED' "$out/grid-$target.txt" && status=1
+done
+for target in arm64 native; do
+  if cmp -s "$out/grid-arm32.txt" "$out/grid-$target.txt"; then
+    printf '%-7s against arm32: identical\n' "$target"
+  else
+    printf '%-7s against arm32: DIFFERENT (diff build/corpus/grid-arm32.txt build/corpus/grid-%s.txt)\n' "$target" "$target"
+    status=1
+  fi
+done
+tools/gen_grid.py --check "$out/root" || status=1
 exit $status

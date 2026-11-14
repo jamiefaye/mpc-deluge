@@ -13,6 +13,24 @@
 #include <unistd.h>
 
 // --- debug text ----------------------------------------------------------------------------------
+static int firmwareErrors;
+static char latestFirmwareError[8];
+
+void deluge_hosted_firmware_error(const char* code) {
+	firmwareErrors++;
+	snprintf(latestFirmwareError, sizeof latestFirmwareError, "%s", code ? code : "?");
+	deluge_hosted_log("firmware error stop: ");
+	deluge_hosted_log(latestFirmwareError);
+	deluge_hosted_log("\n");
+}
+
+int deluge_hosted_firmware_errors(char* latest, int size) {
+	if (latest != 0 && size > 0) {
+		snprintf(latest, (size_t)size, "%s", latestFirmwareError);
+	}
+	return firmwareErrors;
+}
+
 void deluge_hosted_log(const char* text) {
 	static int enabled = -1;
 	if (enabled < 0) {

@@ -12,6 +12,7 @@
 #if !defined(DELUGE_ENGINE_LINKED)
 
 #include "engine.h"
+#include "matrix.h"
 
 #include <cmath>
 #include <cstdio>
@@ -26,6 +27,10 @@ struct Tone {
 	float level = 0.0f, phase = 0.0f;
 };
 Tone tones[8];
+// No engine to hold them, so the placeholder remembers what the knobs and grid pads were set to:
+// the plugin reads them back after every change and expects to find them.
+int knobs[kNumKnobs];
+int32_t pads[kGridSlots];
 } // namespace
 
 void engineInit(const char*) {}
@@ -33,6 +38,13 @@ void engineInit(const char*) {}
 int engineLoadSynth(const char*) {
 	for (Tone& t : tones) {
 		t = Tone();
+	}
+	return 0;
+}
+
+int engineFirmwareErrors(char* latest, int size) {
+	if (size > 0) {
+		latest[0] = 0;
 	}
 	return 0;
 }
@@ -47,12 +59,30 @@ bool engineKnobName(int knob, char* out, int outSize) {
 	return true;
 }
 
-bool engineKnobGet(int, int* position) {
-	*position = 0;
+bool engineKnobGet(int knob, int* position) {
+	if (knob < 0 || knob >= kNumKnobs) {
+		return false;
+	}
+	*position = knobs[knob];
 	return true;
 }
 
-void engineKnobSet(int, int) {}
+void engineKnobSet(int knob, int position) {
+	if (knob >= 0 && knob < kNumKnobs) {
+		knobs[knob] = position;
+	}
+}
+
+void engineCellSet(int layer, int x, int y, int32_t value) {
+	if (layer >= 0 && layer < kGridLayers && x >= 0 && x < kGridColumns && y >= 0 && y < kGridRows) {
+		pads[gridSlot(layer, x, y)] = value;
+	}
+}
+
+void engineGridRead(int32_t* values, uint8_t* relevant) {
+	std::memcpy(values, pads, sizeof pads);
+	std::memset(relevant, 1, kGridSlots);
+}
 
 void enginePitchBend(int) {}
 void engineModWheel(int) {}

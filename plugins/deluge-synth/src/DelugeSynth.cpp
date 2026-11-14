@@ -17,6 +17,13 @@
 // Gold knobs: parameters Gold 1..16 are the sixteen gold-knob assignments stored in the preset
 // (eight buttons times two knobs on a Deluge). Their value text names what each controls.
 //
+// The shortcut grid: one parameter for every pad of the Deluge's 16 x 8 grid that edits a value of
+// the sound (grid_table.h, generated from the firmware; hosted/matrix.h reads and writes them
+// through the firmware's own menu items). A pad that does nothing in the loaded preset (an FM
+// control in a subtractive sound) shows "-". Gold knobs and pads can reach the same thing, and one
+// pad can change what others do, so after any change the audio thread reads everything back and
+// the worker thread makes the parameters show it (see "engine parameters" below).
+//
 // Choosing a preset: the Preset parameter is the position in the sorted list of preset files, and
 // Folder is the folder it sits in. Four button parameters step through presets and folders.
 //
@@ -29,12 +36,15 @@
 #include "mpc_plugin.h"
 
 #include "engine.h"
+#include "grid_table.h"
+#include "matrix.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <dirent.h>
 #include <strings.h>
 #include <sys/stat.h>
@@ -55,8 +65,15 @@ enum ParamIndex
     kPresetPrev,
     kPresetNext,
     kGold,           // first of 16: the preset's gold-knob assignments, in the Deluge's order
-    kNumParams = kGold + deluge_hosted::kNumKnobs
+    kGrid = kGold + deluge_hosted::kNumKnobs,   // first of the shortcut-grid pads, in grid_table.h's order
+    kNumParams = kGrid + grid::kNumCells
 };
+
+// "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
+// knobs and then the grid pads. Engine parameter m is plugin parameter kGold + m.
+constexpr int kNumEngineParams = deluge_hosted::kNumKnobs + grid::kNumCells;
+constexpr int kFirstCell = deluge_hosted::kNumKnobs;   // engine parameter of grid::kCells[0]
+constexpr int slotOf(const grid::Cell& cell) { return deluge_hosted::gridSlot(cell.layer, cell.x, cell.y); }
 
 // One engine per process (see the header comment).
 std::mutex gEngineLock;
@@ -93,10 +110,32 @@ public:
             std::snprintf(id, sizeof id, "gold%d", k + 1);
             std::snprintf(name, sizeof name, "Gold %d", k + 1);
             addParam(mpc::intParam(id, name, deluge_hosted::kKnobMin, deluge_hosted::kKnobMax, 0));
-            pendingKnob_[k].store(kNoKnobChange);
-            hostKnob_[k].store(0);
             knobNames_[k][0] = 0;
+            snapKnobValid_[k].store(false);
         }
+        // The shortcut grid. Ids, and the order here, are grid_table.h's and must not change.
+        for (int c = 0; c < grid::kNumCells; ++c)
+        {
+            const grid::Cell& cell = grid::kCells[c];
+            if (cell.kind == grid::Kind::Toggle)
+                addParam(mpc::boolParam(cell.id, cell.name, cell.initial != 0));
+            else if (cell.kind == grid::Kind::Choice)
+                addParam(mpc::choiceParam(cell.id, cell.name,
+                                          std::vector<std::string>(cell.table, cell.table + (cell.max - cell.min + 1)),
+                                          cell.initial - cell.min));
+            else
+                addParam(mpc::intParam(cell.id, cell.name, cell.min, cell.max, cell.initial));
+            cellRelevant_[c].store(true);   // until a preset says otherwise
+            snapRelevant_[c].store(true);
+        }
+        for (int m = 0; m < kNumEngineParams; ++m)
+        {
+            pending_[m].store(kNoChange);
+            host_[m].store(getInt(kGold + m));
+            lastHostChange_[m].store(0);
+            snap_[m].store(0);
+        }
+        for (auto& word : hostToTell_) word.store(0);
     }
 
     ~DelugeSynth() override
@@ -160,13 +199,17 @@ public:
             case kFolderPrev: buttonSet(index, plainValue); if (pressed) browse(0, -1, -1); break;
             case kFolderNext: buttonSet(index, plainValue); if (pressed) browse(0, +1, -1); break;
             default:
-                // A gold knob moved by the user or the host (not by this thread mirroring the
-                // engine): remember it, and process() hands it to the engine.
-                if (index >= kGold && index < kGold + deluge_hosted::kNumKnobs && !tMirroringKnobs)
+                // A gold knob or grid pad moved by the user or the host (not by this thread
+                // mirroring the engine): remember it, and process() hands it to the engine.
+                if (index >= kGold && index < kNumParams && !tMirroringKnobs)
                 {
-                    const int position = (int)std::lround(plainValue);
-                    hostKnob_[index - kGold].store(position);
-                    pendingKnob_[index - kGold].store(position);
+                    const int m = index - kGold;
+                    const int value = (int)std::lround(plainValue);
+                    host_[m].store(value);
+                    pending_[m].store(value);
+                    // After the value is in place: a reader that sees the new stamp sees the value.
+                    lastHostChange_[m].store(changeCounter_.fetch_add(1) + 1);
+                    anyPending_.store(true);
                 }
                 break;
         }
@@ -235,6 +278,23 @@ public:
             out = text;
             return true;
         }
+        if (index >= kGrid && index < kNumParams)
+        {
+            // The firmware's own text for the value (grid_table.h), or "-" for a pad that does
+            // nothing in the loaded preset.
+            const int c = index - kGrid;
+            const grid::Cell& cell = grid::kCells[c];
+            if (!cellRelevant_[c].load(std::memory_order_relaxed)) { out = "-"; return true; }
+            const int value = mpc::clamp((int)std::lround(plainValue), (int)cell.min, (int)cell.max);
+            if (cell.text == grid::Text::Table) { out = cell.table[value - cell.min]; return true; }
+            for (int e = 0; e < cell.numExceptions; ++e)
+                if (cell.exceptions[e].value == value) { out = cell.exceptions[e].text; return true; }
+            char text[24];
+            if (cell.text == grid::Text::Hundredths) std::snprintf(text, sizeof text, "%.2f", (double)value / 100.0);
+            else std::snprintf(text, sizeof text, "%d", value);
+            out = text;
+            return true;
+        }
         if (index == kFolder)
         {
             if (folders_.empty()) { out = "(none)"; return true; }
@@ -293,6 +353,10 @@ public:
             goldPreset_.store(presetIndex());
             knobChanges_.fetch_add(1);
             putBackHostKnobs(false);
+            // The MPC set the parameters one by one, in order, and some pads only take a value
+            // once another has changed (an FM control needs the synth mode set first). Have the
+            // worker hand them all to the engine again, in as many rounds as that takes.
+            resync_.store(true);
         }
         else
         {
@@ -303,16 +367,16 @@ public:
         waitUntilSettled();
     }
 
-    // Makes the gold parameters hold again the values last set from outside (by the MPC).
+    // Makes the engine parameters hold again the values last set from outside (by the MPC).
     void putBackHostKnobs(bool tellHost)
     {
         tMirroringKnobs = true;
-        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        for (int m = 0; m < kNumEngineParams; ++m)
         {
-            const int wanted = hostKnob_[k].load();
-            if (getInt(kGold + k) == wanted) continue;
-            set(kGold + k, (float)wanted);
-            if (tellHost) tellHostLater(kGold + k);
+            const int wanted = host_[m].load();
+            if (getInt(kGold + m) == wanted) continue;
+            set(kGold + m, (float)wanted);
+            if (tellHost) tellHostLater(kGold + m);
         }
         tMirroringKnobs = false;
     }
@@ -352,10 +416,26 @@ public:
                 if (missedNoteOff_[note >> 6] & (uint64_t(1) << (note & 63))) deluge_hosted::engineNoteOff(note);
             missedNoteOff_[0] = missedNoteOff_[1] = 0;
         }
-        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        // Engine parameters set from outside since the last block. Afterwards everything is read
+        // back (not more often than every kSnapshotSpacing frames), because one change can move
+        // others: a gold knob and a pad on the same thing, a synth mode that brings pads to life.
+        const int changesBefore = changeCounter_.load(std::memory_order_relaxed);
+        if (anyPending_.exchange(false, std::memory_order_relaxed))
         {
-            const int position = pendingKnob_[k].exchange(kNoKnobChange, std::memory_order_relaxed);
-            if (position != kNoKnobChange) deluge_hosted::engineKnobSet(k, position);
+            for (int m = 0; m < kNumEngineParams; ++m)
+            {
+                const int value = pending_[m].exchange(kNoChange, std::memory_order_relaxed);
+                if (value == kNoChange) continue;
+                engineSet(m, value);
+                snapshotWanted_ = true;
+            }
+        }
+        framesSinceSnapshot_ = std::min(framesSinceSnapshot_ + numFrames, kSnapshotSpacing);
+        if (snapshotWanted_ && framesSinceSnapshot_ >= kSnapshotSpacing)
+        {
+            snapshotWanted_ = false;
+            framesSinceSnapshot_ = 0;
+            takeSnapshot(changesBefore);
         }
         const float targetGain = dbToGain(get(kVolume));
 
@@ -437,6 +517,40 @@ private:
 
     static float dbToGain(float dB) { return std::pow(10.0f, dB / 20.0f); }
 
+    // Engine lock held.
+    static void engineSet(int m, int value)
+    {
+        if (m < kFirstCell) { deluge_hosted::engineKnobSet(m, value); return; }
+        const grid::Cell& cell = grid::kCells[m - kFirstCell];
+        deluge_hosted::engineCellSet(cell.layer, cell.x, cell.y, value);
+    }
+
+    // Engine lock held; audio thread or worker. Publishes what every engine parameter holds now,
+    // for the worker thread to show (showSnapshot). `changes` is changeCounter_ as it was before
+    // the values this reflects were handed to the engine.
+    void takeSnapshot(int changes)
+    {
+        int32_t values[deluge_hosted::kGridSlots];
+        uint8_t relevant[deluge_hosted::kGridSlots];
+        deluge_hosted::engineGridRead(values, relevant);
+        for (int c = 0; c < grid::kNumCells; ++c)
+        {
+            const int slot = slotOf(grid::kCells[c]);
+            snapRelevant_[c].store(relevant[slot] != 0, std::memory_order_relaxed);
+            if (relevant[slot]) snap_[kFirstCell + c].store((int)values[slot], std::memory_order_relaxed);
+        }
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        {
+            int position = 0;
+            const bool valid = deluge_hosted::engineKnobGet(k, &position);
+            snapKnobValid_[k].store(valid, std::memory_order_relaxed);
+            if (valid) snap_[k].store(position, std::memory_order_relaxed);
+        }
+        snapChanges_.store(changes, std::memory_order_relaxed);
+        snapSerial_.fetch_add(1);
+        statSnapshots_.fetch_add(1, std::memory_order_relaxed);
+    }
+
     // Preset files under Content/SYNTHS, subfolders included, as paths relative to that folder
     // ("Pads/Warm.XML"), sorted so that a folder's presets sit together. Done once, in the
     // constructor.
@@ -496,12 +610,14 @@ private:
         {
             applyBrowsing();
             loadRequestedPreset();
+            showSnapshot();
             tellHostNow();
             // Keep the diagnostics file a few seconds fresh while audio runs, so that it says
             // something useful after a crash or a reset too.
             const int64_t now = nowMs();
             if (now - diagnosticsWrittenMs_ >= 3000 && statCalls_.load() != diagnosticsCalls_)
             {
+                noteFirmwareErrors();
                 diagnosticsWrittenMs_ = now;
                 diagnosticsCalls_ = statCalls_.load();
                 writeDiagnostics();
@@ -534,16 +650,63 @@ private:
     // has to be told is noted here and passed on by the worker loop when nobody is waiting.
     void tellHostLater(int index)
     {
-        hostToTell_.fetch_or(uint32_t(1) << index);
+        hostToTell_[index >> 6].fetch_or(uint64_t(1) << (index & 63));
     }
     void tellHostNow()
     {
         if (waiters_.load() != 0) return;
-        const uint32_t which = hostToTell_.exchange(0);
-        if (which == 0) return;
-        for (int index = 0; index < numParams() && index < 32; ++index)
-            if (which & (uint32_t(1) << index)) notifyHostParameterChanged(index);
-        requestDisplayUpdate();
+        bool any = false;
+        for (int word = 0; word < kTellWords; ++word)
+        {
+            const uint64_t which = hostToTell_[word].exchange(0);
+            if (which == 0) continue;
+            any = true;
+            for (int bit = 0; bit < 64 && word * 64 + bit < numParams(); ++bit)
+                if (which & (uint64_t(1) << bit)) notifyHostParameterChanged(word * 64 + bit);
+        }
+        if (any) requestDisplayUpdate();
+    }
+
+    // Worker thread: after the audio thread has read the engine back (takeSnapshot), make the
+    // parameters show it. A parameter the MPC has set since then is left alone: its value is
+    // newer than the snapshot and on its way to the engine.
+    void showSnapshot()
+    {
+        const uint32_t serial = snapSerial_.load();
+        if (serial == snapSeen_) return;
+        if (waiters_.load() != 0 || knobsBusy_.load()) return;   // a project save or load is in hand: afterwards
+        snapSeen_ = serial;
+        const int loaded = loadedPreset_.load();
+        // About to be settled as a whole by syncKnobs(): nothing to add here.
+        if (goldPreset_.load() != loaded || requestedPreset_.load() != loaded || reloadPreset_.load() || resync_.load()) return;
+        const int changes = snapChanges_.load();
+        for (int m = 0; m < kNumEngineParams; ++m)
+        {
+            if (m >= kFirstCell)
+            {
+                const bool relevant = snapRelevant_[m - kFirstCell].load();
+                if (cellRelevant_[m - kFirstCell].exchange(relevant) != relevant) tellHostLater(kGold + m);   // its text changes
+                if (!relevant) continue;
+            }
+            else if (!snapKnobValid_[m].load()) continue;
+            if (pending_[m].load() != kNoChange) continue;
+            const int stamp = lastHostChange_[m].load();
+            if (stamp - changes > 0) continue;
+            showEngineValue(m, snap_[m].load(), stamp);
+        }
+    }
+
+    // Worker thread: parameter m shows `value`, which is what the engine holds, unless the MPC
+    // has set the parameter since `stamp` was read; then the MPC's value stands.
+    void showEngineValue(int m, int value, int stamp)
+    {
+        if (getInt(kGold + m) == value) { if (lastHostChange_[m].load() == stamp) host_[m].store(value); return; }
+        tMirroringKnobs = true;
+        set(kGold + m, (float)value);
+        if (lastHostChange_[m].load() != stamp) set(kGold + m, (float)host_[m].load());
+        else { host_[m].store(value); statShown_.fetch_add(1); }
+        tMirroringKnobs = false;
+        tellHostLater(kGold + m);
     }
 
     // Called on the MPC's thread around a project save or load: gives the worker thread time to
@@ -559,7 +722,7 @@ private:
         {
             const int requested = requestedPreset_.load();
             const bool settled = loadedPreset_.load() == requested && goldPreset_.load() == requested
-                                 && !reloadPreset_.load() && !knobsBusy_.load();
+                                 && !reloadPreset_.load() && !resync_.load() && !knobsBusy_.load();
             if (settled || quit_.load()) { done = true; break; }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
@@ -574,17 +737,20 @@ private:
         const bool reload = reloadPreset_.exchange(false);
         if (wanted == loadedPreset_.load() && !reload)
         {
-            // Nothing to load. But the gold parameters may still be another preset's: the user
-            // went to a different preset and came back while this one was on its way in.
-            if (goldPreset_.load() != wanted)
+            // Nothing to load. But the engine parameters may still be another preset's (the user
+            // went to a different preset and came back while this one was on its way in), or a
+            // project has just set them all and they have to go to the engine together.
+            if (goldPreset_.load() != wanted || resync_.load())
             {
                 std::lock_guard<std::mutex> lock(gEngineLock);
+                resync_.store(false);
                 syncKnobs();
             }
             return;
         }
         const std::string path = "SYNTHS/" + presets_[(size_t)wanted];
         std::lock_guard<std::mutex> lock(gEngineLock);
+        resync_.store(false);
         loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
         int samplesLoaded = 0, samplesFailed = 0;
         deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
@@ -593,16 +759,23 @@ private:
         loadedPreset_.store(wanted);
         loads_.fetch_add(1);
         syncKnobs();
+        noteFirmwareErrors();
     }
 
-    // With a preset in the engine (engine lock held): make the 16 gold parameters and the engine
+    // Worker thread. Needs no engine lock: it reads a counter and a few characters.
+    void noteFirmwareErrors()
+    {
+        firmwareErrors_.store(deluge_hosted::engineFirmwareErrors(latestFirmwareError_, (int)sizeof latestFirmwareError_));
+    }
+
+    // With a preset in the engine (engine lock held): make the engine parameters and the engine
     // agree. goldPreset_ says which preset the parameter values belong to:
     //
     //   the loaded one     they are the user's (set on the MPC, or restored with a project) and
     //                      go to the engine
     //   another, and the   the user has changed preset: the loaded preset's own knob positions
-    //   loaded one is the  become the parameter values, and from now on belong to it
-    //   one asked for
+    //   loaded one is the  and pad values become the parameter values, and from now on belong
+    //   one asked for      to it
     //   another, and the   this preset was already on its way in when the user chose again; it
     //   user has moved on  is about to be replaced, so nothing is copied either way
     void syncKnobs()
@@ -619,28 +792,85 @@ private:
             int position = 0;
             if (keep)
             {
-                pendingKnob_[k].store(kNoKnobChange);
+                pending_[k].store(kNoChange);
                 deluge_hosted::engineKnobSet(k, getInt(kGold + k));
             }
             else if (adopt && deluge_hosted::engineKnobGet(k, &position))
             {
-                pendingKnob_[k].store(kNoKnobChange);
+                pending_[k].store(kNoChange);
                 if (getInt(kGold + k) != position) { set(kGold + k, (float)position); tellHostLater(kGold + k); }
-                hostKnob_[k].store(position);
+                host_[k].store(position);
             }
         }
         tMirroringKnobs = false;
+
+        // The grid pads. Kept values go to the engine only where the engine holds something
+        // else (after the gold knobs above, which may reach the same things), and in rounds:
+        // setting one pad (the synth mode, an oscillator's type) can bring others to life, which
+        // then take their values in the next round.
+        int32_t values[deluge_hosted::kGridSlots];
+        uint8_t relevant[deluge_hosted::kGridSlots];
+        if (keep)
+        {
+            for (int c = 0; c < grid::kNumCells; ++c) pending_[kFirstCell + c].store(kNoChange);
+            // A round offers every pad that applies its kept value where the engine holds another.
+            // Rounds go on while one changes anything in the engine: a value the firmware will
+            // not hold (an oscillator type that ring-mod mode does not have) is offered again once
+            // something else (the mode) has changed, and no more when nothing does.
+            int32_t before[deluge_hosted::kGridSlots];
+            uint8_t relevantBefore[deluge_hosted::kGridSlots];
+            deluge_hosted::engineGridRead(before, relevantBefore);
+            for (int round = 0; round < 8; ++round)
+            {
+                for (int c = 0; c < grid::kNumCells; ++c)
+                {
+                    const grid::Cell& cell = grid::kCells[c];
+                    const int slot = slotOf(cell);
+                    if (!relevantBefore[slot] || before[slot] == getInt(kGrid + c)) continue;
+                    deluge_hosted::engineCellSet(cell.layer, cell.x, cell.y, getInt(kGrid + c));
+                }
+                deluge_hosted::engineGridRead(values, relevant);
+                bool changed = false;
+                for (int c = 0; c < grid::kNumCells && !changed; ++c)
+                {
+                    const int slot = slotOf(grid::kCells[c]);
+                    changed = relevant[slot] != relevantBefore[slot] || (relevant[slot] && values[slot] != before[slot]);
+                }
+                if (!changed) break;
+                std::memcpy(before, values, sizeof before);
+                std::memcpy(relevantBefore, relevant, sizeof relevantBefore);
+            }
+        }
+        // Then the parameters show what the engine holds: all of the new preset's values, or,
+        // of kept ones, the few the firmware held differently.
+        deluge_hosted::engineGridRead(values, relevant);
+        for (int c = 0; c < grid::kNumCells; ++c)
+        {
+            const int slot = slotOf(grid::kCells[c]);
+            const bool nowRelevant = relevant[slot] != 0;
+            if (cellRelevant_[c].exchange(nowRelevant) != nowRelevant) tellHostLater(kGrid + c);
+            if (!nowRelevant || !(keep || adopt)) continue;
+            if (adopt) pending_[kFirstCell + c].store(kNoChange);
+            showEngineValue(kFirstCell + c, (int)values[slot], lastHostChange_[kFirstCell + c].load());
+        }
+        snapSeen_ = snapSerial_.load();   // an earlier read-back is of the engine as it was before this
+
         if (adopt)
         {
             if (knobChanges_.load() == changesBefore) goldPreset_.store(loaded);
             else
             {
-                // A project restore arrived while the loop above was running, and wins: the
-                // values it set are in hostKnob_. If they are for this preset they also have to
-                // reach the engine; if for another, that preset's load will see to it.
+                // (Known gap: a parameter the restore set before the loops above reached it has
+                // been overwritten there, host_ included, and comes back as the preset's own
+                // value. It needs a restore to land while a preset is still on its way in; the
+                // SDK simulator, which restores straight after choosing a random preset, shows it
+                // about once in a hundred runs. See CLAUDE.md.)
+                // A project restore arrived while the loops above were running, and wins: the
+                // values it set are in host_. If they are for this preset they also have to reach
+                // the engine (the next turn of the worker loop does it); if for another, that
+                // preset's load will see to it.
                 putBackHostKnobs(true);
-                if (goldPreset_.load() == loaded)
-                    for (int k = 0; k < deluge_hosted::kNumKnobs; ++k) deluge_hosted::engineKnobSet(k, getInt(kGold + k));
+                if (goldPreset_.load() == loaded) resync_.store(true);
             }
         }
         knobsBusy_.store(false);
@@ -659,12 +889,19 @@ private:
 
     // What happened so far, written into the plugin's own folder: there is no other way to see
     // inside the plugin on the device. `mpc_remote.py export` brings the folder back.
+    int relevantCells()
+    {
+        int n = 0;
+        for (int c = 0; c < grid::kNumCells; ++c) n += cellRelevant_[c].load() ? 1 : 0;
+        return n;
+    }
+
     void writeDiagnostics()
     {
         const std::string folder = mpc::pluginFolder();
         if (folder.empty()) return;
         std::lock_guard<std::mutex> lock(diagnosticsLock_);   // the MPC's thread and the worker both write it
-        char text[1600];
+        char text[2100];
         const uint64_t frames = statFrames_.load(), ns = statNs_.load();
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
@@ -678,7 +915,9 @@ private:
                       "time in process(): %.2f s of audio rendered, average %.2f%% of one core, worst block %.1f%%\n"
                       "block sizes asked for: %d to %d frames\n"
                       "samples at the engine's clipping ceiling: %u of %llu (%.3f%%)\n"
-                      "project saves %u, restores %u (%u of them without usable knob values); waits that timed out %u\n",
+                      "project saves %u, restores %u (%u of them without usable knob values); waits that timed out %u\n"
+                      "grid: %d of %d pads apply to this preset; engine read back %u times, %u parameter values changed to match\n"
+                      "firmware error stops (its own consistency checks; should be 0): %d%s%s\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
                       "Deluge firmware, 64-bit ARM",
@@ -698,7 +937,9 @@ private:
                       statMinBlock_.load() == INT32_MAX ? 0 : statMinBlock_.load(), statMaxBlock_.load(),
                       statClipped_.load(), (unsigned long long)(2 * frames),
                       frames > 0 ? 100.0 * (double)statClipped_.load() / (double)(2 * frames) : 0.0,
-                      statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load());
+                      statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load(),
+                      relevantCells(), grid::kNumCells, statSnapshots_.load(), statShown_.load(),
+                      firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_);
         if (FILE* f = std::fopen((folder + "/diagnostics.txt").c_str(), "w"))
         {
             std::fputs(text, f);
@@ -714,9 +955,24 @@ private:
     std::vector<std::string> folders_;       // distinct folders of presets_, in list order
     std::vector<int>         folderStart_;   // index in presets_ of each folder's first preset
     std::atomic<bool> browseChanged_{false};   // parameterChanged moved Preset, Folder or a button: tell the MPC
-    static constexpr int kNoKnobChange = -100000;
-    std::atomic<int>  pendingKnob_[deluge_hosted::kNumKnobs];   // set from outside, not yet given to the engine
-    std::atomic<int>  hostKnob_[deluge_hosted::kNumKnobs];      // the last value set from outside
+    // Per engine parameter (gold knobs, then grid pads):
+    static constexpr int kNoChange = -100000;
+    std::atomic<int>  pending_[kNumEngineParams];          // set from outside, not yet given to the engine
+    std::atomic<int>  host_[kNumEngineParams];             // the last value set from outside
+    std::atomic<int>  lastHostChange_[kNumEngineParams];   // changeCounter_ when it was last set from outside
+    std::atomic<int>  snap_[kNumEngineParams];             // what the engine held at the last read-back
+    std::atomic<int>  changeCounter_{0};                   // counts every setting from outside
+    std::atomic<bool> anyPending_{false};
+    std::atomic<bool> snapKnobValid_[deluge_hosted::kNumKnobs];   // at the last read-back: the knob controls something
+    std::atomic<bool> snapRelevant_[grid::kNumCells];             // at the last read-back: the pad applies to the preset
+    std::atomic<bool> cellRelevant_[grid::kNumCells];             // the same, as the parameters' texts show it
+    std::atomic<int>  snapChanges_{0};       // changeCounter_ before the values the read-back reflects went in
+    std::atomic<uint32_t> snapSerial_{0};    // counts read-backs
+    uint32_t          snapSeen_ = 0;         // worker thread only: the read-back the parameters last followed
+    static constexpr int kSnapshotSpacing = 1024;   // frames between read-backs, at least
+    bool              snapshotWanted_ = false;      // audio thread only
+    int               framesSinceSnapshot_ = kSnapshotSpacing;   // audio thread only
+    std::atomic<bool> resync_{false};        // a project set the engine parameters: hand them all to the engine
     char              knobNames_[deluge_hosted::kNumKnobs][32];
     // Set while this thread is the one writing a parameter, so parameterChanged() can tell our own
     // writes from the MPC's. Per thread: the MPC may be setting parameters on another at the same time.
@@ -730,7 +986,8 @@ private:
     std::atomic<int>  knobChanges_{0};       // counts project restores, so syncKnobs can tell one arrived
     std::atomic<bool> knobsBusy_{false};     // the worker is copying knob positions between engine and parameters
     std::atomic<bool> reloadPreset_{false};  // load the requested preset even if it is the one loaded
-    std::atomic<uint32_t> hostToTell_{0};    // parameters (one bit each) whose new value the MPC has yet to be told
+    static constexpr int kTellWords = (kNumParams + 63) / 64;
+    std::atomic<uint64_t> hostToTell_[kTellWords];   // parameters (one bit each) whose new value the MPC has yet to be told
     std::atomic<int>  waiters_{0};           // threads inside waitUntilSettled()
     std::atomic<bool> workerRunning_{false};
     std::thread       worker_;
@@ -748,6 +1005,9 @@ private:
     std::atomic<uint64_t> statNs_{0}, statFrames_{0};
     std::atomic<float>    statPeak_{0.0f};
     std::atomic<uint32_t> statClipped_{0}, statSaves_{0}, statRestores_{0}, statRestoresWithoutKnobs_{0}, statWaitTimeouts_{0};
+    std::atomic<uint32_t> statSnapshots_{0}, statShown_{0};
+    std::atomic<int>      firmwareErrors_{0};
+    char                  latestFirmwareError_[8] = {0};   // worker thread writes; read for the diagnostics file
     std::atomic<int>      statMinBlock_{INT32_MAX}, statMaxBlock_{0};
     std::mutex            diagnosticsLock_;
     int64_t               diagnosticsWrittenMs_ = 0;   // worker thread only

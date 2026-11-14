@@ -39,7 +39,7 @@ diff -ruN a/deluge/src/OSLikeStuff/timers_interrupts/timers_interrupts.h b/delug
 diff -ruN a/deluge/src/RZA1/cpu_specific.h b/deluge/src/RZA1/cpu_specific.h
 --- a/deluge/src/RZA1/cpu_specific.h
 +++ b/deluge/src/RZA1/cpu_specific.h
-@@ -119,11 +119,18 @@
+@@ -119,13 +119,24 @@
  #define MIDI_RX_DMA_CHANNEL        13
  #define MIDI_RX_TIMING_DMA_CHANNEL 14
  
@@ -57,7 +57,13 @@ diff -ruN a/deluge/src/RZA1/cpu_specific.h b/deluge/src/RZA1/cpu_specific.h
  
 -#define INTERNAL_MEMORY_BEGIN 0x20000000uL
  
++#if defined(DELUGE_HOSTED) // mpc-deluge: no second, uncached mapping of memory here
++#define UNCACHED_MIRROR_OFFSET 0
++#else
  #define UNCACHED_MIRROR_OFFSET 0x40000000
++#endif
+ 
+ #define NUM_LEVEL_INDICATORS 2
  
 diff -ruN a/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h b/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h
 --- a/deluge/src/RZA1/system/iodefines/mtu2_iodefine.h
@@ -223,6 +229,19 @@ diff -ruN a/deluge/src/deluge/gui/views/instrument_clip_view.cpp b/deluge/src/de
  	if (slashAddress == nullptr) {
  		return ActionResult::NOT_DEALT_WITH;
  	}
+diff -ruN a/deluge/src/deluge/hid/display/display.cpp b/deluge/src/deluge/hid/display/display.cpp
+--- a/deluge/src/deluge/hid/display/display.cpp
++++ b/deluge/src/deluge/hid/display/display.cpp
+@@ -93,6 +93,9 @@
+ bool have_oled_screen = false;
+ 
+ void wait_for_select_encoder_press() {
++#if defined(DELUGE_HOSTED) // mpc-deluge: nobody to press it, and this is the host's audio thread
++	return;
++#endif
+ 	// The PIC reports press and release with the same button code, prefixing releases with NEXT_PAD_OFF. Ignoring
+ 	// those means a freeze triggered from a select press isn't dismissed by that same press's release.
+ 	bool next_is_release = false;
 diff -ruN a/deluge/src/deluge/hid/display/oled.cpp b/deluge/src/deluge/hid/display/oled.cpp
 --- a/deluge/src/deluge/hid/display/oled.cpp
 +++ b/deluge/src/deluge/hid/display/oled.cpp
@@ -235,6 +254,30 @@ diff -ruN a/deluge/src/deluge/hid/display/oled.cpp b/deluge/src/deluge/hid/displ
  	DMACn(OLED_SPI_DMA_CHANNEL).N0SA_n = dataAddress;
  	// oledFrameQueueReadPos = (oledFrameQueueReadPos + 1) & (OLED_FRAME_QUEUE_SIZE - 1);
  	// todo - should only need a flush
+diff -ruN a/deluge/src/deluge/hid/display/seven_segment.cpp b/deluge/src/deluge/hid/display/seven_segment.cpp
+--- a/deluge/src/deluge/hid/display/seven_segment.cpp
++++ b/deluge/src/deluge/hid/display/seven_segment.cpp
+@@ -15,6 +15,9 @@
+  * If not, see <https://www.gnu.org/licenses/>.
+  */
+ 
++#if defined(DELUGE_HOSTED)
++#include "hosted.h"
++#endif
+ #include "hid/display/seven_segment.h"
+ #include "definitions_cxx.hpp"
+ #include "drivers/pic/pic.h"
+@@ -697,6 +700,10 @@
+ // Highest error code used, fix branch: i041
+ 
+ void SevenSegment::freezeWithError(char const* text) {
++#if defined(DELUGE_HOSTED) // mpc-deluge: note it and carry on, as the firmware does after "attempt resume"
++	deluge_hosted_firmware_error(text);
++	return;
++#endif
+ 	setTextVeryBasicA1(text);
+ 
+ 	deluge::hid::display::wait_for_select_encoder_press();
 diff -ruN a/deluge/src/deluge/io/debug/print.cpp b/deluge/src/deluge/io/debug/print.cpp
 --- a/deluge/src/deluge/io/debug/print.cpp
 +++ b/deluge/src/deluge/io/debug/print.cpp
@@ -1465,6 +1508,29 @@ diff -ruN a/deluge/src/deluge/processing/vector_rendering_function.h b/deluge/sr
  	});
  	ArgonHalf<int16_t> valueA1 = readValueA.Narrow().As<int16_t>();
  	ArgonHalf<int16_t> valueA2 = readValueA.ShiftRightNarrow<16>().As<int16_t>();
+diff -ruN a/deluge/src/deluge/storage/audio/audio_file.cpp b/deluge/src/deluge/storage/audio/audio_file.cpp
+--- a/deluge/src/deluge/storage/audio/audio_file.cpp
++++ b/deluge/src/deluge/storage/audio/audio_file.cpp
+@@ -15,6 +15,9 @@
+  * If not, see <https://www.gnu.org/licenses/>.
+  */
+ 
++#if defined(DELUGE_HOSTED)
++#include "hosted.h"
++#endif
+ #include "storage/audio/audio_file.h"
+ #include "definitions_cxx.hpp"
+ #include "hid/display/display.h"
+@@ -497,6 +500,9 @@
+ 
+ 	// If it's now zero, it's become unused
+ 	if (numReasonsToBeLoaded == 0) {
++#if defined(DELUGE_HOSTED) // mpc-deluge: the host keeps every cluster of a sample in use loaded; it lets go first
++		deluge_hosted_audio_file_unused(this);
++#endif
+ 		numReasonsDecreasedToZero(errorCode);
+ 		GeneralMemoryAllocator::get().putStealableInQueue(this, StealableQueue::NO_SONG_AUDIO_FILE_OBJECTS);
+ 	}
 diff -ruN a/deluge/src/deluge/storage/audio/audio_file_manager.cpp b/deluge/src/deluge/storage/audio/audio_file_manager.cpp
 --- a/deluge/src/deluge/storage/audio/audio_file_manager.cpp
 +++ b/deluge/src/deluge/storage/audio/audio_file_manager.cpp

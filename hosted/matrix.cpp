@@ -281,4 +281,63 @@ bool engineCellOption(int layer, int x, int y, int index, char* out, int outSize
 	return false;
 }
 
+bool engineCellTextFor(int layer, int x, int y, int32_t value, char* out, int outSize) {
+	InEngine inEngine;
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	MenuItem* item = itemAt(layer, x, y);
+	Editing editing(item, x);
+	if (!editing.ok || outSize <= 0) {
+		return false;
+	}
+	if (auto* toggle = dynamic_cast<deluge::gui::menu_item::Toggle*>(item)) {
+		copy(out, (size_t)outSize, value != 0 ? "On" : "Off");
+		return editing.relevant(item, x);
+	}
+	auto* holder = dynamic_cast<Value<int32_t>*>(item);
+	if (holder == nullptr || !editing.relevant(item, x)) {
+		return false;
+	}
+	// The item formats the value it holds; lend it this one and then let it read its own again.
+	holder->readCurrentValue();
+	holder->setValue(value);
+	DEF_STACK_STRING_BUF(text, 40);
+	item->getNotificationValue(text);
+	holder->readCurrentValue();
+	copy(out, (size_t)outSize, text.c_str());
+	return true;
+}
+
+void engineGridRead(int32_t* values, uint8_t* relevant) {
+	InEngine inEngine;
+	std::memset(relevant, 0, kGridSlots);
+	for (int layer = 0; layer < kGridLayers; layer++) {
+		for (int x = 0; x < kGridColumns; x++) {
+			for (int y = 0; y < kGridRows; y++) {
+				MenuItem* item = itemAt(layer, x, y);
+				if (item == nullptr) {
+					continue;
+				}
+				auto* holder = dynamic_cast<Value<int32_t>*>(item);
+				auto* toggle = holder == nullptr ? dynamic_cast<Value<bool>*>(item) : nullptr;
+				if (holder == nullptr && toggle == nullptr) {
+					continue;
+				}
+				Editing editing(item, x);
+				if (!editing.ok) {
+					return; // no preset: the same for every pad
+				}
+				if (!editing.relevant(item, x)) {
+					continue;
+				}
+				const int slot = gridSlot(layer, x, y);
+				item->readCurrentValue();
+				values[slot] = holder != nullptr ? holder->getValue() : (toggle->getValue() ? 1 : 0);
+				relevant[slot] = 1;
+			}
+		}
+	}
+}
+
 } // namespace deluge_hosted

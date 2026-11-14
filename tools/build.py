@@ -76,5 +76,78 @@ sdk_build.Builder.build_arm = lambda self, target, output: with_firmware(
     self, target, lambda: _build_arm(self, target, output))
 sdk_build.Builder.build_native = lambda self, output: with_firmware(self, "native", lambda: _build_native(self, output))
 
+# The SDK's generator gives every ui.json page a function key of its own, but an MPC has six keys.
+# A project's tabs.json says which pages share a key (pressing the key again steps through them)
+# and which sixteen parameters the Q-Links control in the MPC's Program mode. The generated files
+# are changed as text, not parsed and rewritten: the MPC's parser depends on key order, and
+# TUI.json repeats a key in places, which a JSON library would drop.
+import json  # noqa: E402
+import re  # noqa: E402
+
+
+def apply_tabs(project, out_dir, params_json):
+    spec_path = os.path.join(project, "tabs.json")
+    tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
+    q_path = os.path.join(out_dir, "Plugin Skins", "Q-Links.json")
+    if not (os.path.isfile(spec_path) and os.path.isfile(tui_path) and os.path.isfile(q_path)):
+        return
+    spec = json.load(open(spec_path))
+    place = {}  # page name -> (function key, position on it), both from 0
+    for key, names in enumerate(spec["keys"]):
+        if len(names) > 8:
+            raise sdk_build.BuildError("tabs.json: more than 8 pages on function key %d" % (key + 1))
+        for sub, name in enumerate(names):
+            place[name] = (key, sub)
+    if len(spec["keys"]) > 6:
+        raise sdk_build.BuildError("tabs.json: more than six function keys")
+
+    tui = open(tui_path, encoding="utf-8").read()
+    tab = re.compile(r'("tabName"\s*:\s*"([^"]*)"\s*,\s*"fnKeyIndex"\s*:\s*)(\d+)(\s*,\s*"fnKeySubIndex"\s*:\s*)(\d+)')
+    order = []  # the generator's tab number (from 1) -> where it goes
+
+    def move(m):
+        if m.group(2) not in place:
+            raise sdk_build.BuildError("tabs.json does not place the page \"%s\"" % m.group(2))
+        key, sub = place[m.group(2)]
+        order.append((key, sub))
+        return "%s%d%s%d" % (m.group(1), key, m.group(4), sub)
+
+    tui = tab.sub(move, tui)
+    if len(order) != len(place):
+        raise sdk_build.BuildError("tabs.json names %d pages, the skin has %d" % (len(place), len(order)))
+    open(tui_path, "w", encoding="utf-8").write(tui)
+
+    q = open(q_path, encoding="utf-8").read()
+    entry = re.compile(r'("Tab"\s*:\s*)(\d+)(\s*,\s*"SubTab"\s*:\s*)(\d+)')
+    q, n = entry.subn(lambda m: "%s%d%s%d" % (m.group(1), order[int(m.group(2)) - 1][0] + 1, m.group(3),
+                                              order[int(m.group(2)) - 1][1] + 1), q)
+    if n != len(order):
+        raise sdk_build.BuildError("Q-Links.json has %d tab entries, expected %d" % (n, len(order)))
+    if "programQLinks" in spec:
+        index = {p["name"]: p["index"] for p in json.load(open(params_json))["params"]}
+        head, sep, tail = q.partition('"Program Mode Q-Links"')
+        for knob, name in enumerate(spec["programQLinks"][:16]):
+            if name not in index:
+                raise sdk_build.BuildError("tabs.json programQLinks: no parameter called \"%s\"" % name)
+            tail, n = re.subn(r'("Q-Link %d"\s*:\s*)-?\d+' % (knob + 1), lambda m: m.group(1) + str(index[name]), tail, count=1)
+            if n != 1:
+                raise sdk_build.BuildError("Q-Links.json: no Program Mode entry for Q-Link %d" % (knob + 1))
+        q = head + sep + tail
+    open(q_path, "w", encoding="utf-8").write(q)
+    sdk_build.log("  tabs.json: %d pages on %d function keys" % (len(order), len(spec["keys"])))
+
+
+_make_skins = sdk_build.make_skins
+
+
+def make_skins(project, out_dir, params_json, no_ui):
+    made = _make_skins(project, out_dir, params_json, no_ui)
+    if made:
+        apply_tabs(project, out_dir, params_json)
+    return made
+
+
+sdk_build.make_skins = make_skins
+
 if __name__ == "__main__":
     sys.exit(sdk_build.main())

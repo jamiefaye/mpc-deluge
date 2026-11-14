@@ -145,6 +145,26 @@ static void makeSamplesResident() {
 	}
 }
 
+// The firmware is about to mark this file unused (hosted.h): give up our hold on its clusters, or
+// its check that an unused file has no data claimed stops it (E396). This happens when an
+// oscillator stops using its sample, for instance on changing from Sample to Wavetable.
+extern "C" void deluge_hosted_audio_file_unused(void* audioFile) {
+	size_t kept = 0;
+	for (Cluster* cluster : residentClusters) {
+		if (static_cast<void*>(static_cast<AudioFile*>(cluster->sample)) == audioFile) {
+			audioFileManager.removeReasonFromCluster(*cluster, "HOST");
+		}
+		else {
+			residentClusters[kept++] = cluster;
+		}
+	}
+	residentClusters.resize(kept);
+}
+
+int engineFirmwareErrors(char* latest, int size) {
+	return deluge_hosted_firmware_errors(latest, size);
+}
+
 static void releaseResidentSamples() {
 	for (Cluster* cluster : residentClusters) {
 		audioFileManager.removeReasonFromCluster(*cluster, "HOST");
@@ -278,7 +298,12 @@ void engineChannelPressure(int value) {
 
 // The firmware finds "the parameter under gold knob N" through the instrument's current knob
 // button (modKnobMode); this selects the button, asks, and puts the selection back.
-static ModelStackWithAutoParam* knobParam(char* modelStackMemory, int knob) {
+//
+// A knob may control the depth of a patch cable ("LFO1 -> pitch", the vibrato knob of most
+// presets), and a cable only exists while its depth is not zero. allowCreation makes one, as
+// turning the knob on a Deluge does (View::modEncoderAction asks with the firmware's default,
+// which is to create); without it such a knob has no parameter and the result is null.
+static ModelStackWithAutoParam* knobParam(char* modelStackMemory, int knob, bool allowCreation) {
 	if (synth == nullptr || knob < 0 || knob >= kNumKnobs) {
 		return nullptr;
 	}
@@ -289,7 +314,7 @@ static ModelStackWithAutoParam* knobParam(char* modelStackMemory, int knob) {
 	const uint8_t saved = *mode;
 	*mode = (uint8_t)(knob / 2);
 	// The firmware numbers the lower knob 0 and the upper knob 1.
-	ModelStackWithAutoParam* param = synth->getParamFromModEncoder(1 - (knob % 2), modelStack, false);
+	ModelStackWithAutoParam* param = synth->getParamFromModEncoder(1 - (knob % 2), modelStack, allowCreation);
 	*mode = saved;
 	return (param != nullptr && param->autoParam != nullptr) ? param : nullptr;
 }
@@ -324,8 +349,15 @@ bool engineKnobName(int knob, char* out, int outSize) {
 bool engineKnobGet(int knob, int* position) {
 	InEngine inEngine;
 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
-	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob);
+	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob, false);
 	if (param == nullptr) {
+		// A cable that does not exist is a depth of zero: the knob's lowest position. (Reading
+		// must not create it: a cable is part of the sound.)
+		if (synth != nullptr && knob >= 0 && knob < kNumKnobs
+		    && !synth->modKnobs[knob / 2][1 - (knob % 2)].paramDescriptor.isJustAParam()) {
+			*position = kKnobMin;
+			return true;
+		}
 		return false;
 	}
 	const int32_t value = param->autoParam->getValuePossiblyAtPos(0, param);
@@ -336,7 +368,9 @@ bool engineKnobGet(int knob, int* position) {
 void engineKnobSet(int knob, int position) {
 	InEngine inEngine;
 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
-	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob);
+	position = std::clamp(position, kKnobMin, kKnobMax);
+	// Lowest position of a cable that does not exist: it stays that way.
+	ModelStackWithAutoParam* param = knobParam(modelStackMemory, knob, position != kKnobMin);
 	if (param == nullptr) {
 		return;
 	}

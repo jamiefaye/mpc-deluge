@@ -5,7 +5,7 @@ both 32-bit ARM), built with inMusic's MPC Plugin SDK. Started 2026-11-12. The a
 synth engine on the MPC: "Deluge Synth" is the whole firmware engine playing SYNTH presets, on
 32-bit and (since 2026-11-13) 64-bit ARM.
 
-## Status (2026-11-13, end of day) - read this first
+## Status (2026-11-14) - read this first
 
 Older sections below are a dated log; where one says something "has not run yet", this section
 and the dated note nearest the topic win.
@@ -22,7 +22,21 @@ and the dated note nearest the topic win.
   chord, velocity 64, both through the Zoom L6): level within 1-2 dB with no trimming, energy
   per band within 1-2 dB below 16 kHz. One difference, at 22.05 kHz: see the first pending item.
 
+- **The shortcut grid is on screen as parameters (2026-11-14; not yet on hardware).** 123 pads of
+  the Deluge's 16 x 8 grid are plugin parameters on ten new screens; see "The shortcut grid as
+  parameters". Built and tested in the simulators on all three targets. The build on the Force
+  and on the card is still the 2026-11-13 one, without it.
+
 Pending:
+0. **Try the grid build on the Force and the MPC Live** (Jamie is away from both until Monday
+   2026-11-16; the Live is to become the home test platform once Jamie has it back). Never
+   run on hardware, so look at: whether twelve screens on six function keys work as sub-tabs
+   (press a key again to step; Loopop's skins do it, the SDK generator does not, `tabs.json`
+   adds it); whether names and values are legible on the kit's knobs; how the Q-Links feel on
+   the wide ranges (a transpose is 19,201 steps of a cent); that a pad's value follows its gold
+   knob and the reverse; CPU in `diagnostics.txt` while a knob is turned (the engine is read back
+   after every change). Parameter ids and order become permanent when the first project is saved
+   with this build: change names, ranges or the list before that, not after.
 1. **22.05 kHz in FM presets; master stage differs from hardware.** `SYNT008`'s carrier feedback
    settles into a sample-rate zigzag (consecutive samples about +-0.024 around 0.53 in the
    Deluge's own resample, `build/capture/deluge-v13-resample-REC00011.wav`; 11 dB below the
@@ -56,7 +70,8 @@ Pending:
      `next` pins a newer Argon (`8ad157c`) with clang fixes; check whether it makes
      `patches/argon.patch` unnecessary before reporting anything about Argon.
 3. **The Force "internal error" reset** seen once on the nightly build: unexplained; the
-   diagnostics build found nothing. Watch for it on `v1.3.0`.
+   diagnostics build found nothing. Watch for it on `v1.3.0`. (2026-11-14: one candidate, a
+   firmware error stop hanging the audio thread; see "The shortcut grid as parameters".)
 4. Redo the level and clipping comparisons on `v1.3.0` (the earlier ones used the nightly, which
    ran about 10 dB hot); sample-based presets; a velocity or headroom control (MPC pads play
    harder than a Deluge's default 64).
@@ -341,6 +356,84 @@ Notes for step 2, from reading the firmware (2026-11-12):
   inside the MPC application, in archive order. Expect start-up-order problems; this is what the
   emulator is for.
 
+### The shortcut grid as parameters (2026-11-14)
+
+Jamie chose separate control screens over one 16 x 8 grid graphic (2026-11-14): tabs with fixed
+Q-Link maps are what the SDK does well, and the grid can be added later as an overview over the
+same parameters. The grid itself, pad presses re-pointing the knobs and the mod matrix (below)
+are not built.
+
+- **`hosted/matrix.h`** reads and writes every pad of `paramShortcutsForSounds` and its second
+  layer through the firmware's own `MenuItem` (`readCurrentValue`, `writeCurrentValue`,
+  `getNotificationValue`), so ranges, scalings, value text and side effects (voices cut on an
+  oscillator type change, a patch cable made or removed) are the firmware's. It points
+  `soundEditor` at the loaded sound as `SoundEditor::setup()` would and makes
+  `instrumentClipView` the root UI for the length of the call (menu items build their model
+  stack from the root UI); no UI is opened or drawn. Strings come from the firmware's English
+  table for the call, not the seven-segment one the engine otherwise runs with.
+- **A pad "applies" or not** per preset (`checkPermissionToBeginSession`): FM pads in a
+  subtractive sound do nothing, sample pads need a sample. A pad that does not apply reads "-"
+  and ignores writes. Setting one pad changes which others apply (synth mode, oscillator type).
+- **`tools/gen_grid.py` writes `plugins/deluge-synth/src/grid_table.h`** (checked in): the 123
+  pads offered, with range, options and value text collected by running every preset on the card
+  (`tests/matrix_table.cpp`); all 747 agree on every pad. The plugin needs this fixed table
+  because parameters are declared before any preset loads, and the Intel build has no firmware.
+  **Its order is the parameter order: append, never insert.** Names and the skipped pads (file
+  browser, recorder, sample start, edit name, play direction, send to sidechain) are in the tool.
+  `tools/gen_grid.py --check` (run by `tools/corpus.sh`) fails if the firmware says otherwise,
+  which is what to run after moving the firmware pin.
+- **Screens**: `ui.json` has MAIN, GOLD and ten more pages; `tabs.json` puts them on six
+  function keys (MAIN/GOLD, OSC/SAMPLE/FM, VOICE/ARP, FILTER/ENV, LFO, MOD FX/REVERB) and makes
+  the Program-mode Q-Links the sixteen gold knobs. `tools/build.py` applies `tabs.json` to the
+  generated skin as text (the MPC's parser depends on key order and TUI.json repeats keys, so
+  no JSON library). Each screen column of four is one Q-Link block. Layout is free to change;
+  ids are not.
+- **Gold knobs and pads reach the same things**, and one pad moves others, so the plugin never
+  assumes what a change did: after handing changes to the engine, `process()` reads every pad
+  and knob back (`engineGridRead`, at most every 1024 frames) and the worker thread makes the
+  parameters show it, leaving alone any parameter set from outside since. This needs every
+  value to read back as written, which `tests/matrix_sweep.cpp` checks (the exceptions: the
+  compressor ratio's and the pulse widths' top value read back one lower).
+- **A project restore** sets parameters in index order, but an FM pad only takes its value
+  once the synth mode is FM: after `loadExtraState` the worker hands the kept values to the
+  engine in rounds until nothing changes (`syncKnobs`), then shows what the engine holds.
+  A state the engine cannot hold (ring-mod mode with an oscillator type its list lacks) comes
+  back as what it does hold.
+- **Known gap, older than the grid:** a restore that lands while a preset is still on its way
+  in can have some values replaced by the preset's own (`syncKnobs` adopting, `host_`
+  overwritten). The simulator, which restores straight after choosing a random preset, shows it
+  about once in a hundred seeded runs; a real project load does not change preset a moment
+  before. A fix that timestamped the preset choice made the simulator's results worse and was
+  taken out (2026-11-14); it needs thought, not another flag.
+- **Gold knobs on a modulation depth were dead** ("LFO1 -> pitch", the vibrato knob of most
+  presets): the patch cable exists only while its depth is not zero, and `engineKnobSet` asked
+  the firmware without allowing it to be created. Now it creates it, as turning the knob on a
+  Deluge does, and a missing cable reads as the knob's lowest position. The 2026-11-13 Force
+  build has the old behaviour.
+- **Found on the way, both in `patches/` or `hosted/`:**
+  - `FREEZE_WITH_ERROR` (the firmware's consistency checks, compiled in) ended in
+    `wait_for_select_encoder_press()`, an endless loop here, on the audio thread; and before
+    reaching it wrote to the PIC through `UNCACHED_MIRROR_OFFSET` (0x40000000 above the buffer:
+    a crash on the Mac, anybody's memory on an MPC). Now the code is recorded and the firmware
+    carries on; `engineFirmwareErrors()` and a line in `diagnostics.txt` report them. This
+    could be the unexplained Force "internal error" reset (Pending 3): unproven, but a firmware
+    error stop would have hung the audio thread. Look at that line when it next happens.
+  - Holding a preset's sample clusters in memory (`makeSamplesResident`) trips the firmware's
+    check that an unused file has no data claimed (E396) when an oscillator drops its sample,
+    which switching Sample to Wavetable does. The firmware now tells the host first
+    (`deluge_hosted_audio_file_unused`) and the host lets go.
+- **Tests:** `tests/matrix_sweep.cpp` (every value of every small-range pad, three of each wide
+  one, every position of every gold knob, on every preset; `tools/corpus.sh` runs it on all
+  three targets and they must print the same); `CORPUS_READ_GRID=1` with `engine_corpus`
+  (reading the grid changes no audio: same 747 checksums); `tools/plugintest.sh`
+  (`tests/plugin_grid.cpp`, a small VST2 host against the built plugin: knob and pad follow
+  each other, pads come to life with the mode, restore over another preset and over the same).
+  The SDK simulator with `--seed N` randomises every parameter and is a good stress test: it
+  found both firmware problems above. 200 seeds on 2026-11-14: no crash; 194 pass, 5 save an
+  impossible oscillator type, 1 hits the known gap.
+- **Not parameters, still to design:** the mod matrix (below), a sample browser, and anything
+  per key zone beyond the first (a multisample's pads act on its first zone).
+
 ### Editing design: presets, the pad matrix, patching (Jamie, 2026-11-13; nothing built yet)
 
 - **Preset choice belongs in the MPC's preset selector**, where people look for it: one program
@@ -576,6 +669,8 @@ tools/vendor.sh              # once, and after changing patches/: fill third_par
 ./build.sh plugins/<name>    # e.g. plugins/deluge-proto
 tools/mkpatch.sh             # after editing files under third_party/: rewrite patches/
 tools/corpus.sh              # every preset on the card, on arm32, arm64 and this computer; must match
+tools/plugintest.sh          # the built plugin's knobs, grid pads and state, driven as a host would
+tools/gen_grid.py            # after moving the firmware pin: rewrite the table of grid pads
 python3 ../mpc-plugin-builder-sdk/tools/new_plugin.py "<Name>" --vendor "Fentonia" --kind instrument --dir plugins
 python3 ../mpc-plugin-builder-sdk/tools/package.py plugins/<name>     # zip for sharing
 ```

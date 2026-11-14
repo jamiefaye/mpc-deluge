@@ -39,5 +39,15 @@ bool engineCellInfo(int layer, int x, int y, CellInfo* out);
 void engineCellSet(int layer, int x, int y, int32_t value);
 // For a Choice: the name of option `index`. Returns false past the end.
 bool engineCellOption(int layer, int x, int y, int index, char* out, int outSize);
+// The text the firmware would show for `value` on this pad, without setting it. Returns false if
+// the pad is not relevant.
+bool engineCellTextFor(int layer, int x, int y, int32_t value, char* out, int outSize);
+
+// Every pad at once, cheaply (no strings): for use on the audio thread after a change, to see
+// what else moved. Slot = layer * 128 + x * 8 + y. relevant[slot] is 0 for a pad that has no
+// value or does nothing in this preset; values[slot] is then left alone.
+constexpr int kGridSlots = kGridLayers * kGridColumns * kGridRows;
+constexpr int gridSlot(int layer, int x, int y) { return layer * kGridColumns * kGridRows + x * kGridRows + y; }
+void engineGridRead(int32_t* values, uint8_t* relevant);
 
 } // namespace deluge_hosted

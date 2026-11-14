@@ -32,6 +32,11 @@ int engineLoadSynth(const char* presetPath);
 // relative to the root, normally "SAMPLES/...".
 void engineSampleCounts(int* loaded, int* failed);
 
+// How many times the firmware has stopped at one of its own consistency checks (on a Deluge: an
+// error code on the display, and a button to carry on) since the engine started, and the latest
+// code. Each is a bug, in the firmware or in how it is driven here; the engine carries on.
+int engineFirmwareErrors(char* latest, int size);
+
 void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 void engineAllNotesOff(); // releases every held note (they still ring out through their release)
@@ -55,6 +60,8 @@ constexpr int kKnobMin = -64, kKnobMax = 64; // the firmware's knob positions; i
 // an empty string if it controls nothing that has a value. Returns false if nothing is loaded.
 bool engineKnobName(int knob, char* out, int outSize);
 // The knob's position, kKnobMin..kKnobMax. Returns false if the knob has no value to read.
+// A knob on a modulation depth ("LFO1 -> pitch") reads kKnobMin while the sound has no such
+// patch cable; setting it higher creates the cable, as turning the knob on a Deluge does.
 bool engineKnobGet(int knob, int* position);
 void engineKnobSet(int knob, int position);
 

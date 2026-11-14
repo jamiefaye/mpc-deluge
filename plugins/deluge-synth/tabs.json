@@ -1,0 +1,47 @@
+{
+  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode.",
+  "keys": [
+    [
+      "MAIN",
+      "GOLD"
+    ],
+    [
+      "OSC",
+      "SAMPLE",
+      "FM"
+    ],
+    [
+      "VOICE",
+      "ARP"
+    ],
+    [
+      "FILTER",
+      "ENV"
+    ],
+    [
+      "LFO"
+    ],
+    [
+      "MOD FX",
+      "REVERB"
+    ]
+  ],
+  "programQLinks": [
+    "Gold 1",
+    "Gold 2",
+    "Gold 3",
+    "Gold 4",
+    "Gold 5",
+    "Gold 6",
+    "Gold 7",
+    "Gold 8",
+    "Gold 9",
+    "Gold 10",
+    "Gold 11",
+    "Gold 12",
+    "Gold 13",
+    "Gold 14",
+    "Gold 15",
+    "Gold 16"
+  ]
+}

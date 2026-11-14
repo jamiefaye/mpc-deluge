@@ -66,6 +66,21 @@ void deluge_hosted_set_root(const char* folder);
 // this with the number of audio samples just rendered.
 void deluge_hosted_advance_samples(uint32_t numSamples);
 
+// --- the firmware's own error stops --------------------------------------------------------------
+// Where the firmware finds its state inconsistent it shows a code ("E219") and waits for a button
+// (FREEZE_WITH_ERROR; these checks are compiled in). Here that would be an endless loop on the
+// host's audio thread, so the code is recorded and the firmware carries on, as it does on a
+// Deluge after the button. deluge_hosted_firmware_errors() returns how many there have been and
+// copies the latest code.
+void deluge_hosted_firmware_error(const char* code);
+int deluge_hosted_firmware_errors(char* latest, int size);
+
+// --- samples -------------------------------------------------------------------------------------
+// Called by the firmware when the last user of an audio file lets go of it (the pointer is its
+// AudioFile). The engine holds the sample data of the loaded preset in memory and must release
+// its hold first: the firmware checks that an unused file has no data claimed.
+void deluge_hosted_audio_file_unused(void* audioFile);
+
 // --- log ---------------------------------------------------------------------------------------
 // Text the firmware would send to its debug UART. Dropped unless the environment variable
 // DELUGE_LOG is set, then written to stderr.
