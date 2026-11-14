@@ -15,10 +15,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "crash_report.h"
 #include "engine.h"
+#include "matrix.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <string>
@@ -34,6 +36,21 @@ static int runPreset(const char* root, const std::string& relativePath) {
 	if (error != 0) {
 		std::printf("PRESET %s: load error %d\n", relativePath.c_str(), error);
 		return 10;
+	}
+	// CORPUS_READ_GRID=1: ask about every pad of the shortcut grid first (matrix.h). Reading must
+	// change nothing, so the checksums must equal a run without it.
+	if (std::getenv("CORPUS_READ_GRID") != nullptr) {
+		for (int layer = 0; layer < deluge_hosted::kGridLayers; layer++) {
+			for (int x = 0; x < deluge_hosted::kGridColumns; x++) {
+				for (int y = 0; y < deluge_hosted::kGridRows; y++) {
+					deluge_hosted::CellInfo info;
+					deluge_hosted::engineCellInfo(layer, x, y, &info);
+					char option[48];
+					for (int i = 0; i < 4 && deluge_hosted::engineCellOption(layer, x, y, i, option, sizeof option); i++) {
+					}
+				}
+			}
+		}
 	}
 	int32_t buffer[deluge_hosted::kMaxRenderFrames * 2];
 	int64_t peak = 0;
