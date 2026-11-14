@@ -60,7 +60,9 @@ Pending:
 4. Redo the level and clipping comparisons on `v1.3.0` (the earlier ones used the nightly, which
    ran about 10 dB hot); sample-based presets; a velocity or headroom control (MPC pads play
    harder than a Deluge's default 64).
-5. Then: tempo sync, the editing design, more than one instance, a README with build steps.
+5. Then: tempo sync, the editing design, more than one instance. (The root `README.md` was
+   written 2026-11-13, when the repo was linked from the Deluge Discord; keep it in step with
+   this section.)
 
 ## Layout
 
