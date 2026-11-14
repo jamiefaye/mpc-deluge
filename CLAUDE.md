@@ -38,6 +38,23 @@ Pending:
    feedback zigzag (it eats headroom and reaches the output; attach the resample WAV), and a
    pull request for the `range` cable overrun in `Patcher::performInitialPatching` (still on
    `main`). The delay-buffer bug is already fixed on `main`. Post only with Jamie's go-ahead.
+   **Discord thread deferred to these reports (2026-11-13).** In the Deluge Discord a maintainer
+   disputed the wavetable `memcpy` read in `vector_rendering_function.h` (called it an allocation
+   alignment bug, 16x slower, then a vectored-memcpy problem). Jamie answered and moved the topic
+   to #modding; do not argue it further there, let the reports carry it. Facts to put in them:
+   - The read is at `table + 2*index` on static `const int16_t` tables (`lookuptables.h`), so it
+     is 2 mod 4 for every odd index whatever the allocator does. GCC emits the lane load with no
+     alignment hint; clang adds `:32` and it faults.
+   - Cost is nil: `vld1.32 {d18[0]}, [r6:32]` becomes `vld1.32 {d18[0]}, [r6]`, same instruction
+     count on arm32 and arm64 (compiled both forms with this project's flags). A fixed 4-byte
+     `__builtin_memcpy` is expanded inline; no memcpy function is called, and we do not build
+     the firmware's `c_lib_alternatives.S`.
+   - Upstream `next` already has the same fix: `7c9b00f54` (2026-08-17), in
+     `src/deluge/dsp-next/fixed/osc/table_oscillator.h`. `main` and `release/1.3` do not, but
+     they build with GCC, so no report is needed for it; mention it only as context.
+   - Wording: these are an out-of-bounds write and uninitialised reads, not null-pointer bugs.
+     `next` pins a newer Argon (`8ad157c`) with clang fixes; check whether it makes
+     `patches/argon.patch` unnecessary before reporting anything about Argon.
 3. **The Force "internal error" reset** seen once on the nightly build: unexplained; the
    diagnostics build found nothing. Watch for it on `v1.3.0`.
 4. Redo the level and clipping comparisons on `v1.3.0` (the earlier ones used the nightly, which
