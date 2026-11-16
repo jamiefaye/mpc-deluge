@@ -181,8 +181,36 @@
       ]
     },
     {
-      "name": "SAMPLE",
+      "name": "SAMPLE 1",
       "controls": [
+        {
+          "param": "S1 Folder",
+          "widget": "slider"
+        },
+        {
+          "param": "S1 File",
+          "widget": "slider"
+        },
+        {
+          "param": "S1 Folder -",
+          "widget": "switch"
+        },
+        {
+          "param": "S1 Folder +",
+          "widget": "switch"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
         {
           "param": "S1 Repeat",
           "widget": "switch"
@@ -190,6 +218,60 @@
         {
           "param": "S1 Interp",
           "widget": "switch"
+        },
+        {
+          "param": "S1 Reverse",
+          "widget": "switch"
+        },
+        {
+          "param": "S1 Pitch/Spd",
+          "widget": "switch"
+        },
+        {
+          "param": "S1 Speed",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "S1 File -",
+          "widget": "switch"
+        },
+        {
+          "param": "S1 File +",
+          "widget": "switch"
+        }
+      ]
+    },
+    {
+      "name": "SAMPLE 2",
+      "controls": [
+        {
+          "param": "S2 Folder",
+          "widget": "slider"
+        },
+        {
+          "param": "S2 File",
+          "widget": "slider"
+        },
+        {
+          "param": "S2 Folder -",
+          "widget": "switch"
+        },
+        {
+          "param": "S2 Folder +",
+          "widget": "switch"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
         },
         {
           "param": "S2 Repeat",
@@ -200,26 +282,12 @@
           "widget": "switch"
         },
         {
-          "param": "S1 Reverse",
-          "widget": "switch"
-        },
-        {
-          "widget": "empty"
-        },
-        {
           "param": "S2 Reverse",
           "widget": "switch"
         },
         {
-          "widget": "empty"
-        },
-        {
-          "param": "S1 Speed",
-          "widget": "knob",
-          "polarity": "bipolar"
-        },
-        {
-          "widget": "empty"
+          "param": "S2 Pitch/Spd",
+          "widget": "switch"
         },
         {
           "param": "S2 Speed",
@@ -227,17 +295,11 @@
           "polarity": "bipolar"
         },
         {
-          "widget": "empty"
-        },
-        {
-          "param": "S1 Pitch/Spd",
+          "param": "S2 File -",
           "widget": "switch"
         },
         {
-          "widget": "empty"
-        },
-        {
-          "param": "S2 Pitch/Spd",
+          "param": "S2 File +",
           "widget": "switch"
         }
       ]

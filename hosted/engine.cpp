@@ -6,6 +6,7 @@
 
 #include "definitions_cxx.hpp"
 #include "extern.h"
+#include "gui/ui/sound_editor.h"
 #include "gui/views/view.h"
 #include "hid/display/display.h"
 #include "hid/display/seven_segment.h"
@@ -29,6 +30,7 @@
 #include "processing/source.h"
 #include "storage/audio/audio_file_holder.h"
 #include "storage/multi_range/multi_range.h"
+#include "storage/multi_range/multisample_range.h"
 #include "util/waves.h"
 #include "storage/audio/audio_file_manager.h"
 #include "storage/cluster/cluster.h"
@@ -461,6 +463,89 @@ int engineLoadSynth(const char* presetPath) {
 	ModelStackWithTimelineCounter* modelStack = setupModelStackWithSong(modelStackMemory, song)->addTimelineCounter(clip);
 	instrument->setActiveClip(modelStack);
 	return 0;
+}
+
+int engineSampleSet(int source, const char* path) {
+	InEngine inEngine;
+	if (synth == nullptr || source < 0 || source >= kNumSources) {
+		return (int)Error::BUG;
+	}
+	// The firmware offers the sample browser only in subtractive mode (FileSelector::isRelevant;
+	// ring mod takes wavetables, FM nothing). A sample oscillator in another mode is a state the
+	// Deluge cannot be put in, and one its synth-mode pad then refuses to leave.
+	if (path != nullptr && path[0] != 0 && synth->getSynthMode() != SynthMode::SUBTRACTIVE) {
+		return -1;
+	}
+	// SampleBrowser::claimCurrentFile() for a synth, loading as a sample, without the display.
+	Source& osc = synth->sources[source];
+	synth->killAllVoices();
+	soundEditor.currentMultiRangeIndex = 0; // setOscType() looks at it
+	osc.setOscType(OscType::SAMPLE);
+	MultiRange* range = osc.getOrCreateFirstRange();
+	if (range == nullptr) {
+		return (int)Error::INSUFFICIENT_RAM;
+	}
+	AudioFileHolder* holder = range->getAudioFileHolder();
+	holder->setAudioFile(nullptr); // the firmware lets go of the old file; so do we, through the hook above
+	if (path == nullptr || path[0] == 0) {
+		holder->filePath.clear(); // no file: the zone is empty, as in a new sound
+		releaseResidentSamples();
+		makeSamplesResident();
+		return 0;
+	}
+	holder->filePath.set(path);
+	const Error error = holder->loadFile(osc.sampleControls.isCurrentlyReversed(), true, true, CLUSTER_ENQUEUE, nullptr, false);
+	if (error == Error::NONE && holder->audioFile != nullptr && holder->audioFile->type == AudioFileType::SAMPLE) {
+		Sample* sample = static_cast<Sample*>(holder->audioFile);
+		if (osc.repeatMode != SampleRepeatMode::STRETCH && osc.repeatMode != SampleRepeatMode::LOOP) {
+			const int32_t mSec = sample->getLengthInMSec();
+			if (sample->fileLoopEndSamples != 0) {
+				osc.repeatMode = (static_cast<MultisampleRange*>(range)->sampleHolder.loopEndPos != 0 && mSec < 2002)
+				                     ? SampleRepeatMode::ONCE
+				                     : SampleRepeatMode::LOOP;
+			}
+			else {
+				osc.repeatMode = mSec < 2002 ? SampleRepeatMode::ONCE : SampleRepeatMode::CUT;
+			}
+		}
+	}
+	// What this instance holds in memory is now out of date either way.
+	releaseResidentSamples();
+	makeSamplesResident();
+	return (int)error;
+}
+
+bool engineSampleGet(int source, char* out, int outSize) {
+	InEngine inEngine;
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	if (synth == nullptr || source < 0 || source >= kNumSources) {
+		return false;
+	}
+	Source& osc = synth->sources[source];
+	if (osc.oscType != OscType::SAMPLE || osc.ranges.getNumElements() == 0) {
+		return false;
+	}
+	AudioFileHolder* holder = osc.ranges.getElement(0)->getAudioFileHolder();
+	if (holder == nullptr || holder->audioFile == nullptr) {
+		return false;
+	}
+	std::snprintf(out, (size_t)outSize, "%s", holder->filePath.get());
+	return true;
+}
+
+uint32_t engineSampleIdOf(int source) {
+	InEngine inEngine;
+	if (synth == nullptr || source < 0 || source >= kNumSources) {
+		return 0;
+	}
+	Source& osc = synth->sources[source];
+	if (osc.oscType != OscType::SAMPLE || osc.ranges.getNumElements() == 0) {
+		return 0;
+	}
+	AudioFileHolder* holder = osc.ranges.getElement(0)->getAudioFileHolder();
+	return (holder != nullptr && holder->audioFile != nullptr) ? engineSampleId(holder->filePath.get()) : 0;
 }
 
 static void sendNote(bool on, int note, int velocity) {

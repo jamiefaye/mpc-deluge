@@ -76,13 +76,18 @@ enum ParamIndex
     kGold,           // first of 16: the preset's gold-knob assignments, in the Deluge's order
     kGrid = kGold + deluge_hosted::kNumKnobs,   // first of the shortcut-grid pads, in grid_table.h's order
     kFine = kGrid + grid::kNumCells,            // the cents halves of the transposes (see isSplit), in grid order
-    kNumParams = kFine + 5
+    // The oscillators' sample files: for each of the two, in this order, Folder, File, and the
+    // four buttons Folder -, Folder +, File -, File +.
+    kSample = kFine + 5,
+    kNumParams = kSample + 12
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
 // knobs and then the grid pads. Engine parameter m is plugin parameter kGold + m.
 constexpr int kNumEngineParams = deluge_hosted::kNumKnobs + grid::kNumCells;
 constexpr int kFirstCell = deluge_hosted::kNumKnobs;   // engine parameter of grid::kCells[0]
+constexpr int kNumFine = kSample - kFine;
+enum { kSFolder = 0, kSFile, kSFolderPrev, kSFolderNext, kSFilePrev, kSFileNext, kSParams };
 
 // A transpose is one number in the firmware, in cents, -9600..9600. An MPC moves a continuous
 // parameter a hundredth of its range per click of a Q-Link or the data wheel, which here is 1.92
@@ -198,7 +203,7 @@ public:
         }
         // The cents of each transpose, after every pad so that the pads' places did not move.
         int numFine = 0;
-        for (int c = 0; c < grid::kNumCells && numFine < kNumParams - kFine; ++c)
+        for (int c = 0; c < grid::kNumCells && numFine < kNumFine; ++c)
         {
             const grid::Cell& cell = grid::kCells[c];
             if (!isSplit(cell)) continue;
@@ -211,6 +216,20 @@ public:
             addParam(mpc::choiceParam((std::string(cell.id) + "f").c_str(), name.c_str(), cents, centsOf(cell.initial) + 50));
             fineOfCell_[c] = numFine;
             cellOfFine_[numFine++] = c;
+        }
+        // The sample file of each oscillator, chosen from Content/SAMPLES as a preset is from
+        // Content/SYNTHS. File 0 is "none of these"; file n is sampleFiles_[n - 1].
+        scanSamples();
+        for (int s = 0; s < 2; ++s)
+        {
+            const std::string id = "s" + std::to_string(s + 1), name = "S" + std::to_string(s + 1);
+            addParam(mpc::intParam((id + "folder").c_str(), (name + " Folder").c_str(), 0, std::max(0, (int)sampleFolders_.size() - 1), 0));
+            addParam(mpc::intParam((id + "file").c_str(), (name + " File").c_str(), 0, (int)sampleFiles_.size(), 0));
+            addParam(mpc::boolParam((id + "folderprev").c_str(), (name + " Folder -").c_str(), false));
+            addParam(mpc::boolParam((id + "foldernext").c_str(), (name + " Folder +").c_str(), false));
+            addParam(mpc::boolParam((id + "fileprev").c_str(), (name + " File -").c_str(), false));
+            addParam(mpc::boolParam((id + "filenext").c_str(), (name + " File +").c_str(), false));
+            wantedSample_[s].store(kNoChange);
         }
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -286,7 +305,8 @@ public:
             default:
                 // A gold knob or grid pad moved by the user or the host (not by this thread
                 // mirroring the engine): remember it, and process() hands it to the engine.
-                if (index >= kGold && index < kNumParams && !tMirroringKnobs)
+                if (index >= kSample && index < kNumParams) { sampleParameterChanged(index, plainValue); break; }
+                if (index >= kGold && index < kSample && !tMirroringKnobs)
                 {
                     // A transpose's two halves make one engine value; the half that did not move
                     // is taken from the last value known.
@@ -311,8 +331,198 @@ public:
     // kind of parameter it is, see a switch), then the worker thread puts it back to off.
     void buttonSet(int index, float plainValue)
     {
-        if (plainValue != 0.0f && !tReleasingButton) buttonOnSince_[index - kFolderPrev].store(nowMs());
+        if (plainValue != 0.0f && !tReleasingButton) buttonOnSince_[buttonSlot(index)].store(nowMs());
     }
+    // The buttons: four on MAIN, then four for each oscillator's sample.
+    static constexpr int kNumButtons = 12;
+    static int buttonSlot(int index)
+    {
+        if (index < kSample) return index - kFolderPrev;
+        return 4 + ((index - kSample) / kSParams) * 4 + ((index - kSample) % kSParams - kSFolderPrev);
+    }
+    static int buttonIndex(int slot)
+    {
+        if (slot < 4) return kFolderPrev + slot;
+        return kSample + ((slot - 4) / 4) * kSParams + kSFolderPrev + (slot - 4) % 4;
+    }
+
+    // --- the oscillators' sample files ---------------------------------------------------------
+    // Like Preset and Folder: settled here and now, on whatever thread the MPC calls from; the
+    // worker thread loads the file (applySamples) and tells the MPC what moved.
+    void sampleParameterChanged(int index, float plainValue)
+    {
+        const int s = (index - kSample) / kSParams, which = (index - kSample) % kSParams;
+        const bool pressed = plainValue > 0.5f;
+        switch (which)
+        {
+            case kSFile:
+                if (tMirroringKnobs) break;   // the worker showing what the engine holds
+                wantedSample_[s].store(mpc::clamp((int)std::lround(plainValue), 0, (int)sampleFiles_.size()));
+                followSampleFolder(s);
+                break;
+            case kSFolder:     if (!tSettingFolder && !tMirroringKnobs) browseSample(s, 0, 0, (int)std::lround(plainValue)); break;
+            case kSFolderPrev: buttonSet(index, plainValue); if (pressed) browseSample(s, 0, -1, -1); break;
+            case kSFolderNext: buttonSet(index, plainValue); if (pressed) browseSample(s, 0, +1, -1); break;
+            case kSFilePrev:   buttonSet(index, plainValue); if (pressed) browseSample(s, -1, 0, -1); break;
+            case kSFileNext:   buttonSet(index, plainValue); if (pressed) browseSample(s, +1, 0, -1); break;
+        }
+    }
+    int sampleFolderOf(int file) const   // file: index into sampleFiles_
+    {
+        int f = 0;
+        for (size_t i = 0; i < sampleFolderStart_.size(); ++i) if (sampleFolderStart_[i] <= file) f = (int)i;
+        return f;
+    }
+    void browseSample(int s, int fileSteps, int folderSteps, int folderSet)
+    {
+        if (sampleFiles_.empty()) return;
+        const int last = (int)sampleFiles_.size() - 1, lastFolder = (int)sampleFolders_.size() - 1;
+        const int before = getInt(kSample + s * kSParams + kSFile) - 1;   // -1: none
+        int file = before;
+        if (fileSteps != 0) file = mpc::clamp(file + fileSteps, 0, last);
+        if (folderSteps != 0) file = sampleFolderStart_[(size_t)mpc::clamp(sampleFolderOf(std::max(file, 0)) + folderSteps, 0, lastFolder)];
+        if (folderSet >= 0 && (file < 0 || mpc::clamp(folderSet, 0, lastFolder) != sampleFolderOf(file)))
+            file = sampleFolderStart_[(size_t)mpc::clamp(folderSet, 0, lastFolder)];
+        if (file != before) set(kSample + s * kSParams + kSFile, (float)(file + 1));   // back through sampleParameterChanged
+        else followSampleFolder(s);
+        sampleBrowseChanged_.store(true);
+    }
+    void followSampleFolder(int s)
+    {
+        const int file = getInt(kSample + s * kSParams + kSFile) - 1;
+        if (file < 0 || sampleFiles_.empty()) return;
+        const float folder = (float)sampleFolderOf(file);
+        if (get(kSample + s * kSParams + kSFolder) != folder)
+        {
+            tSettingFolder = true;
+            set(kSample + s * kSParams + kSFolder, folder);
+            tSettingFolder = false;
+        }
+        sampleBrowseChanged_.store(true);
+    }
+    // Which of sampleFiles_ the engine's oscillator plays, or -1. Engine lock held.
+    int engineSampleIndex(int s) const { return sampleIndexOfId(deluge_hosted::engineSampleIdOf(s)); }
+    int sampleIndexOfId(uint32_t id) const
+    {
+        if (id == 0) return -1;
+        for (size_t i = 0; i < sampleIds_.size(); ++i) if (sampleIds_[i] == id) return (int)i;
+        return -1;
+    }
+    // Worker thread: the File and Folder parameters show the engine's files, read now (engine
+    // lock held) or as the audio thread last saw them.
+    void showSamples(bool fromSnapshot = false)
+    {
+        for (int s = 0; s < 2; ++s)
+        {
+            if (fromSnapshot && wantedSample_[s].load() != kNoChange) continue;   // a choice not yet loaded
+            const int file = fromSnapshot ? sampleIndexOfId(snapSample_[s].load()) : engineSampleIndex(s);
+            const int index = kSample + s * kSParams + kSFile;
+            if (getInt(index) != file + 1)
+            {
+                tMirroringKnobs = true;
+                set(index, (float)(file + 1));
+                tMirroringKnobs = false;
+                tellHostLater(index);
+            }
+            followSampleFolder(s);
+        }
+    }
+    // Worker thread, engine lock held: gives the engine the file a File parameter asks for.
+    // Returns whether the engine changed.
+    bool giveSample(int s, int value)
+    {
+        if (value <= 0 || value > (int)sampleFiles_.size())
+        {
+            // "None of these": the preset's own file, if the engine has been given another since.
+            // A preset with no file there has its zone emptied; its oscillator type comes back
+            // from the Type pad.
+            if (value != 0 || !sampleChosen_[s].exchange(false)) return false;
+            const uint32_t now = deluge_hosted::engineSampleIdOf(s);
+            if (presetSample_[s][0] == 0 ? now == 0 : now == deluge_hosted::engineSampleId(presetSample_[s])) return false;
+            sampleError_.store(deluge_hosted::engineSampleSet(s, presetSample_[s]));
+            return true;
+        }
+        if (engineSampleIndex(s) == value - 1) return false;
+        const int error = deluge_hosted::engineSampleSet(s, sampleFiles_[(size_t)value - 1].c_str());
+        sampleError_.store(error);
+        if (error == -1) return false;   // not in this synth mode: nothing changed
+        sampleChosen_[s].store(true);
+        sampleLoads_.fetch_add(1);
+        int samplesLoaded = 0, samplesFailed = 0;
+        deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
+        samplesLoaded_.store(samplesLoaded);
+        samplesFailed_.store(samplesFailed);
+        return true;
+    }
+    // Worker thread: a file chosen on the MPC since the preset settled.
+    void applySamples()
+    {
+        if (wantedSample_[0].load() == kNoChange && wantedSample_[1].load() == kNoChange) return;
+        const int loaded = loadedPreset_.load();
+        if (loaded != requestedPreset_.load() || goldPreset_.load() != loaded || resync_.load() || reloadPreset_.load()) return;   // syncKnobs() will
+        samplesBusy_.store(true);   // before the requests are taken: waitUntilSettled() looks at both
+        struct Done { std::atomic<bool>& busy; ~Done() { busy.store(false); } } done{samplesBusy_};
+        EngineHold engine(engineInstance_.load());
+        bool changed = false;
+        for (int s = 0; s < 2; ++s)
+        {
+            const int wanted = wantedSample_[s].exchange(kNoChange);
+            if (wanted != kNoChange) changed = giveSample(s, wanted) || changed;
+        }
+        showSamples();
+        if (changed) showEngineGrid();   // a new file brings the sample pads to life and may move the play mode
+        snapSeen_ = snapSerial_.load();  // an earlier read-back is of the engine before this, with the old file
+        snapSeen_ = snapSerial_.load();  // an earlier read-back is of the engine before this, with the old file
+    }
+    // Worker thread, while a project save or load waits for the settled state: values set from
+    // outside that process() has not yet given the engine (it does so at the start of a block,
+    // and audio may not be running) go to it now, and the parameters show what the engine then
+    // holds (a read-back the audio thread has taken is not shown while someone waits). Once for
+    // each wait. Otherwise what is saved depends on whether a block happened to run, and a
+    // read-back to be shown, before the save.
+    void drainForWaiter()
+    {
+        const uint32_t asked = settleAsked_.load();
+        if (waiters_.load() == 0 || settleDone_.load() == asked) return;
+        const int loaded = loadedPreset_.load();
+        if (loaded != requestedPreset_.load() || goldPreset_.load() != loaded || resync_.load() || reloadPreset_.load()) return;   // syncKnobs() will
+        samplesBusy_.store(true);
+        struct Done { std::atomic<bool>& busy; ~Done() { busy.store(false); } } done{samplesBusy_};
+        EngineHold engine(engineInstance_.load());
+        anyPending_.store(false);
+        for (int m = 0; m < kNumEngineParams; ++m)
+        {
+            const int value = pending_[m].exchange(kNoChange);
+            if (value != kNoChange) engineSet(m, value);
+        }
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
+        {
+            int position = 0;
+            if (deluge_hosted::engineKnobGet(k, &position)) showEngineValue(k, position, lastHostChange_[k].load());
+        }
+        showEngineGrid();
+        showSamples();
+        settleDone_.store(asked);
+    }
+
+    // Worker thread, engine lock held: every pad shows what the engine holds, unless the MPC has
+    // set it since.
+    void showEngineGrid()
+    {
+        int32_t values[deluge_hosted::kGridSlots];
+        uint8_t relevant[deluge_hosted::kGridSlots];
+        deluge_hosted::engineGridRead(values, relevant);
+        for (int c = 0; c < grid::kNumCells; ++c)
+        {
+            const int slot = slotOf(grid::kCells[c]);
+            const bool nowRelevant = relevant[slot] != 0;
+            if (cellRelevant_[c].exchange(nowRelevant) != nowRelevant) tellHostOf(kFirstCell + c);
+            if (!nowRelevant || pending_[kFirstCell + c].load() != kNoChange) continue;
+            showEngineValue(kFirstCell + c, (int)values[slot], lastHostChange_[kFirstCell + c].load());
+        }
+        snapSeen_ = snapSerial_.load();
+    }
+
     static int64_t nowMs()
     {
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -387,7 +597,31 @@ public:
             out = text;
             return true;
         }
-        if (index >= kFine && index < kNumParams)
+        if (index >= kSample && index < kNumParams)
+        {
+            const int s = (index - kSample) / kSParams, which = (index - kSample) % kSParams;
+            const int v = (int)std::lround(plainValue);
+            if (which == kSFile)
+            {
+                // The file's name without its folder or ".wav". 0 is "no file from SAMPLES".
+                if (v <= 0 || v > (int)sampleFiles_.size()) { out = "-"; return true; }
+                const std::string& path = sampleFiles_[(size_t)v - 1];
+                const size_t start = path.rfind('/') == std::string::npos ? 0 : path.rfind('/') + 1;
+                const size_t dot = path.rfind('.');
+                out = path.substr(start, dot != std::string::npos && dot > start ? dot - start : std::string::npos);
+                return true;
+            }
+            if (which == kSFolder)
+            {
+                if (sampleFolders_.empty()) { out = "(none)"; return true; }
+                const std::string& f = sampleFolders_[(size_t)mpc::clamp(v, 0, (int)sampleFolders_.size() - 1)];
+                out = f.size() > 8 ? f.substr(8) : "(top)";   // without "SAMPLES/"
+                return true;
+            }
+            (void)s;
+            return false;
+        }
+        if (index >= kFine && index < kSample)
         {
             if (!cellRelevant_[cellOfFine_[index - kFine]].load(std::memory_order_relaxed)) { out = "-"; return true; }
             out = signedText(mpc::clamp((int)std::lround(plainValue), 0, 99) - 50);
@@ -414,16 +648,40 @@ public:
     {
         // The parameters have just been written into the project, before this was called.
         statSaves_.fetch_add(1);
+        // First let whatever is on its way in arrive (a preset, a sample, the knob hand-over
+        // that follows): what is written below, and what the MPC looks at next, is then the
+        // settled state.
+        waitUntilSettled();
         const int i = presetIndex();
         const bool goldIsAnotherPresets = goldPreset_.load() != i;
         if (i >= 0)
         {
             out.assign(presets_[(size_t)i].begin(), presets_[(size_t)i].end());
-            if (goldIsAnotherPresets) { out.push_back(0); out.push_back('K'); }
+            out.push_back(0);
+            if (goldIsAnotherPresets) out.push_back('K');
         }
-        // If a preset is on its way in, let it arrive before returning, so that what the MPC
-        // looks at next is the settled state.
-        waitUntilSettled();
+        // The MPC wrote the parameters into the project before calling this, so before that
+        // wait: a sample still loading, or pads the engine had not yet been read back for, are
+        // in there as they stood. The settled values go here and loadExtraState() puts them
+        // over the MPC's. After the flags: a zero byte, "V", how many, each as a float.
+        if (i >= 0 && !goldIsAnotherPresets)
+        {
+            out.push_back(0);
+            out.push_back('V');
+            const uint16_t count = (uint16_t)(kNumParams - kGold);
+            out.insert(out.end(), reinterpret_cast<const uint8_t*>(&count), reinterpret_cast<const uint8_t*>(&count) + sizeof count);
+            for (int index = kGold; index < kNumParams; ++index)
+            {
+                // A pad that does not apply to the sound as it stands (an oscillator's type
+                // while the synth mode is FM) holds a parameter value that means nothing: the
+                // engine never took it. Not-a-number says so, and a restore leaves that pad as
+                // the preset has it rather than give the engine the stale value the moment the
+                // pad comes to life.
+                const int cell = index >= kFine && index < kSample ? cellOfFine_[index - kFine] : (index >= kGrid && index < kFine ? index - kGrid : -1);
+                const float value = cell >= 0 && !cellRelevant_[cell].load() ? std::nanf("") : get(index);
+                out.insert(out.end(), reinterpret_cast<const uint8_t*>(&value), reinterpret_cast<const uint8_t*>(&value) + sizeof value);
+            }
+        }
         writeDiagnostics();   // a project save is a convenient moment to refresh the file
     }
 
@@ -432,7 +690,18 @@ public:
     {
         const uint8_t* end = static_cast<const uint8_t*>(std::memchr(data, 0, size));
         const size_t pathSize = end != nullptr ? (size_t)(end - data) : size;
-        const bool goldIsThisPresets = !(end != nullptr && std::memchr(end + 1, 'K', size - pathSize - 1) != nullptr);
+        // The flags run from the first zero byte to the next; the settled values follow.
+        const uint8_t* flags = end != nullptr ? end + 1 : data + size;
+        const uint8_t* flagsEnd = static_cast<const uint8_t*>(std::memchr(flags, 0, (size_t)(data + size - flags)));
+        if (flagsEnd == nullptr) flagsEnd = data + size;
+        const bool goldIsThisPresets = std::memchr(flags, 'K', (size_t)(flagsEnd - flags)) == nullptr;
+        const uint8_t* values = nullptr;
+        if (data + size - flagsEnd >= 4 && flagsEnd[1] == 'V')
+        {
+            uint16_t count = 0;
+            std::memcpy(&count, flagsEnd + 2, sizeof count);
+            if (count == kNumParams - kGold && (size_t)(data + size - (flagsEnd + 4)) >= count * sizeof(float)) values = flagsEnd + 4;
+        }
         const std::string wanted(reinterpret_cast<const char*>(data), pathSize);
         statRestores_.fetch_add(1);
         if (!goldIsThisPresets) statRestoresWithoutKnobs_.fetch_add(1);
@@ -442,6 +711,22 @@ public:
         }
         // (Not found: the file was removed or renamed. Keep whatever the Preset number selects.)
 
+        if (goldIsThisPresets && values != nullptr)
+        {
+            // The settled values (saveExtraState) are the state to come back to, whatever the
+            // MPC has just set and whatever the engine is in the middle of. The worker thread
+            // takes them when this preset has been loaded afresh (syncKnobs), which makes the
+            // restore one step from a known start: the preset as it is on the card, then these.
+            {
+                std::lock_guard<std::mutex> lock(restoreLock_);
+                restoreValues_.resize((size_t)(kNumParams - kGold));
+                std::memcpy(restoreValues_.data(), values, restoreValues_.size() * sizeof(float));
+            }
+            restorePending_.store(true);
+            reloadPreset_.store(true);
+            waitUntilSettled();
+            return;
+        }
         if (goldIsThisPresets)
         {
             // The gold values the MPC has just set are the user's settings for this preset: they
@@ -645,6 +930,7 @@ private:
             snapKnobValid_[k].store(valid, std::memory_order_relaxed);
             if (valid) snap_[k].store(position, std::memory_order_relaxed);
         }
+        for (int s = 0; s < 2; ++s) snapSample_[s].store(deluge_hosted::engineSampleIdOf(s), std::memory_order_relaxed);
         snapChanges_.store(changes, std::memory_order_relaxed);
         snapSerial_.fetch_add(1);
         statSnapshots_.fetch_add(1, std::memory_order_relaxed);
@@ -666,6 +952,25 @@ private:
         }
     }
 
+    // Sample files under Content/SAMPLES (WAV and AIFF, which is what the firmware reads), as the
+    // engine names them: relative to Content/.
+    void scanSamples()
+    {
+        std::vector<std::string> found;
+        presets_.swap(found);   // scanFolder() fills presets_
+        scanFolder(mpc::contentPath("SAMPLES"), "SAMPLES", 0, true);
+        presets_.swap(found);
+        std::sort(found.begin(), found.end(), lessIgnoringCase);
+        if (found.size() > (size_t)kMaxPresets) found.resize((size_t)kMaxPresets);
+        sampleFiles_ = found;
+        for (const std::string& file : sampleFiles_) sampleIds_.push_back(deluge_hosted::engineSampleId(file.c_str()));
+        for (size_t i = 0; i < sampleFiles_.size(); ++i)
+        {
+            const std::string folder = folderOf(sampleFiles_[i]);
+            if (sampleFolders_.empty() || sampleFolders_.back() != folder) { sampleFolders_.push_back(folder); sampleFolderStart_.push_back((int)i); }
+        }
+    }
+
     static std::string folderOf(const std::string& path)
     {
         const size_t slash = path.rfind('/');
@@ -681,7 +986,7 @@ private:
 
     static bool lessIgnoringCase(const std::string& a, const std::string& b) { return strcasecmp(a.c_str(), b.c_str()) < 0; }
 
-    void scanFolder(const std::string& absolute, const std::string& relative, int depth)
+    void scanFolder(const std::string& absolute, const std::string& relative, int depth, bool samples = false)
     {
         DIR* d = opendir(absolute.c_str());
         if (!d) return;
@@ -693,8 +998,11 @@ private:
             const std::string childRelative = relative.empty() ? name : relative + "/" + name;
             struct stat st;
             if (stat(childAbsolute.c_str(), &st) != 0) continue;
-            if (S_ISDIR(st.st_mode)) { if (depth < 6) scanFolder(childAbsolute, childRelative, depth + 1); }
-            else if (name.size() > 4 && strcasecmp(name.c_str() + name.size() - 4, ".xml") == 0) presets_.push_back(childRelative);
+            const char* ext = name.rfind('.') != std::string::npos ? name.c_str() + name.rfind('.') : "";
+            if (S_ISDIR(st.st_mode)) { if (depth < 6) scanFolder(childAbsolute, childRelative, depth + 1, samples); }
+            else if (samples ? (strcasecmp(ext, ".wav") == 0 || strcasecmp(ext, ".aif") == 0 || strcasecmp(ext, ".aiff") == 0)
+                             : strcasecmp(ext, ".xml") == 0)
+                presets_.push_back(childRelative);
         }
         closedir(d);
     }
@@ -709,6 +1017,8 @@ private:
         {
             applyBrowsing();
             loadRequestedPreset();
+            applySamples();
+            drainForWaiter();
             showSnapshot();
             tellHostNow();
             // Keep the diagnostics file a few seconds fresh while audio runs, so that it says
@@ -733,9 +1043,12 @@ private:
         bool changed = browseChanged_.exchange(false);
         if (changed) for (int index : {kPreset, kFolder}) tellHostLater(index);
         const int64_t now = nowMs();
-        for (int button = kFolderPrev; button <= kPresetNext; ++button)
+        if (sampleBrowseChanged_.exchange(false))
+            for (int s = 0; s < 2; ++s) for (int which : {kSFolder, kSFile}) tellHostLater(kSample + s * kSParams + which);
+        for (int slot = 0; slot < kNumButtons; ++slot)
         {
-            if (get(button) == 0.0f || now - buttonOnSince_[button - kFolderPrev].load() < 100) continue;
+            const int button = buttonIndex(slot);
+            if (get(button) == 0.0f || now - buttonOnSince_[slot].load() < 100) continue;
             tReleasingButton = true;
             set(button, 0.0f);
             tReleasingButton = false;
@@ -793,6 +1106,7 @@ private:
             if (stamp - changes > 0) continue;
             showEngineValue(m, snap_[m].load(), stamp);
         }
+        showSamples(true);   // a pad can take an oscillator's file away (its type changed from Sample)
     }
 
     // Worker thread: parameter m shows `value`, which is what the engine holds, unless the MPC
@@ -842,13 +1156,17 @@ private:
     void waitUntilSettled()
     {
         if (!workerRunning_.load()) return;
+        settleAsked_.fetch_add(1);
         waiters_.fetch_add(1);
         bool done = false;
         for (int ms = 0; ms < 3000; ++ms)
         {
             const int requested = requestedPreset_.load();
             const bool settled = loadedPreset_.load() == requested && goldPreset_.load() == requested
-                                 && !reloadPreset_.load() && !resync_.load() && !knobsBusy_.load();
+                                 && !reloadPreset_.load() && !resync_.load() && !knobsBusy_.load()
+                                 && wantedSample_[0].load() == kNoChange && wantedSample_[1].load() == kNoChange
+                                 && !samplesBusy_.load() && settleDone_.load() == settleAsked_.load()
+                                 && !restorePending_.load();
             if (settled || quit_.load()) { done = true; break; }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
@@ -878,6 +1196,12 @@ private:
         EngineHold engine(engineInstance_.load());
         resync_.store(false);
         loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
+        // Which files are the preset's own, to go back to (giveSample).
+        for (int s = 0; s < 2; ++s)
+        {
+            sampleChosen_[s].store(false);
+            deluge_hosted::engineSampleGet(s, presetSample_[s], (int)sizeof presetSample_[s]);
+        }
         int samplesLoaded = 0, samplesFailed = 0;
         deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
         samplesLoaded_.store(samplesLoaded);
@@ -907,6 +1231,31 @@ private:
     void syncKnobs()
     {
         const int loaded = loadedPreset_.load();
+        // A project restore waiting for this preset (loadExtraState): its values become the
+        // parameters now, as if set from outside, and are kept.
+        if (restorePending_.load() && loaded == requestedPreset_.load())
+        {
+            std::vector<float> values;
+            {
+                std::lock_guard<std::mutex> lock(restoreLock_);
+                values = restoreValues_;
+            }
+            for (int index = kGold; index < kNumParams && (size_t)(index - kGold) < values.size(); ++index)
+            {
+                if (index >= kSample && (index - kSample) % kSParams >= kSFolderPrev) continue;   // the buttons
+                const float value = values[(size_t)(index - kGold)];
+                if (std::isnan(value))
+                {
+                    // Did not apply when saved (see saveExtraState): the rounds below pass it by.
+                    const int cell = index >= kFine && index < kSample ? cellOfFine_[index - kFine] : (index >= kGrid && index < kFine ? index - kGrid : -1);
+                    if (cell >= 0) leaveCell_[cell] = true;
+                    continue;
+                }
+                if (get(index) != value) { set(index, value); tellHostLater(index); }
+            }
+            goldPreset_.store(loaded);
+            restorePending_.store(false);
+        }
         const bool keep = goldPreset_.load() == loaded;
         const bool adopt = !keep && loaded == requestedPreset_.load();
         const int changesBefore = knobChanges_.load();
@@ -936,6 +1285,12 @@ private:
         // then take their values in the next round.
         int32_t values[deluge_hosted::kGridSlots];
         uint8_t relevant[deluge_hosted::kGridSlots];
+        // A sample file asked for but not yet given belonged to the last state: forgotten. Kept
+        // File parameters go to the engine at the start of each round below, before the pads
+        // (the sample pads only apply once an oscillator has its file), and in every round
+        // because the engine takes a file only in subtractive mode, which a pad may have to set
+        // first.
+        for (int s = 0; s < 2; ++s) wantedSample_[s].store(kNoChange);
         if (keep)
         {
             for (int c = 0; c < grid::kNumCells; ++c) pending_[kFirstCell + c].store(kNoChange);
@@ -948,11 +1303,14 @@ private:
             deluge_hosted::engineGridRead(before, relevantBefore);
             for (int round = 0; round < 8; ++round)
             {
+                bool fileChanged = false;
+                for (int s = 0; s < 2; ++s) fileChanged = giveSample(s, getInt(kSample + s * kSParams + kSFile)) || fileChanged;
+                if (fileChanged) deluge_hosted::engineGridRead(before, relevantBefore);
                 for (int c = 0; c < grid::kNumCells; ++c)
                 {
                     const grid::Cell& cell = grid::kCells[c];
                     const int slot = slotOf(cell);
-                    if (!relevantBefore[slot] || before[slot] == shownValue(kFirstCell + c)) continue;
+                    if (!relevantBefore[slot] || leaveCell_[c] || before[slot] == shownValue(kFirstCell + c)) continue;
                     deluge_hosted::engineCellSet(cell.layer, cell.x, cell.y, shownValue(kFirstCell + c));
                 }
                 deluge_hosted::engineGridRead(values, relevant);
@@ -962,7 +1320,7 @@ private:
                     const int slot = slotOf(grid::kCells[c]);
                     changed = relevant[slot] != relevantBefore[slot] || (relevant[slot] && values[slot] != before[slot]);
                 }
-                if (!changed) break;
+                if (!changed && !fileChanged) break;
                 std::memcpy(before, values, sizeof before);
                 std::memcpy(relevantBefore, relevant, sizeof relevantBefore);
             }
@@ -980,6 +1338,8 @@ private:
             showEngineValue(kFirstCell + c, (int)values[slot], lastHostChange_[kFirstCell + c].load());
         }
         snapSeen_ = snapSerial_.load();   // an earlier read-back is of the engine as it was before this
+        if (keep || adopt) showSamples();
+        for (bool& leave : leaveCell_) leave = false;
 
         if (adopt)
         {
@@ -1050,6 +1410,7 @@ private:
                       "samples at the engine's clipping ceiling: %u of %llu (%.3f%%)\n"
                       "project saves %u, restores %u (%u of them without usable knob values); waits that timed out %u\n"
                       "grid: %d of %d pads apply to this preset; engine read back %u times, %u parameter values changed to match\n"
+                      "sample files found in Content/SAMPLES: %d in %d folders; files chosen for an oscillator %u, last error %d\n"
                       "firmware error stops (its own consistency checks; should be 0): %d%s%s\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -1072,6 +1433,7 @@ private:
                       frames > 0 ? 100.0 * (double)statClipped_.load() / (double)(2 * frames) : 0.0,
                       statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load(),
                       relevantCells(), grid::kNumCells, statSnapshots_.load(), statShown_.load(),
+                      (int)sampleFiles_.size(), (int)sampleFolders_.size(), sampleLoads_.load(), sampleError_.load(),
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_);
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
@@ -1091,7 +1453,7 @@ private:
     // Per engine parameter (gold knobs, then grid pads):
     static constexpr int kNoChange = -100000;
     int               fineOfCell_[grid::kNumCells];        // which kFine parameter holds a pad's cents, or -1 (constructor only writes)
-    int               cellOfFine_[kNumParams - kFine] = {};
+    int               cellOfFine_[kNumFine] = {};
     std::atomic<int>  pending_[kNumEngineParams];          // set from outside, not yet given to the engine
     std::atomic<int>  host_[kNumEngineParams];             // the last value set from outside
     std::atomic<int>  lastHostChange_[kNumEngineParams];   // changeCounter_ when it was last set from outside
@@ -1114,7 +1476,24 @@ private:
     static inline thread_local bool tMirroringKnobs = false;
     static inline thread_local bool tSettingFolder = false;
     static inline thread_local bool tReleasingButton = false;
-    std::atomic<int64_t> buttonOnSince_[4];   // when each of the four buttons last went on, in ms
+    std::atomic<int64_t> buttonOnSince_[kNumButtons];   // when each button last went on, in ms
+    std::vector<std::string> sampleFiles_;        // under Content/, "SAMPLES/Kicks/909.wav", sorted; constructor only
+    std::vector<std::string> sampleFolders_;      // the folders they are in, and where each starts
+    std::vector<int>         sampleFolderStart_;
+    std::vector<uint32_t>    sampleIds_;          // engineSampleId of each
+    std::atomic<uint32_t> snapSample_[2] = {};    // each oscillator's file at the last read-back
+    std::atomic<int>  wantedSample_[2];           // a File parameter set from outside, not yet given to the engine
+    std::atomic<bool> sampleBrowseChanged_{false};
+    std::atomic<uint32_t> settleAsked_{0}, settleDone_{0};   // waits begun, and the last one the worker read the engine back for
+    bool                  leaveCell_[grid::kNumCells] = {};   // worker thread: pads a restore does not set
+    std::mutex            restoreLock_;           // loadExtraState and the worker; never the audio thread
+    std::vector<float>    restoreValues_;         // a restored project's parameter values, from kGold on
+    std::atomic<bool>     restorePending_{false}; // not yet taken by the worker
+    std::atomic<bool> samplesBusy_{false};        // the worker is giving the engine a file
+    std::atomic<bool> sampleChosen_[2] = {};      // the engine's file is one chosen here, not the preset's
+    char              presetSample_[2][512] = {};  // the loaded preset's own files (worker thread, engine lock held)
+    std::atomic<int>  sampleError_{0};
+    std::atomic<uint32_t> sampleLoads_{0};
     // The preset the values of the gold parameters belong to (see syncKnobs). -1: none yet, so
     // the first preset loaded brings its own knob positions.
     std::atomic<int>  goldPreset_{-1};

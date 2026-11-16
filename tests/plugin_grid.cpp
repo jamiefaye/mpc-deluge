@@ -203,6 +203,26 @@ int main(int argc, char** argv) {
 		check(shown(semitones) == "0" && shown(cents) == "0", "and back to nothing", shown(semitones) + ", " + shown(cents));
 	}
 
+	// --- an oscillator's sample file, chosen like a preset ---
+	{
+		const int file = paramCalled("S1 File"), next = paramCalled("S1 File +");
+		check(shown(file) == "-" && shown("S1 Repeat") == "-", "no sample in this preset: File and the sample pads read -",
+		      shown(file) + ", " + shown("S1 Repeat"));
+		fx->setParameter(fx, next, 1.0f);
+		run(600);
+		const std::string first = shown(file);
+		check(first != "-" && shown("Osc1 Type") == "Sample" && shown("S1 Repeat") != "-",
+		      "File + gives oscillator 1 the first file: its type is Sample and the sample pads apply",
+		      first + ", " + shown("Osc1 Type") + ", " + shown("S1 Repeat"));
+		fx->setParameter(fx, next, 1.0f);
+		run(600);
+		check(shown(file) != first && shown(file) != "-", "File + again: the next file", shown(file));
+		setValue("Osc1 Type", 1);
+		run(300);
+		check(shown(file) == "-" && shown("Osc1 Type") != "Sample", "the Type pad takes the oscillator back: File reads - again",
+		      shown(file) + ", " + shown("Osc1 Type"));
+	}
+
 	// --- one pad brings others to life ---
 	setValue("Synth Mode", 1);
 	run();

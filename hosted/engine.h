@@ -54,6 +54,31 @@ void engineSampleCounts(int* loaded, int* failed);
 // code. Each is a bug, in the firmware or in how it is driven here; the engine carries on.
 int engineFirmwareErrors(char* latest, int size);
 
+// --- the oscillators' samples -------------------------------------------------------------------------
+// Oscillator `source` (0 or 1) plays the file at `path` (relative to the root, e.g.
+// "SAMPLES/Kicks/909.wav") as a sample, as choosing it in the Deluge's sample browser does: the
+// sound stops, the oscillator becomes a sample oscillator, its first key zone takes the file,
+// and the play mode follows the file (loop points and length) unless it was Loop or Stretch
+// already. Reads the file: not for the audio thread. Returns 0 or the firmware's Error code; after
+// an error the zone has no file. An empty path takes the file away and leaves the zone empty.
+// Returns -1, and changes nothing, unless the sound's synth mode is Subtractive: the firmware
+// offers samples in no other.
+int engineSampleSet(int source, const char* path);
+// The file of the oscillator's first key zone. False (and an empty string) if it is not a sample
+// oscillator or has no file.
+bool engineSampleGet(int source, char* out, int outSize);
+// A number that stands for that file: engineSampleId(path) of the same path, 0 for none. Cheap,
+// for the audio thread to notice that an oscillator's file has changed or gone.
+uint32_t engineSampleIdOf(int source);
+inline uint32_t engineSampleId(const char* path) {
+	uint32_t h = 2166136261u; // FNV-1a over the path, letters lowered
+	for (; *path != 0; path++) {
+		const unsigned char c = (unsigned char)*path;
+		h = (h ^ (uint32_t)((c >= 'A' && c <= 'Z') ? c + 32 : c)) * 16777619u;
+	}
+	return h != 0 ? h : 1;
+}
+
 void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 void engineAllNotesOff(); // releases every held note (they still ring out through their release)

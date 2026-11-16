@@ -1,5 +1,5 @@
 {
-  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode.",
+  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset.",
   "keys": [
     [
       "MAIN",
@@ -7,7 +7,8 @@
     ],
     [
       "OSC",
-      "SAMPLE",
+      "SAMPLE 1",
+      "SAMPLE 2",
       "FM"
     ],
     [
@@ -27,24 +28,143 @@
     ]
   ],
   "buttons": {
-    "Folder -": {"image": "arrow_up", "bounds": "23 45 105 80"},
-    "Folder +": {"image": "arrow_down", "bounds": "23 125 105 80"},
-    "Preset -": {"image": "arrow_up", "bounds": "569 45 105 80"},
-    "Preset +": {"image": "arrow_down", "bounds": "569 125 105 80"}
+    "Folder -": {
+      "image": "arrow_up",
+      "bounds": "23 45 105 80"
+    },
+    "Folder +": {
+      "image": "arrow_down",
+      "bounds": "23 125 105 80"
+    },
+    "Preset -": {
+      "image": "arrow_up",
+      "bounds": "569 45 105 80"
+    },
+    "Preset +": {
+      "image": "arrow_down",
+      "bounds": "569 125 105 80"
+    },
+    "S1 Folder -": {
+      "image": "arrow_up",
+      "bounds": "23 45 105 80"
+    },
+    "S1 Folder +": {
+      "image": "arrow_down",
+      "bounds": "23 125 105 80"
+    },
+    "S1 File -": {
+      "image": "arrow_up",
+      "bounds": "569 45 105 80"
+    },
+    "S1 File +": {
+      "image": "arrow_down",
+      "bounds": "569 125 105 80"
+    },
+    "S2 Folder -": {
+      "image": "arrow_up",
+      "bounds": "23 45 105 80"
+    },
+    "S2 Folder +": {
+      "image": "arrow_down",
+      "bounds": "23 125 105 80"
+    },
+    "S2 File -": {
+      "image": "arrow_up",
+      "bounds": "569 45 105 80"
+    },
+    "S2 File +": {
+      "image": "arrow_down",
+      "bounds": "569 125 105 80"
+    }
   },
   "big": {
     "Folder": "132 45 417 160",
-    "Preset": "678 45 417 160"
+    "Preset": "678 45 417 160",
+    "S1 Folder": "132 45 417 160",
+    "S1 File": "678 45 417 160",
+    "S2 Folder": "132 45 417 160",
+    "S2 File": "678 45 417 160"
   },
   "place": {
     "Volume": "983 230 278 107"
   },
   "steps": {
-    "Osc1 Transp": [-96, 96], "Osc2 Transp": [-96, 96], "Mod1 Transp": [-96, 96], "Mod2 Transp": [-96, 96], "Transpose": [-96, 96],
-    "Osc1 Fine": [-50, 49], "Osc2 Fine": [-50, 49], "Mod1 Fine": [-50, 49], "Mod2 Fine": [-50, 49], "Fine Tune": [-50, 49],
-    "S1 Speed": [-48, 48], "S2 Speed": [-48, 48],
-    "Osc1 Phase": [-1, 360, {"-1": "Off"}], "Osc2 Phase": [-1, 360, {"-1": "Off"}],
-    "Mod1 Phase": [-1, 360, {"-1": "Off"}], "Mod2 Phase": [-1, 360, {"-1": "Off"}]
+    "Osc1 Transp": [
+      -96,
+      96
+    ],
+    "Osc2 Transp": [
+      -96,
+      96
+    ],
+    "Mod1 Transp": [
+      -96,
+      96
+    ],
+    "Mod2 Transp": [
+      -96,
+      96
+    ],
+    "Transpose": [
+      -96,
+      96
+    ],
+    "Osc1 Fine": [
+      -50,
+      49
+    ],
+    "Osc2 Fine": [
+      -50,
+      49
+    ],
+    "Mod1 Fine": [
+      -50,
+      49
+    ],
+    "Mod2 Fine": [
+      -50,
+      49
+    ],
+    "Fine Tune": [
+      -50,
+      49
+    ],
+    "S1 Speed": [
+      -48,
+      48
+    ],
+    "S2 Speed": [
+      -48,
+      48
+    ],
+    "Osc1 Phase": [
+      -1,
+      360,
+      {
+        "-1": "Off"
+      }
+    ],
+    "Osc2 Phase": [
+      -1,
+      360,
+      {
+        "-1": "Off"
+      }
+    ],
+    "Mod1 Phase": [
+      -1,
+      360,
+      {
+        "-1": "Off"
+      }
+    ],
+    "Mod2 Phase": [
+      -1,
+      360,
+      {
+        "-1": "Off"
+      }
+    ]
   },
   "programQLinks": [
     "Gold 1",

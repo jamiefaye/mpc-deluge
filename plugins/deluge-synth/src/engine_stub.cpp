@@ -35,6 +35,8 @@ struct Placeholder {
 	int32_t pads[kGridSlots] = {};
 };
 Placeholder placeholders[kMaxInstances];
+// The placeholder remembers the name so that the plugin's File parameters behave.
+char sampleNames[kMaxInstances][2][256];
 int current = 0;
 #define tones (placeholders[current].tones)
 #define knobs (placeholders[current].knobs)
@@ -75,6 +77,7 @@ int engineCurrentInstance() {
 }
 
 int engineLoadSynth(const char*) {
+	sampleNames[current][0][0] = sampleNames[current][1][0] = 0;
 	for (Tone& t : tones) {
 		t = Tone();
 	}
@@ -86,6 +89,28 @@ int engineFirmwareErrors(char* latest, int size) {
 		latest[0] = 0;
 	}
 	return 0;
+}
+
+int engineSampleSet(int source, const char* path) {
+	if (source < 0 || source > 1) {
+		return 1;
+	}
+	std::snprintf(sampleNames[current][source], sizeof sampleNames[0][0], "%s", path);
+	return 0;
+}
+bool engineSampleGet(int source, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	if (source < 0 || source > 1 || sampleNames[current][source][0] == 0) {
+		return false;
+	}
+	std::snprintf(out, (size_t)outSize, "%s", sampleNames[current][source]);
+	return true;
+}
+
+uint32_t engineSampleIdOf(int source) {
+	return (source < 0 || source > 1 || sampleNames[current][source][0] == 0) ? 0 : engineSampleId(sampleNames[current][source]);
 }
 
 void engineSampleCounts(int* loaded, int* failed) {

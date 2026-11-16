@@ -25,6 +25,13 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
   computer, and the desktop VST) contains a placeholder sine tone instead, because the
   firmware's signal processing is ARM NEON code.
 
+## Samples
+
+Screens SAMPLE 1 and SAMPLE 2 choose the file each oscillator plays from the WAV and AIFF files
+under `Content/SAMPLES`, by folder and file with arrow buttons, as MAIN chooses a preset. Choosing
+one makes the oscillator a sample oscillator (subtractive mode only, as on a Deluge). The choice
+is saved with the project as a position in the sorted list of files.
+
 ## What it does not do yet
 
 - Up to sixteen instances per MPC project play at once, each with its own preset, reverb and

@@ -447,7 +447,8 @@ are not built.
   engine in rounds until nothing changes (`syncKnobs`), then shows what the engine holds.
   A state the engine cannot hold (ring-mod mode with an oscillator type its list lacks) comes
   back as what it does hold.
-- **Known gap, older than the grid:** a restore that lands while a preset is still on its way
+- **Known gap, older than the grid (closed 2026-11-16, see "Sample files ... and how a project
+  is restored"):** a restore that lands while a preset is still on its way
   in can have some values replaced by the preset's own (`syncKnobs` adopting, `host_`
   overwritten). The simulator, which restores straight after choosing a random preset, shows it
   about once in a hundred seeded runs; a real project load does not change preset a moment
@@ -594,6 +595,43 @@ the first plugin instance owned the engine and the rest were silent.
   as they are recycled. Harmless so far. The stutter effect has one buffer for the engine;
   nothing starts it yet. CPU and memory with many instances on the Force are unmeasured (each
   has a reverb of its own).
+
+### Sample files for the oscillators, and how a project is restored (2026-11-16)
+
+Jamie: "ability to change sample 1 and sample 2 (maybe split into one screen for each)".
+
+- **Engine:** `engineSampleSet(source, path)` does what the Deluge's sample browser does for a
+  synth (`SampleBrowser::claimCurrentFile`): type Sample, the first key zone takes the file,
+  play mode from the file's loop points and length. Only in subtractive mode, as the firmware's
+  `FileSelector::isRelevant` has it; a sample oscillator in FM mode is a state the synth-mode
+  pad then refuses to leave (its `isRelevant` wants both oscillators ring-moddable).
+  `engineSampleIdOf` is a hash of the path for the audio thread's read-back.
+- **Plugin:** for each oscillator a Folder and a File parameter over `Content/SAMPLES` (WAV,
+  AIFF; File 0 is "none of these") and four arrow buttons, on screens SAMPLE 1 and SAMPLE 2 laid
+  out like MAIN. A file is loaded by the worker thread (`applySamples`), never in `process()`.
+  File follows the engine like a pad does: the Type pad taking the oscillator away sets it to
+  "-". Not done: wavetable files, key zones beyond the first, a file outside `Content/SAMPLES`
+  (reads "-"), and the File number is a position in the sorted list, so adding files to the
+  folder moves a saved choice.
+- **Saving and restoring was reworked on the way**, because loading a file made the old
+  weaknesses show in half the simulator runs on the slow emulator:
+  - The MPC writes the parameters into the project *before* `saveExtraState` is called. So
+    that function now waits for the engine to settle first, has the worker hand over anything
+    `process()` has not yet taken and read the engine back (`drainForWaiter`; audio may not be
+    running), and then writes the settled values into its own state ("V" block).
+  - `loadExtraState` no longer works from what the MPC set. It hands the saved values to the
+    worker, which loads the preset afresh and applies them in `syncKnobs` (keep mode): one
+    step from a known start. This retired the "known gap" (a restore landing while a preset
+    was on its way in).
+  - A pad that did not apply when saved is written as not-a-number and left as the preset has
+    it. Its parameter value was never the engine's, and giving it to the engine the moment the
+    pad came to life (the rounds) wrecked the state: a stale oscillator type removing a sample.
+  - Kept File parameters are given at the start of every round, since the mode pad may have to
+    make the sound subtractive first.
+  Simulator after this: native 15 of 15, arm32 emulator 10 of 10 (it was 5 of 10 part way).
+- `DS_TRACE`-style prints were how each step was found; none are left in. If this area breaks
+  again, print in `giveSample`, `showSamples`, the top and end of `syncKnobs` and both ends of
+  `saveExtraState`, and run `host_sim ... test` natively and under `tools/armtest/run.py`.
 
 ### 64-bit (done 2026-11-13)
 
