@@ -1,5 +1,5 @@
 {
-  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. place: moves a control (x y w h), here Folder and Preset to the right to make room. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode.",
+  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode.",
   "keys": [
     [
       "MAIN",
@@ -27,14 +27,17 @@
     ]
   ],
   "buttons": {
-    "Folder -": {"image": "arrow_up", "bounds": "23 45 70 53"},
-    "Folder +": {"image": "arrow_down", "bounds": "23 99 70 53"},
-    "Preset -": {"image": "arrow_up", "bounds": "403 45 70 53"},
-    "Preset +": {"image": "arrow_down", "bounds": "403 99 70 53"}
+    "Folder -": {"image": "arrow_up", "bounds": "23 45 105 80"},
+    "Folder +": {"image": "arrow_down", "bounds": "23 125 105 80"},
+    "Preset -": {"image": "arrow_up", "bounds": "569 45 105 80"},
+    "Preset +": {"image": "arrow_down", "bounds": "569 125 105 80"}
+  },
+  "big": {
+    "Folder": "132 45 417 160",
+    "Preset": "678 45 417 160"
   },
   "place": {
-    "Folder": "97 45 278 107",
-    "Preset": "477 45 278 107"
+    "Volume": "983 230 278 107"
   },
   "programQLinks": [
     "Gold 1",

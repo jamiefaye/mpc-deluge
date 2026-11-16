@@ -228,7 +228,67 @@ def apply_buttons(project, out_dir):
         button = button.replace("toggle_on.png", image + "_on.png").replace("toggle_off.png", image + "_off.png")
         block = block[:list_at + 1] + "\n" + focus + ",\n" + button + "\n" + block[list_end - 1:]
         new_blocks.append(block)
+    # "big": {"<parameter name>": "x y w h"}: the parameter's name-and-value bar at another size,
+    # text included. The MPC draws the generic bar's text itself at one size, so this is built
+    # from parts whose size the skin does set: the toggle's name and value labels with their
+    # fonts scaled by h / 107 (the generator's row height), and a plain colour bar under them.
+    big = spec.get("big") or {}
+    for size in sorted({tuple(where.split()[2:]) for where in big.values()}):
+        width, height = (int(v) for v in size)
+        scale = height / 107.0
+        slider_at = tui.find('"key": "sliderWithFocus"')
+        if slider_at < 0:
+            raise sdk_build.BuildError("tabs.json big: the skin has no slider to copy")
+        slider_start = tui.rfind("{", 0, slider_at)
+        block = tui[slider_start:matching(tui, slider_start)]
+        block = block.replace('"key": "sliderWithFocus"', '"key": "big slider %dx%d"' % (width, height), 1)
+        list_at = block.index("[", block.index('"componentsData"'))
+        list_end = matching(block, list_at)
+        first = block.index("{", list_at)
+        focus_end = matching(block, first)
+        bar_start = block.index("{", focus_end)
+        bar = block[bar_start:matching(block, bar_start)]
+        t_list = template.index("[", template.index('"componentsData"'))
+        labels, i = [], t_list + 1
+        for _ in range(3):
+            i = template.index("{", i)
+            end = matching(template, i)
+            labels.append(template[i:end])
+            i = end
+        bounds = re.compile(r'("bounds"\s*:\s*)"[^"]*"')
+        font = re.compile(r'("height"\s*:\s*)[0-9.]+')
+
+        def sized(part, x, y, w, h, points=None):
+            part = bounds.sub(lambda m: '%s"%d %d %d %d"' % (m.group(1), x, y, w, h), part)
+            return font.sub(lambda m: "%s%.1f" % (m.group(1), points), part) if points else part
+
+        inset = int(15 * scale)
+        focus = sized(block[first:focus_end], 0, 0, width, height)
+        name = sized(labels[1], inset, int(10 * scale), width - 2 * inset, int(32 * scale), 26 * scale)
+        name = name.replace('"case": "Original"', '"case": "Upper Case"')
+        value = sized(labels[2], inset, int(43 * scale), width - 2 * inset, int(40 * scale), 30 * scale)
+        data_at = bar.index('"data"')
+        data_start = bar.index("{", data_at)
+        accent = re.search(r'"outlineColour"\s*:\s*"([0-9a-fA-F]{8})"', block).group(1)
+        bar = (bar[:data_start]
+               + '{"version": 2, "sliderType": "ColourBar", "direction": "Horizontal", "backgroundColour": "ff2c2b2c", '
+                 '"outlineColour": "ff6a6a6c", "valueColour": "%s", "isBipolar": false, "handleName": "Data"}' % accent
+               + bar[matching(bar, data_start):])
+        bar = sized(bar, inset, int(88 * scale), width - 2 * inset, int(9 * scale))
+        block = block[:list_at + 1] + "\n" + ",\n".join([focus, name, value, bar]) + "\n" + block[list_end - 1:]
+        new_blocks.append(block)
     tui = tui[:start] + "".join(b + ",\n" for b in new_blocks) + tui[start:]
+    for param, where in big.items():
+        at = tui.find('"name": "%s",' % param)
+        if at < 0:
+            raise sdk_build.BuildError("tabs.json big: no control for the parameter \"%s\"" % param)
+        item_end = tui.index("}", tui.index('"boundsType"', at))
+        item, n = re.subn(r'("type"\s*:\s*)"sliderWithFocus"',
+                          lambda m: '%s"big slider %s"' % (m.group(1), "x".join(where.split()[2:])), tui[at:item_end], count=1)
+        item, m2 = re.subn(r'("bounds"\s*:\s*)"[^"]*"', lambda m: '%s"%s"' % (m.group(1), where), item, count=1)
+        if n != 1 or m2 != 1:
+            raise sdk_build.BuildError("tabs.json big: \"%s\" is not a plain slider on a page" % param)
+        tui = tui[:at] + item + tui[item_end:]
     for param, b in buttons.items():
         at = tui.find('"name": "%s",' % param)
         if at < 0:
@@ -242,7 +302,7 @@ def apply_buttons(project, out_dir):
             raise sdk_build.BuildError("tabs.json buttons: \"%s\" is not a switch on a page" % param)
         tui = tui[:at] + item + tui[item_end:]
     open(tui_path, "w", encoding="utf-8").write(tui)
-    sdk_build.log("  tabs.json: %d picture buttons, %d controls moved" % (len(buttons), len(moved)))
+    sdk_build.log("  tabs.json: %d picture buttons, %d controls moved, %d made big" % (len(buttons), len(moved), len(big)))
 
 
 _make_skins = sdk_build.make_skins

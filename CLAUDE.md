@@ -411,7 +411,9 @@ are not built.
   generated skin as text (the MPC's parser depends on key order and TUI.json repeats keys, so
   no JSON library). `tabs.json` "buttons" (2026-11-16) turns a switch into a picture button
   placed in pixels, and "place" moves a control: the up and down arrows sit to the left of
-  Folder and Preset on MAIN, one above the other (Jamie's choice), the two bars moved right,
+  Folder and Preset on MAIN, one above the other (Jamie's choice). "big" redraws a bar at
+  another size (Folder and Preset at 1.5x, Jamie again): the MPC draws the generic bar's text
+  itself, so the big one is two labels with scaled fonts over a `ColourBar` slider,
   images in `skin-images/` drawn by `tools/make_arrows.py` (`apply_buttons` in
   `tools/build.py` copies the SDK's toggle component without its text). Not yet seen on a
   device. Each screen column of four is one Q-Link block. Layout is free to change;

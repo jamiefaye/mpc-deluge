@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(HERE, "plugins", "deluge-synth", "skin-images")
-W, H = 58, 41           # the button's size on screen; tabs.json's bounds less a 6 px inset
+W, H = 93, 68           # the button's size on screen; tabs.json's bounds less a 6 px inset
 SCALE = 4               # drawn large and reduced, for smooth edges
 PANEL = (0x2c, 0x2b, 0x2c, 255)   # a little lighter than the page background (1e1d1e)
 ACCENT = (0xd3, 0x11, 0x45, 255)  # the mpc-red kit's accent
@@ -21,8 +21,8 @@ for direction in ("up", "down"):
     for state, fill in (("off", PANEL), ("on", ACCENT)):
         image = Image.new("RGBA", (W * SCALE, H * SCALE), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle([0, 0, W * SCALE - 1, H * SCALE - 1], radius=8 * SCALE, fill=fill)
-        cx, cy, half, tall = W * SCALE / 2, H * SCALE / 2, 13 * SCALE, 15 * SCALE
+        draw.rounded_rectangle([0, 0, W * SCALE - 1, H * SCALE - 1], radius=12 * SCALE, fill=fill)
+        cx, cy, half, tall = W * SCALE / 2, H * SCALE / 2, 20 * SCALE, 22 * SCALE
         tip = cy - tall / 2 if direction == "up" else cy + tall / 2
         base = cy + tall / 2 if direction == "up" else cy - tall / 2
         draw.polygon([(cx, tip), (cx + half, base), (cx - half, base)], fill=WHITE)
