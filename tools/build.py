@@ -195,6 +195,38 @@ def apply_buttons(project, out_dir, params_json):
     tui = "".join(out) + tui[at:]
     if fixed:
         sdk_build.log("  %d segment captions made visible" % fixed)
+    # "ownText": parameters whose choices are not fixed: the folders, presets and sample files
+    # found when the plugin starts. The SDK's tools read a parameter's choices from the build
+    # machine's run of the plugin and write them into the skin ("replacementStrings"), and an MPC
+    # then shows and steps through those and nothing else: on a Force with the full library the
+    # Folder bar offered the three folders of the test set (2026-11-16). Their entries are taken
+    # out, so the MPC shows the plugin's own text. (They then move as continuous parameters, a
+    # hundredth of the range per click; the arrow buttons are the way to step.)
+    own = spec.get("ownText") or []
+    if own:
+        index = {p["name"]: p["index"] for p in json.load(open(params_json))["params"]}
+        removed = 0
+        for param in own:
+            if param not in index:
+                raise sdk_build.BuildError("tabs.json ownText: no parameter called \"%s\"" % param)
+            start_list = tui.find('"replacementStrings"')
+            end_list = matching(tui, tui.index("[", start_list))
+            m = re.search(r'\{\s*"key"\s*:\s*"Parameter %d"' % index[param], tui[start_list:end_list])
+            if not m:
+                continue
+            a = start_list + m.start()
+            b = matching(tui, a)
+            # with the comma that separated it from a neighbour
+            after = re.match(r"\s*,", tui[b:])
+            if after:
+                b += after.end()
+            else:
+                before = re.search(r",\s*$", tui[:a])
+                if before:
+                    a = before.start()
+            tui = tui[:a] + tui[b:]
+            removed += 1
+        sdk_build.log("  tabs.json: %d parameters show the plugin's own text" % removed)
     # "steps": {"<parameter name>": [first, last]} or [first, last, {"<value>": "<word>"}]: a whole-number parameter the Q-Links and the
     # data wheel must step through one at a time. An MPC moves a continuous parameter a hundredth
     # of its range per click; only one with "replacementStrings" in the skin gets exact steps,

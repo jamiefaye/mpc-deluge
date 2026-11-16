@@ -1,5 +1,5 @@
 {
-  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset.",
+  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset. ownText: parameters whose list of choices is found when the plugin starts (folders, presets, sample files), which the skin must not carry a copy of.",
   "keys": [
     [
       "MAIN",
@@ -197,5 +197,13 @@
     "Gold 14",
     "Gold 15",
     "Gold 16"
+  ],
+  "ownText": [
+    "Preset",
+    "Folder",
+    "S1 Folder",
+    "S1 File",
+    "S2 Folder",
+    "S2 File"
   ]
 }
