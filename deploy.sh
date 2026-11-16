@@ -17,7 +17,13 @@
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 sdk=${MPC_SDK:-$here/../mpc-plugin-builder-sdk}
+# What is set in the environment wins over .mpc.env, so one deploy can go to another device or
+# drive: MPC_DRIVE="MPCstuff HD" ./deploy.sh plugins/deluge-synth
+given_address=$MPC_ADDRESS
+given_drive=$MPC_DRIVE
 [ -f "$here/.mpc.env" ] && . "$here/.mpc.env"
+[ -n "$given_address" ] && MPC_ADDRESS=$given_address
+[ -n "$given_drive" ] && MPC_DRIVE=$given_drive
 [ -n "$MPC_SSH_PASSWORD" ] && export MPC_SSH_PASSWORD
 
 if [ -z "$MPC_ADDRESS" ]; then
