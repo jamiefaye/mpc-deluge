@@ -653,6 +653,10 @@ Jamie: "If I edit a synth sound, how do I get it back onto the Deluge?"
 - The SDK simulator presses every button, so `build.sh` sets `DELUGE_SYNTH_NO_SAVE` for the
   native run (whose `Content/` is the project's own).
 - Not yet loaded on a real Deluge: do that before calling it done.
+- **Presets saved on the device live in the installed plugin folder, which an install
+  replaces.** `deploy.sh` first copies the device's `Content/` back into the project, but only a
+  deploy that builds carries it into the new copy: **do not use `--no-build` once Jamie has
+  saved presets on the device**, or they are lost from the card (they stay in the project).
 
 ### 64-bit (done 2026-11-13)
 
