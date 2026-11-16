@@ -147,13 +147,17 @@ struct Track {
 	}
 	// Chooses a preset by name through the Preset parameter, as a host does.
 	bool choose(const char* name) {
-		const int preset = param("Preset");
-		for (int i = 0; i <= 2000; i++) {
-			fx->setParameter(fx, preset, (float)i / 2000.0f);
-			char text[64] = {0};
-			disp(effGetParamDisplay, preset, 0, text);
-			if (std::strcmp(text, name) == 0) {
-				return true;
+		// Every folder, and in each every position of Preset (the position within the folder).
+		const int folder = param("Folder"), preset = param("Preset");
+		for (int f = 0; f <= 40; f++) {
+			fx->setParameter(fx, folder, (float)f / 40.0f);
+			for (int i = 0; i <= 400; i++) {
+				fx->setParameter(fx, preset, (float)i / 400.0f);
+				char text[64] = {0};
+				disp(effGetParamDisplay, preset, 0, text);
+				if (std::strcmp(text, name) == 0) {
+					return true;
+				}
 			}
 		}
 		return false;

@@ -69,7 +69,7 @@ namespace {
 enum ParamIndex
 {
     kVolume = 0,     // dB. First on purpose: the MPC nudges parameter 0 on every load.
-    kPreset,         // index into the preset files found at start-up
+    kPreset,         // the preset's position in its folder (see presetIndex())
     kFolder,         // index of the folder the preset is in; setting it jumps to that folder's first preset
     kFolderPrev,     // momentary buttons: the plugin acts on a press and puts the button back
     kFolderNext,
@@ -183,9 +183,15 @@ public:
     {
         scanPresets();
         addParam(mpc::floatParam("volume", "Volume", -40.0f, 12.0f, 0.0f, "dB", 1));
-        // One step per preset or folder found, so a knob or the data wheel cannot skip any. (A
-        // project stores the preset's path, so these ranges may differ from one start to the next.)
-        addParam(mpc::intParam("preset", "Preset", 0, std::max(0, (int)presets_.size() - 1), 0));
+        // Preset is the position within the folder that Folder selects, not in the whole list
+        // (Jamie, 2026-11-16): an MPC moves these a hundredth of their range per click of a
+        // Q-Link or the data wheel, which over 800 presets was eight at a time. Its range is at
+        // least 0..100, of which a click is exactly one preset; positions past the end of a
+        // folder are its last preset. (A project stores the preset's path, so the ranges may
+        // differ from one start to the next.)
+        int largestFolder = 1;
+        for (size_t f = 0; f < folderStart_.size(); ++f) largestFolder = std::max(largestFolder, folderSize((int)f));
+        addParam(mpc::intParam("preset", "Preset", 0, std::max(100, largestFolder - 1), 0));
         addParam(mpc::intParam("folder", "Folder", 0, std::max(0, (int)folders_.size() - 1), 0));
         // The MPC has no list widget, so stepping is done with buttons. Each is a parameter that
         // is acted on when it goes on (parameterChanged) and that the worker thread puts back to
@@ -343,8 +349,12 @@ public:
         const bool pressed = plainValue > 0.5f;
         switch (index)
         {
-            case kPreset:     requestedPreset_.store(presetIndex()); followFolder(); break;
-            case kFolder:     if (!tSettingFolder) browse(0, 0, mpc::clamp((int)std::lround(plainValue), 0, std::max(0, (int)folders_.size() - 1))); break;
+            case kPreset:     if (!tSettingPreset) { requestedPreset_.store(presetIndex()); presetTurnedMs_.store(nowMs()); browseChanged_.store(true); } break;
+            // Another folder: its first preset.
+            case kFolder:
+                if (!tSettingFolder && !presets_.empty())
+                    selectPreset(folderStart_[(size_t)mpc::clamp((int)std::lround(plainValue), 0, (int)folders_.size() - 1)]);
+                break;
             case kPresetPrev: buttonSet(index, plainValue); if (pressed) browse(-1, 0, -1); break;
             case kPresetNext: buttonSet(index, plainValue); if (pressed) browse(+1, 0, -1); break;
             case kFolderPrev: buttonSet(index, plainValue); if (pressed) browse(0, -1, -1); break;
@@ -773,23 +783,24 @@ public:
         if (folderSteps != 0)
             preset = folderStart_[(size_t)mpc::clamp(folderIndexOfPreset(preset) + folderSteps, 0, (int)folders_.size() - 1)];
         if (folderSet >= 0 && folderSet != folderIndexOfPreset(preset)) preset = folderStart_[(size_t)folderSet];
-        if (preset != before) set(kPreset, (float)preset);   // comes back through parameterChanged(kPreset)
-        else followFolder();
+        if (preset != before) selectPreset(preset);
         browseChanged_.store(true);
     }
 
-    // Folder always shows the folder of the selected preset.
-    void followFolder()
+    // Makes Folder and Preset name this preset (a position in presets_) and asks for it.
+    void selectPreset(int preset)
     {
         if (presets_.empty()) return;
-        const float folder = (float)folderIndexOfPreset(presetIndex());
-        if (get(kFolder) != folder)
-        {
-            tSettingFolder = true;
-            set(kFolder, folder);
-            tSettingFolder = false;
-            browseChanged_.store(true);
-        }
+        preset = mpc::clamp(preset, 0, (int)presets_.size() - 1);
+        const int folder = folderIndexOfPreset(preset);
+        tSettingFolder = true;
+        tSettingPreset = true;
+        if (getInt(kFolder) != folder) set(kFolder, (float)folder);
+        if (getInt(kPreset) != preset - folderStart_[(size_t)folder]) set(kPreset, (float)(preset - folderStart_[(size_t)folder]));
+        tSettingFolder = false;
+        tSettingPreset = false;
+        requestedPreset_.store(preset);
+        browseChanged_.store(true);
     }
 
     bool formatValue(int index, float plainValue, std::string& out) override
@@ -797,7 +808,8 @@ public:
         if (index == kPreset)
         {
             if (presets_.empty()) { out = "(none)"; return true; }
-            const std::string& path = presets_[(size_t)mpc::clamp((int)std::lround(plainValue), 0, (int)presets_.size() - 1)];
+            const int folder = mpc::clamp(getInt(kFolder), 0, (int)folders_.size() - 1);
+            const std::string& path = presets_[(size_t)(folderStart_[(size_t)folder] + mpc::clamp((int)std::lround(plainValue), 0, folderSize(folder) - 1))];
             const size_t slash = path.rfind('/');
             const size_t start = slash == std::string::npos ? 0 : slash + 1;
             out = path.substr(start, path.size() - start - 4);   // file name without folder or ".XML"
@@ -957,7 +969,7 @@ public:
         if (!goldIsThisPresets) statRestoresWithoutKnobs_.fetch_add(1);
         for (size_t i = 0; i < presets_.size(); ++i)
         {
-            if (presets_[i] == wanted) { set(kPreset, (float)i); break; }
+            if (presets_[i] == wanted) { selectPreset((int)i); break; }
         }
         // (Not found: the file was removed or renamed. Keep whatever the Preset number selects.)
 
@@ -1259,7 +1271,19 @@ private:
         closedir(d);
     }
 
-    int presetIndex() { return presets_.empty() ? -1 : mpc::clamp(getInt(kPreset), 0, (int)presets_.size() - 1); }
+    // The selected preset as a position in presets_: the folder Folder names, and in it the
+    // position Preset names (past the folder's end: its last).
+    int presetIndex() const
+    {
+        if (presets_.empty()) return -1;
+        const int folder = mpc::clamp(getInt(kFolder), 0, (int)folders_.size() - 1);
+        return folderStart_[(size_t)folder] + mpc::clamp(getInt(kPreset), 0, folderSize(folder) - 1);
+    }
+    int folderSize(int folder) const
+    {
+        const int end = folder + 1 < (int)folderStart_.size() ? folderStart_[(size_t)folder + 1] : (int)presets_.size();
+        return std::max(1, end - folderStart_[(size_t)folder]);
+    }
 
     // Loads the requested preset whenever it differs from the loaded one. Holding the engine lock
     // makes process() output silence for the duration.
@@ -1294,6 +1318,19 @@ private:
     void applyBrowsing()
     {
         bool changed = browseChanged_.exchange(false);
+        // A Preset turned past the end of its folder comes back to the last one, so that turning
+        // it down again takes effect at once.
+        if (!presets_.empty())
+        {
+            const int last = folderSize(mpc::clamp(getInt(kFolder), 0, (int)folders_.size() - 1)) - 1;
+            if (getInt(kPreset) > last && nowMs() - presetTurnedMs_.load() > 400)
+            {
+                tSettingPreset = true;
+                set(kPreset, (float)last);
+                tSettingPreset = false;
+                changed = true;
+            }
+        }
         if (changed) for (int index : {kPreset, kFolder}) tellHostLater(index);
         const int64_t now = nowMs();
         if (sampleBrowseChanged_.exchange(false))
@@ -1742,6 +1779,8 @@ private:
     // writes from the MPC's. Per thread: the MPC may be setting parameters on another at the same time.
     static inline thread_local bool tMirroringKnobs = false;
     static inline thread_local bool tSettingFolder = false;
+    static inline thread_local bool tSettingPreset = false;
+    std::atomic<int64_t> presetTurnedMs_{0};   // when Preset was last set from outside
     static inline thread_local bool tReleasingButton = false;
     std::atomic<int64_t> buttonOnSince_[kNumButtons];   // when each button last went on, in ms
     std::vector<std::string> sampleFiles_;        // under Content/, "SAMPLES/Kicks/909.wav", sorted; constructor only

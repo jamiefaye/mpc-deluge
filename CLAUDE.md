@@ -718,6 +718,16 @@ grid picture and pressing a source pad to patch (the editing design, below) are 
   of it is in the repo or in anything packaged for others. Jamie raised bundling the factory
   set (2026-11-16); it needs Synthstrom's word first.
 - MAIN has ten-preset steps (double arrows) beside the single ones.
+- **Preset is the position within the folder Folder selects** (Jamie, 2026-11-16), not in the
+  whole list: over 822 presets a click of the data wheel was eight of them. Its range is at
+  least 0..100, of which a click is exactly one; past a folder's end is its last preset, and
+  the worker brings the parameter back there. `presetIndex()` is still the position in
+  `presets_`, which is what `requestedPreset_`, `loadedPreset_` and `goldPreset_` hold;
+  `selectPreset()` sets both parameters. Keep folders to about 100 presets for this to hold.
+- **The skin must not carry the names of folders, presets or sample files** (`tabs.json`
+  "ownText"): the SDK's tools write a choice parameter's options into it from the build
+  machine's run, and with the full library on the Force the Folder bar then offered the test
+  set's three folders.
 
 ### 64-bit (done 2026-11-13)
 

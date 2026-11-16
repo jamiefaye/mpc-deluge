@@ -95,6 +95,22 @@ static int valueOf(const char* name) {
 	return lo + (int)std::lround(fx->getParameter(fx, paramCalled(name)) * (float)(hi - lo));
 }
 
+// Chooses a preset by name as a host can: every folder, and in each every position of Preset
+// (which is the position within the folder).
+static bool choosePreset(const char* name) {
+	const int folder = paramCalled("Folder"), preset = paramCalled("Preset");
+	for (int f = 0; f <= 40; f++) {
+		fx->setParameter(fx, folder, (float)f / 40.0f);
+		for (int i = 0; i <= 400; i++) {
+			fx->setParameter(fx, preset, (float)i / 400.0f);
+			if (shown(preset) == name) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 // Audio for a while, in real time enough for the plugin's worker thread to do its part.
 static void run(int milliseconds = 120) {
 	static float left[128], right[128];
@@ -141,11 +157,7 @@ int main(int argc, char** argv) {
 	// step through normalised values finely.
 	bool found = false;
 	{
-		const int preset = paramCalled("Preset");
-		for (int i = 0; i <= 2000 && !found; i++) {
-			fx->setParameter(fx, preset, (float)i / 2000.0f);
-			found = shown(preset) == presetName;
-		}
+		found = choosePreset(presetName);
 		run(500);
 	}
 	check(found, "preset found", presetName);
@@ -319,11 +331,7 @@ int main(int argc, char** argv) {
 
 	found = false;
 	{
-		const int preset = paramCalled("Preset");
-		for (int i = 0; i <= 2000 && !found; i++) {
-			fx->setParameter(fx, preset, (float)i / 2000.0f);
-			found = shown(preset) == otherPreset;
-		}
+		found = choosePreset(otherPreset.c_str());
 		run(500);
 	}
 	check(found && shown("Env1 Attack") != "9", "another preset brings its own values", shown("Preset") + ", attack " + shown("Env1 Attack"));
