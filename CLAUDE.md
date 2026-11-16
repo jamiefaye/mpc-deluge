@@ -612,8 +612,12 @@ Jamie: "ability to change sample 1 and sample 2 (maybe split into one screen for
   out like MAIN. A file is loaded by the worker thread (`applySamples`), never in `process()`.
   File follows the engine like a pad does: the Type pad taking the oscillator away sets it to
   "-". Not done: wavetable files, key zones beyond the first, a file outside `Content/SAMPLES`
-  (reads "-"), and the File number is a position in the sorted list, so adding files to the
-  folder moves a saved choice.
+  (reads "-"). The File number is a position in the sorted list, which moves when files are
+  added, so a project also keeps each chosen file's path (an "S" block after the values) and a
+  restore takes the file's place in the list as it is then; a file no longer there restores as
+  none (2026-11-16; `tools/plugintest.sh` adds a file and loads a second instance to check).
+  Presets were always kept by path, folder included: moving a preset to another folder breaks
+  a project's link to it, and the fall-back is the saved Folder and Preset numbers.
 - **Saving and restoring was reworked on the way**, because loading a file made the old
   weaknesses show in half the simulator runs on the slow emulator:
   - The MPC writes the parameters into the project *before* `saveExtraState` is called. So

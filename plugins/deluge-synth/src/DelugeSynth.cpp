@@ -942,6 +942,17 @@ public:
                 const float value = cell >= 0 && !cellRelevant_[cell].load() ? std::nanf("") : get(index);
                 out.insert(out.end(), reinterpret_cast<const uint8_t*>(&value), reinterpret_cast<const uint8_t*>(&value) + sizeof value);
             }
+            // The oscillators' sample files by path ("S", then each path and a zero byte): a File
+            // parameter is a position in the sorted list of files, which moves when files are
+            // added to Content/SAMPLES.
+            out.push_back('S');
+            for (int osc = 0; osc < 2; ++osc)
+            {
+                const int file = getInt(kSample + osc * kSParams + kSFile);
+                if (file >= 1 && file <= (int)sampleFiles_.size()) out.insert(out.end(), sampleFiles_[(size_t)file - 1].begin(), sampleFiles_[(size_t)file - 1].end());
+                out.push_back(0);
+            }
+
         }
         writeDiagnostics();   // a project save is a convenient moment to refresh the file
     }
@@ -964,6 +975,26 @@ public:
             std::memcpy(&count, flagsEnd + 2, sizeof count);
             if (count == kNumParams - kGold && (size_t)(data + size - (flagsEnd + 4)) >= count * sizeof(float)) values = flagsEnd + 4;
         }
+        // After the values, the sample files by path (see saveExtraState).
+        std::string samplePaths[2];
+        bool haveSamplePaths = false;
+        if (values != nullptr)
+        {
+            const uint8_t* at = values + (size_t)(kNumParams - kGold) * sizeof(float);
+            const uint8_t* const stop = data + size;
+            if (at < stop && *at == 'S')
+            {
+                ++at;
+                haveSamplePaths = true;
+                for (int osc = 0; osc < 2 && at < stop; ++osc)
+                {
+                    const uint8_t* zero = static_cast<const uint8_t*>(std::memchr(at, 0, (size_t)(stop - at)));
+                    if (zero == nullptr) zero = stop;
+                    samplePaths[osc].assign(reinterpret_cast<const char*>(at), (size_t)(zero - at));
+                    at = zero < stop ? zero + 1 : stop;
+                }
+            }
+        }
         const std::string wanted(reinterpret_cast<const char*>(data), pathSize);
         statRestores_.fetch_add(1);
         if (!goldIsThisPresets) statRestoresWithoutKnobs_.fetch_add(1);
@@ -983,6 +1014,18 @@ public:
                 std::lock_guard<std::mutex> lock(restoreLock_);
                 restoreValues_.resize((size_t)(kNumParams - kGold));
                 std::memcpy(restoreValues_.data(), values, restoreValues_.size() * sizeof(float));
+                // A file saved by path takes its place in today's list (or none, if it is no
+                // longer there: better silent than some other file).
+                for (int osc = 0; osc < 2 && haveSamplePaths; ++osc)
+                {
+                    int file = 0;
+                    for (size_t i = 0; i < sampleFiles_.size() && file == 0; ++i)
+                        if (strcasecmp(sampleFiles_[i].c_str(), samplePaths[osc].c_str()) == 0) file = (int)i + 1;
+                    restoreValues_[(size_t)(kSample + osc * kSParams + kSFile - kGold)] = (float)file;
+                    // Its Folder parameter follows from the file; the saved number may be stale.
+                    // (With no file, Folder is only where the user was looking: as saved.)
+                    if (file != 0) restoreValues_[(size_t)(kSample + osc * kSParams + kSFolder - kGold)] = std::nanf("");
+                }
             }
             restorePending_.store(true);
             reloadPreset_.store(true);

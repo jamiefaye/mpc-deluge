@@ -347,6 +347,51 @@ int main(int argc, char** argv) {
 	run(500);
 	restoredAs("state restored over the same preset, changed");
 
+	// --- a project keeps an oscillator's sample file by path, not by its place in the list ---
+	{
+		const int file = paramCalled("S1 File");
+		setValue("Synth Mode", 0);
+		run();
+		fx->setParameter(fx, paramCalled("S1 File +"), 1.0f);
+		run(700);
+		fx->setParameter(fx, paramCalled("S1 File +"), 1.0f);
+		run(700);
+		const std::string chosen = shown(file);
+		const float position = fx->getParameter(fx, file);
+		void* data = nullptr;
+		const VstIntPtr bytes = disp(effGetChunk, 0, 0, &data);
+		const std::vector<uint8_t> project(static_cast<uint8_t*>(data), static_cast<uint8_t*>(data) + bytes);
+		// A file that sorts before every other appears in Content/SAMPLES, and the plugin is
+		// loaded afresh (a second instance scans the folder again), as after a restart.
+		std::string content = argv[1];
+		for (int up = 0; up < 3; up++) {
+			content.resize(content.rfind('/'));
+		}
+		const std::string added = content + "/Content/SAMPLES/000 added by the test.wav";
+		if (FILE* f = std::fopen(added.c_str(), "wb")) {
+			std::fputs("RIFF", f); // never loaded: only its name matters
+			std::fclose(f);
+		}
+		AEffect* first = fx;
+		fx = entry(hostCallback);
+		disp(effSetSampleRate, 0, 0, nullptr, 44100.0f);
+		disp(effSetBlockSize, 0, 128);
+		disp(effOpen);
+		disp(effMainsChanged, 0, 1);
+		disp(effStartProcess);
+		run(400);
+		disp(effSetChunk, 0, (VstIntPtr)project.size(), const_cast<uint8_t*>(project.data()));
+		run(800);
+		check(chosen != "-" && shown(file) == chosen && fx->getParameter(fx, file) != position,
+		      "after a file is added to SAMPLES, a restored project still has the file it chose (at a new place in the list)",
+		      chosen + " -> " + shown(file));
+		disp(effStopProcess);
+		disp(effMainsChanged, 0, 0);
+		disp(effClose);
+		fx = first;
+		std::remove(added.c_str());
+	}
+
 	// --- Save writes the sound to a new preset file in the User folder ---
 	{
 		// The native build's Content/ is the project's own: <library>/../../Content.
