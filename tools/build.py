@@ -137,6 +137,99 @@ def apply_tabs(project, out_dir, params_json):
     sdk_build.log("  tabs.json: %d pages on %d function keys" % (len(order), len(spec["keys"])))
 
 
+def matching(text, start):
+    """The index just past the bracket that closes the one at text[start] (strings respected)."""
+    depth, i, in_string = 0, start, False
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == "\\":
+                i += 1
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c in "{[":
+            depth += 1
+        elif c in "}]":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    raise sdk_build.BuildError("TUI.json: unbalanced brackets")
+
+
+def apply_buttons(project, out_dir):
+    """tabs.json "buttons": bool parameters shown as a picture button instead of the kit's toggle
+    with its name and value text, for instance the arrows that step through presets. Each entry
+    is  "<parameter name>": {"image": "<name>", "bounds": "x y w h"}  with <name>_on.png and
+    <name>_off.png in the project's skin-images/ folder, drawn 12 px smaller than the bounds each
+    way. Bounds are in the page's pixels, so two buttons can share one cell of the generator's
+    grid. The toggle's definition is copied without its text and with these images; the
+    parameter's place on the page is pointed at the copy and moved."""
+    spec_path = os.path.join(project, "tabs.json")
+    tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
+    if not (os.path.isfile(spec_path) and os.path.isfile(tui_path)):
+        return
+    buttons = json.load(open(spec_path)).get("buttons")
+    if not buttons:
+        return
+    tui = open(tui_path, encoding="utf-8").read()
+    key_at = tui.find('"key": "toggle"')
+    if key_at < 0:
+        raise sdk_build.BuildError("tabs.json buttons: the skin has no toggle to copy")
+    start = tui.rfind("{", 0, key_at)
+    template = tui[start:matching(tui, start)]
+    new_blocks = []
+    for image in sorted({b["image"] for b in buttons.values()}):
+        sizes = {tuple(b["bounds"].split()[2:]) for b in buttons.values() if b["image"] == image}
+        if len(sizes) != 1:
+            raise sdk_build.BuildError("tabs.json buttons: \"%s\" is used at more than one size" % image)
+        width, height = (int(v) for v in sizes.pop())
+        for state in ("on", "off"):
+            name = "%s_%s.png" % (image, state)
+            source = os.path.join(project, "skin-images", name)
+            if not os.path.isfile(source):
+                raise sdk_build.BuildError("tabs.json buttons: no %s" % source)
+            with open(source, "rb") as f, open(os.path.join(out_dir, "Plugin Skins", name), "wb") as g:
+                g.write(f.read())
+        block = template.replace('"key": "toggle"', '"key": "button %s"' % image, 1)
+        # Its parts: the focus outline, the name, the value, the button. Keep the first and last.
+        list_at = block.index("[", block.index('"componentsData"'))
+        list_end = matching(block, list_at)
+        parts, i = [], list_at + 1
+        while True:
+            i = block.find("{", i, list_end)
+            if i < 0:
+                break
+            end = matching(block, i)
+            parts.append(block[i:end])
+            i = end
+        if len(parts) != 4:
+            raise sdk_build.BuildError("tabs.json buttons: the SDK's toggle has changed shape (%d parts)" % len(parts))
+        bounds = re.compile(r'("bounds"\s*:\s*)"[^"]*"')
+        focus = bounds.sub(lambda m: '%s"0 0 %d %d"' % (m.group(1), width, height), parts[0])
+        button = bounds.sub(lambda m: '%s"6 6 %d %d"' % (m.group(1), width - 12, height - 12), parts[3])
+        button = button.replace("toggle_on.png", image + "_on.png").replace("toggle_off.png", image + "_off.png")
+        block = block[:list_at + 1] + "\n" + focus + ",\n" + button + "\n" + block[list_end - 1:]
+        new_blocks.append(block)
+    tui = tui[:start] + "".join(b + ",\n" for b in new_blocks) + tui[start:]
+    for param, b in buttons.items():
+        at = tui.find('"name": "%s",' % param)
+        if at < 0:
+            raise sdk_build.BuildError("tabs.json buttons: no control for the parameter \"%s\"" % param)
+        item_end = tui.index('"boundsType"', at)
+        item_end = tui.index("}", item_end)
+        item = tui[at:item_end]
+        item, n = re.subn(r'("type"\s*:\s*)"toggle"', lambda m: '%s"button %s"' % (m.group(1), b["image"]), item, count=1)
+        item, m2 = re.subn(r'("bounds"\s*:\s*)"[^"]*"', lambda m: '%s"%s"' % (m.group(1), b["bounds"]), item, count=1)
+        if n != 1 or m2 != 1:
+            raise sdk_build.BuildError("tabs.json buttons: \"%s\" is not a switch on a page" % param)
+        tui = tui[:at] + item + tui[item_end:]
+    open(tui_path, "w", encoding="utf-8").write(tui)
+    sdk_build.log("  tabs.json: %d picture buttons" % len(buttons))
+
+
 _make_skins = sdk_build.make_skins
 
 
@@ -144,6 +237,7 @@ def make_skins(project, out_dir, params_json, no_ui):
     made = _make_skins(project, out_dir, params_json, no_ui)
     if made:
         apply_tabs(project, out_dir, params_json)
+        apply_buttons(project, out_dir)
     return made
 
 

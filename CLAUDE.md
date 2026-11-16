@@ -409,7 +409,11 @@ are not built.
   function keys (MAIN/GOLD, OSC/SAMPLE/FM, VOICE/ARP, FILTER/ENV, LFO, MOD FX/REVERB) and makes
   the Program-mode Q-Links the sixteen gold knobs. `tools/build.py` applies `tabs.json` to the
   generated skin as text (the MPC's parser depends on key order and TUI.json repeats keys, so
-  no JSON library). Each screen column of four is one Q-Link block. Layout is free to change;
+  no JSON library). `tabs.json` "buttons" (2026-11-16) turns a switch into a picture button
+  placed in pixels: the up and down arrows under Folder and Preset on MAIN, two to a cell,
+  images in `skin-images/` drawn by `tools/make_arrows.py` (`apply_buttons` in
+  `tools/build.py` copies the SDK's toggle component without its text). Not yet seen on a
+  device. Each screen column of four is one Q-Link block. Layout is free to change;
   ids are not.
 - **Gold knobs and pads reach the same things**, and one pad moves others, so the plugin never
   assumes what a change did: after handing changes to the engine, `process()` reads every pad
