@@ -34,7 +34,8 @@ fi
 
 case $(uname) in Darwin) ext=dylib ;; *) ext=so ;; esac
 for lib in "$project"/build/native/*."$ext"; do
-  "$sdk/.sdk-tools/host_sim" "$lib" test --wav "$project/build/test.wav"
+  # Deluge Synth's Save button writes a preset file; the simulator presses every button.
+  DELUGE_SYNTH_NO_SAVE=1 "$sdk/.sdk-tools/host_sim" "$lib" test --wav "$project/build/test.wav"
 done
 
 # The same simulator, built for 32-bit ARM, against the arm32 .so in an emulated machine: the

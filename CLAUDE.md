@@ -633,6 +633,27 @@ Jamie: "ability to change sample 1 and sample 2 (maybe split into one screen for
   again, print in `giveSample`, `showSamples`, the top and end of `syncKnobs` and both ends of
   `saveExtraState`, and run `host_sim ... test` natively and under `tools/armtest/run.py`.
 
+### Saving a sound as a Deluge preset (2026-11-16)
+
+Jamie: "If I edit a synth sound, how do I get it back onto the Deluge?"
+
+- `engineSaveSynth(path)` is the firmware's `SaveInstrumentPresetUI::performSave` without the
+  display: `createXMLFile`, `Output::writeToFile`, `closeFileAfterWriting`. The hosted file
+  layer already wrote files. It will not overwrite.
+- The plugin's **Save** button (MAIN) has the worker write `<preset name> N.XML` beside the
+  preset the sound came from, N the lowest free number from 2; **Saved As** shows the name or
+  the error (its number never changes; the text does). The new file joins the Preset list at
+  the next start of the plugin, the list being fixed at load. Sample paths in it are the
+  preset's (`SAMPLES/...`), so it plays on a Deluge whose card has the same files there.
+- `tests/engine_save.cpp` (every seventh preset: edit, save, load the file in a new instance,
+  compare the audio): 97 of 107 identical, 9 differ 110 dB down, 1 differs audibly, where the
+  edit turned an "LFO1 -> pitch" gold knob to its lowest position (the cable's depth there is
+  not saved exactly; the firmware's writer, so presumably the same on a Deluge; not chased).
+  Not yet in `tools/corpus.sh`. `tools/plugintest.sh` presses Save and checks the file.
+- The SDK simulator presses every button, so `build.sh` sets `DELUGE_SYNTH_NO_SAVE` for the
+  native run (whose `Content/` is the project's own).
+- Not yet loaded on a real Deluge: do that before calling it done.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

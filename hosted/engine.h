@@ -44,6 +44,12 @@ int engineCurrentInstance();
 // Not thread-safe against the other calls: the caller serialises them.
 int engineLoadSynth(const char* presetPath);
 
+// Writes the loaded sound, as it now stands, to a SYNTH preset file a Deluge can load (path
+// relative to the root, e.g. "SYNTHS/SYNT100 2.XML"), with the firmware's own writer: what saving
+// a synth on a Deluge writes. Will not overwrite: returns the firmware's FILE_ALREADY_EXISTS.
+// Writes a file: not for the audio thread. Returns 0 or the firmware's Error code.
+int engineSaveSynth(const char* presetPath);
+
 // After a load: how many sample files the preset brought fully into memory, and how many it could
 // not (file missing, or not enough memory). Samples are looked up as the preset names them,
 // relative to the root, normally "SAMPLES/...".

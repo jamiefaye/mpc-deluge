@@ -113,6 +113,10 @@ uint32_t engineSampleIdOf(int source) {
 	return (source < 0 || source > 1 || sampleNames[current][source][0] == 0) ? 0 : engineSampleId(sampleNames[current][source]);
 }
 
+int engineSaveSynth(const char*) {
+	return 1; // nothing to write: there is no sound
+}
+
 void engineSampleCounts(int* loaded, int* failed) {
 	*loaded = 0;
 	*failed = 0;

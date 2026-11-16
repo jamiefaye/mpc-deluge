@@ -283,6 +283,29 @@ int main(int argc, char** argv) {
 	run(500);
 	restoredAs("state restored over the same preset, changed");
 
+	// --- Save writes the sound to a new preset file beside the one it came from ---
+	{
+		// The native build's Content/ is the project's own: <library>/../../Content.
+		std::string content = argv[1];
+		for (int up = 0; up < 3; up++) {
+			content.resize(content.rfind('/'));
+		}
+		const std::string file = content + "/Content/SYNTHS/" + shown("Folder") + "/" + presetName + " 2.XML";
+		std::remove(file.c_str());
+		fx->setParameter(fx, paramCalled("Save"), 1.0f);
+		run(1200);
+		FILE* f = std::fopen(file.c_str(), "rb");
+		char head[200] = {0};
+		if (f != nullptr) {
+			const size_t n = std::fread(head, 1, sizeof head - 1, f);
+			(void)n;
+			std::fclose(f);
+		}
+		check(shown("Saved As") == std::string(presetName) + " 2" && std::strstr(head, "<sound") != nullptr,
+		      "Save writes a Deluge preset under the next free name", shown("Saved As") + (f != nullptr ? ", file written" : ", NO FILE at " + file));
+		std::remove(file.c_str());
+	}
+
 	disp(effStopProcess);
 	disp(effMainsChanged, 0, 0);
 	disp(effClose);

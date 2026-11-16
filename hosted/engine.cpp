@@ -548,6 +548,21 @@ uint32_t engineSampleIdOf(int source) {
 	return (holder != nullptr && holder->audioFile != nullptr) ? engineSampleId(holder->filePath.get()) : 0;
 }
 
+int engineSaveSynth(const char* presetPath) {
+	InEngine inEngine;
+	if (synth == nullptr || clip == nullptr) {
+		return (int)Error::BUG;
+	}
+	// SaveInstrumentPresetUI::performSave(), without the display and the slot bookkeeping.
+	Error error = StorageManager::createXMLFile(presetPath, smSerializer, false, false);
+	if (error != Error::NONE) {
+		return (int)error;
+	}
+	static_cast<Output*>(synth)->writeToFile(clip, song);
+	error = GetSerializer().closeFileAfterWriting(presetPath, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n", "\n</sound>\n");
+	return (int)error;
+}
+
 static void sendNote(bool on, int note, int velocity) {
 	if (synth == nullptr) {
 		return;

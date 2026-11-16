@@ -32,6 +32,13 @@ under `Content/SAMPLES`, by folder and file with arrow buttons, as MAIN chooses 
 one makes the oscillator a sample oscillator (subtractive mode only, as on a Deluge). The choice
 is saved with the project as a position in the sorted list of files.
 
+## Saving a sound for the Deluge
+
+**Save** on the MAIN screen writes the sound as it stands, edits included, to a new preset file
+beside the one it came from (`SYNT008 2.XML`), using the firmware's own preset writer. Copy it
+from `Content/SYNTHS` in the plugin folder to the `SYNTHS` folder of a Deluge's card. A sample
+preset needs the same sample files at the same paths on that card.
+
 ## What it does not do yet
 
 - Up to sixteen instances per MPC project play at once, each with its own preset, reverb and

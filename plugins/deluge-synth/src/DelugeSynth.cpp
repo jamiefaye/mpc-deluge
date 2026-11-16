@@ -79,7 +79,9 @@ enum ParamIndex
     // The oscillators' sample files: for each of the two, in this order, Folder, File, and the
     // four buttons Folder -, Folder +, File -, File +.
     kSample = kFine + 5,
-    kNumParams = kSample + 12
+    kSave = kSample + 12,   // a button: write the sound as it stands to a new Deluge preset file
+    kSaveResult,            // shows the name it was saved under, or why not
+    kNumParams
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
@@ -231,6 +233,9 @@ public:
             addParam(mpc::boolParam((id + "filenext").c_str(), (name + " File +").c_str(), false));
             wantedSample_[s].store(kNoChange);
         }
+        addParam(mpc::boolParam("save", "Save", false));
+        addParam(mpc::intParam("saveresult", "Saved As", 0, 999, 0));
+        std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
             pending_[m].store(kNoChange);
@@ -305,7 +310,9 @@ public:
             default:
                 // A gold knob or grid pad moved by the user or the host (not by this thread
                 // mirroring the engine): remember it, and process() hands it to the engine.
-                if (index >= kSample && index < kNumParams) { sampleParameterChanged(index, plainValue); break; }
+                if (index == kSave) { buttonSet(index, plainValue); if (pressed && !tReleasingButton) saveRequested_.store(true); break; }
+                if (index == kSaveResult) break;
+                if (index >= kSample && index < kSave) { sampleParameterChanged(index, plainValue); break; }
                 if (index >= kGold && index < kSample && !tMirroringKnobs)
                 {
                     // A transpose's two halves make one engine value; the half that did not move
@@ -334,16 +341,69 @@ public:
         if (plainValue != 0.0f && !tReleasingButton) buttonOnSince_[buttonSlot(index)].store(nowMs());
     }
     // The buttons: four on MAIN, then four for each oscillator's sample.
-    static constexpr int kNumButtons = 12;
+    static constexpr int kNumButtons = 13;
     static int buttonSlot(int index)
     {
+        if (index == kSave) return 12;
         if (index < kSample) return index - kFolderPrev;
         return 4 + ((index - kSample) / kSParams) * 4 + ((index - kSample) % kSParams - kSFolderPrev);
     }
     static int buttonIndex(int slot)
     {
+        if (slot == 12) return kSave;
         if (slot < 4) return kFolderPrev + slot;
         return kSample + ((slot - 4) / 4) * kSParams + kSFolderPrev + (slot - 4) % 4;
+    }
+
+    // --- saving the sound as a Deluge preset ---------------------------------------------------
+    // Worker thread. The file goes beside the preset the sound came from, under that preset's
+    // name with the lowest number from 2 that is free ("SYNT008 2.XML"), as a Deluge names a
+    // copy; a skin has no way to type a name. The firmware's own writer makes it, so it is the
+    // file a Deluge would have saved. It joins the Preset list when the plugin next starts (the
+    // list, and the Preset parameter's range, are fixed when the plugin loads).
+    void applySave()
+    {
+        if (!saveRequested_.load()) return;
+        const int loaded = loadedPreset_.load();
+        if (loaded < 0 || loaded != requestedPreset_.load() || goldPreset_.load() != loaded || resync_.load() || reloadPreset_.load()) return;   // once it has settled
+        saveRequested_.store(false);
+        std::string stem = presets_[(size_t)loaded].substr(0, presets_[(size_t)loaded].size() - 4);   // without ".XML"
+        // A copy of a copy keeps counting: "Name 2" saves as "Name 3".
+        const size_t space = stem.rfind(' ');
+        if (space != std::string::npos && space + 1 < stem.size() && stem.find_first_not_of("0123456789", space + 1) == std::string::npos)
+            stem.resize(space);
+        std::string relative;
+        int error = -2;   // no free name
+        // The SDK's simulator presses every button it finds; build.sh sets this so that a build
+        // does not leave preset files behind.
+        const bool off = std::getenv("DELUGE_SYNTH_NO_SAVE") != nullptr;
+        if (off) error = -3;
+        for (int n = 2; n < 1000 && !off; ++n)
+        {
+            relative = stem + " " + std::to_string(n) + ".XML";
+            struct stat st;
+            if (stat((mpc::contentPath("SYNTHS") + "/" + relative).c_str(), &st) == 0) continue;
+            EngineHold engine(engineInstance_.load());
+            // Anything process() has not yet taken belongs in the file too.
+            for (int m = 0; m < kNumEngineParams; ++m)
+            {
+                const int value = pending_[m].exchange(kNoChange);
+                if (value != kNoChange) engineSet(m, value);
+            }
+            error = deluge_hosted::engineSaveSynth(("SYNTHS/" + relative).c_str());
+            break;
+        }
+        const int next = (saveTextNow_.load() + 1) & 1;
+        const size_t slash = relative.rfind('/');
+        if (error == 0) std::snprintf(saveText_[next], sizeof saveText_[next], "%s", relative.substr(slash == std::string::npos ? 0 : slash + 1, std::string::npos).c_str());
+        else std::snprintf(saveText_[next], sizeof saveText_[next], "not saved (error %d)", error);
+        if (error == 0) { char* dot = std::strrchr(saveText_[next], '.'); if (dot != nullptr) *dot = 0; }
+        saveTextNow_.store(next);
+        saves_.fetch_add(1);
+        saveError_.store(error);
+        // The parameter's number never changes (it would then differ from what a project holds);
+        // telling the MPC it has is what makes it ask for the text again.
+        tellHostLater(kSaveResult);
     }
 
     // --- the oscillators' sample files ---------------------------------------------------------
@@ -597,7 +657,12 @@ public:
             out = text;
             return true;
         }
-        if (index >= kSample && index < kNumParams)
+        if (index == kSaveResult)
+        {
+            out = saveText_[saveTextNow_.load() & 1];
+            return true;
+        }
+        if (index >= kSample && index < kSave)
         {
             const int s = (index - kSample) / kSParams, which = (index - kSample) % kSParams;
             const int v = (int)std::lround(plainValue);
@@ -688,6 +753,7 @@ public:
     // Runs on the MPC's thread, straight after it has set every parameter from the project.
     void loadExtraState(const uint8_t* data, size_t size) override
     {
+        saveRequested_.store(false);   // a Save pressed just before belongs to the state being replaced
         const uint8_t* end = static_cast<const uint8_t*>(std::memchr(data, 0, size));
         const size_t pathSize = end != nullptr ? (size_t)(end - data) : size;
         // The flags run from the first zero byte to the next; the settled values follow.
@@ -1018,6 +1084,7 @@ private:
             applyBrowsing();
             loadRequestedPreset();
             applySamples();
+            applySave();
             drainForWaiter();
             showSnapshot();
             tellHostNow();
@@ -1242,6 +1309,7 @@ private:
             }
             for (int index = kGold; index < kNumParams && (size_t)(index - kGold) < values.size(); ++index)
             {
+                if (index >= kSave) continue;
                 if (index >= kSample && (index - kSample) % kSParams >= kSFolderPrev) continue;   // the buttons
                 const float value = values[(size_t)(index - kGold)];
                 if (std::isnan(value))
@@ -1411,6 +1479,7 @@ private:
                       "project saves %u, restores %u (%u of them without usable knob values); waits that timed out %u\n"
                       "grid: %d of %d pads apply to this preset; engine read back %u times, %u parameter values changed to match\n"
                       "sample files found in Content/SAMPLES: %d in %d folders; files chosen for an oscillator %u, last error %d\n"
+                      "saved as a Deluge preset %u times, last as \"%s\", error %d\n"
                       "firmware error stops (its own consistency checks; should be 0): %d%s%s\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -1434,6 +1503,7 @@ private:
                       statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load(),
                       relevantCells(), grid::kNumCells, statSnapshots_.load(), statShown_.load(),
                       (int)sampleFiles_.size(), (int)sampleFolders_.size(), sampleLoads_.load(), sampleError_.load(),
+                      saves_.load(), saveText_[saveTextNow_.load() & 1], saveError_.load(),
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_);
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
@@ -1486,6 +1556,11 @@ private:
     std::atomic<bool> sampleBrowseChanged_{false};
     std::atomic<uint32_t> settleAsked_{0}, settleDone_{0};   // waits begun, and the last one the worker read the engine back for
     bool                  leaveCell_[grid::kNumCells] = {};   // worker thread: pads a restore does not set
+    std::atomic<bool>     saveRequested_{false};
+    char                  saveText_[2][80] = {};  // the worker writes the one not showing, then switches
+    std::atomic<int>      saveTextNow_{0};
+    std::atomic<uint32_t> saves_{0};
+    std::atomic<int>      saveError_{0};
     std::mutex            restoreLock_;           // loadExtraState and the worker; never the audio thread
     std::vector<float>    restoreValues_;         // a restored project's parameter values, from kGold on
     std::atomic<bool>     restorePending_{false}; // not yet taken by the worker
