@@ -171,10 +171,25 @@ def apply_buttons(project, out_dir):
     tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
     if not (os.path.isfile(spec_path) and os.path.isfile(tui_path)):
         return
-    buttons = json.load(open(spec_path)).get("buttons")
-    if not buttons:
+    spec = json.load(open(spec_path))
+    buttons = spec.get("buttons") or {}
+    moved = spec.get("place") or {}
+    if not buttons and not moved:
         return
     tui = open(tui_path, encoding="utf-8").read()
+    # "place": {"<parameter name>": "x y w h"} moves any control, to make room beside it.
+    for param, where in moved.items():
+        at = tui.find('"name": "%s",' % param)
+        if at < 0:
+            raise sdk_build.BuildError("tabs.json place: no control for the parameter \"%s\"" % param)
+        item_end = tui.index("}", tui.index('"boundsType"', at))
+        item, n = re.subn(r'("bounds"\s*:\s*)"[^"]*"', lambda m: '%s"%s"' % (m.group(1), where), tui[at:item_end], count=1)
+        if n != 1:
+            raise sdk_build.BuildError("tabs.json place: \"%s\" has no bounds" % param)
+        tui = tui[:at] + item + tui[item_end:]
+    if not buttons:
+        open(tui_path, "w", encoding="utf-8").write(tui)
+        return
     key_at = tui.find('"key": "toggle"')
     if key_at < 0:
         raise sdk_build.BuildError("tabs.json buttons: the skin has no toggle to copy")
@@ -227,7 +242,7 @@ def apply_buttons(project, out_dir):
             raise sdk_build.BuildError("tabs.json buttons: \"%s\" is not a switch on a page" % param)
         tui = tui[:at] + item + tui[item_end:]
     open(tui_path, "w", encoding="utf-8").write(tui)
-    sdk_build.log("  tabs.json: %d picture buttons" % len(buttons))
+    sdk_build.log("  tabs.json: %d picture buttons, %d controls moved" % (len(buttons), len(moved)))
 
 
 _make_skins = sdk_build.make_skins
