@@ -145,19 +145,25 @@
           "widget": "knob"
         },
         {
-          "param": "Osc1 Level",
-          "widget": "knob"
+          "param": "Osc1 Fine",
+          "widget": "knob",
+          "polarity": "bipolar"
         },
         {
           "param": "Osc1 Feedbk",
           "widget": "knob"
         },
         {
-          "param": "Osc2 Level",
-          "widget": "knob"
+          "param": "Osc2 Fine",
+          "widget": "knob",
+          "polarity": "bipolar"
         },
         {
           "param": "Osc2 Feedbk",
+          "widget": "knob"
+        },
+        {
+          "param": "Osc1 Level",
           "widget": "knob"
         },
         {
@@ -165,16 +171,12 @@
           "widget": "knob"
         },
         {
-          "param": "Noise",
+          "param": "Osc2 Level",
           "widget": "knob"
         },
         {
           "param": "Osc2 PW",
           "widget": "knob"
-        },
-        {
-          "param": "Osc Sync",
-          "widget": "switch"
         }
       ]
     },
@@ -252,11 +254,12 @@
           "widget": "knob"
         },
         {
-          "param": "Mod2 Dest",
-          "widget": "switch"
+          "param": "Mod1 Phase",
+          "widget": "knob"
         },
         {
-          "widget": "empty"
+          "param": "Osc Sync",
+          "widget": "switch"
         },
         {
           "param": "Mod1 Transp",
@@ -269,7 +272,26 @@
           "polarity": "bipolar"
         },
         {
-          "widget": "empty"
+          "param": "Mod2 Phase",
+          "widget": "knob"
+        },
+        {
+          "param": "Noise",
+          "widget": "knob"
+        },
+        {
+          "param": "Mod1 Fine",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Mod2 Fine",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Mod2 Dest",
+          "widget": "switch"
         },
         {
           "widget": "empty"
@@ -280,20 +302,6 @@
         },
         {
           "param": "Mod2 Feedbk",
-          "widget": "knob"
-        },
-        {
-          "widget": "empty"
-        },
-        {
-          "widget": "empty"
-        },
-        {
-          "param": "Mod1 Phase",
-          "widget": "knob"
-        },
-        {
-          "param": "Mod2 Phase",
           "widget": "knob"
         }
       ]
@@ -310,7 +318,7 @@
           "widget": "switch"
         },
         {
-          "param": "Portamento",
+          "param": "Uni Number",
           "widget": "knob"
         },
         {
@@ -324,10 +332,11 @@
         },
         {
           "param": "Polyphony",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
-          "param": "Uni Number",
+          "param": "Uni Detune",
           "widget": "knob"
         },
         {
@@ -344,7 +353,7 @@
           "widget": "knob"
         },
         {
-          "param": "Uni Detune",
+          "param": "Uni Spread",
           "widget": "knob"
         },
         {
@@ -352,7 +361,7 @@
           "widget": "knob"
         },
         {
-          "param": "Vibrato",
+          "param": "Fine Tune",
           "widget": "knob",
           "polarity": "bipolar"
         },
@@ -361,7 +370,7 @@
           "widget": "switch"
         },
         {
-          "param": "Uni Spread",
+          "param": "Portamento",
           "widget": "knob"
         },
         {
@@ -622,6 +631,11 @@
           "param": "LFO4 Shape",
           "widget": "slider",
           "overlay": "menu"
+        },
+        {
+          "param": "Vibrato",
+          "widget": "knob",
+          "polarity": "bipolar"
         }
       ]
     },

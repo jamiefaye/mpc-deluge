@@ -182,6 +182,27 @@ int main(int argc, char** argv) {
 	run();
 	check(valueOf("Gold 12") == -64, "vibrato pad to 0 removes it: knob back at its lowest", std::to_string(valueOf("Gold 12")));
 
+	// --- a transpose is two parameters, semitones and cents, and one number in the engine ---
+	{
+		const int semitones = paramCalled("Osc1 Transp"), cents = paramCalled("Osc1 Fine");
+		fx->setParameter(fx, semitones, (float)(96 + 7) / 192.0f);
+		run();
+		fx->setParameter(fx, cents, (float)(50 + 12) / 99.0f);
+		run();
+		check(shown(semitones) == "+7" && shown(cents) == "+12", "transpose +7 semitones, then +12 cents: both stand",
+		      shown(semitones) + ", " + shown(cents));
+		fx->setParameter(fx, semitones, (float)(96 - 12) / 192.0f);
+		run();
+		check(shown(semitones) == "-12" && shown(cents) == "+12", "semitones to -12 keeps the cents", shown(semitones) + ", " + shown(cents));
+		fx->setParameter(fx, cents, 0.0f);
+		run();
+		check(shown(semitones) == "-12" && shown(cents) == "-50", "cents to -50 keeps the semitones", shown(semitones) + ", " + shown(cents));
+		fx->setParameter(fx, semitones, 96.0f / 192.0f);
+		fx->setParameter(fx, cents, 50.0f / 99.0f);
+		run();
+		check(shown(semitones) == "0" && shown(cents) == "0", "and back to nothing", shown(semitones) + ", " + shown(cents));
+	}
+
 	// --- one pad brings others to life ---
 	setValue("Synth Mode", 1);
 	run();

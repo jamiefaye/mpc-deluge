@@ -418,6 +418,24 @@ are not built.
   `tools/build.py` copies the SDK's toggle component without its text). Not yet seen on a
   device. Each screen column of four is one Q-Link block. Layout is free to change;
   ids are not.
+- **First look on the Force (Jamie, 2026-11-16), and what it changed:**
+  - *Segment buttons had no words* (Synth Mode and every other 2-4 way switch). The SDK
+    generator writes each caption as a label with an unconnected data handle and "hide when the
+    data is invalid"; `tools/build.py` now makes them "Show" and shrinks a caption that is too
+    long for its segment. HPF Mode and Polyphony became bars with a menu (four long names).
+    **The cause is inferred, not confirmed**: check the captions next time on the device.
+  - *Transpose went 0, 1.92, 3.84*: an MPC moves a continuous parameter a hundredth of its
+    range per click (a thousandth with Shift), whatever the plugin says about steps; only a
+    parameter with `replacementStrings` in the skin steps exactly, and the SDK's dump only
+    recognises up to 64 choices. So each of the five transposes (one firmware number in cents,
+    -9600..9600) is now two parameters, semitones under the pad's own id and cents (-50..49)
+    appended as `kFine` ("Osc1 Fine" ... "Fine Tune"), and `tabs.json` "steps" writes their
+    replacement strings. In the plugin the split is only at the edge (`isSplit`, `shownValue`,
+    `show`): `host_`, `pending_` and the engine still hold the one number.
+    Still coarse on the knobs: anything with more than about 100 values that is not listed in
+    "steps", the gold knobs (129 positions) among them.
+  - Pages rearranged for the cents knobs: OSC is all oscillator 1 and 2; Noise and Osc Sync
+    moved to FM's spare column, Vibrato to LFO.
 - **Gold knobs and pads reach the same things**, and one pad moves others, so the plugin never
   assumes what a change did: after handing changes to the engine, `process()` reads every pad
   and knob back (`engineGridRead`, at most every 1024 frames) and the worker thread makes the

@@ -159,7 +159,7 @@ def matching(text, start):
     raise sdk_build.BuildError("TUI.json: unbalanced brackets")
 
 
-def apply_buttons(project, out_dir):
+def apply_buttons(project, out_dir, params_json):
     """tabs.json "buttons": bool parameters shown as a picture button instead of the kit's toggle
     with its name and value text, for instance the arrows that step through presets. Each entry
     is  "<parameter name>": {"image": "<name>", "bounds": "x y w h"}  with <name>_on.png and
@@ -174,9 +174,52 @@ def apply_buttons(project, out_dir):
     spec = json.load(open(spec_path))
     buttons = spec.get("buttons") or {}
     moved = spec.get("place") or {}
-    if not buttons and not moved:
-        return
     tui = open(tui_path, encoding="utf-8").read()
+    # The captions of segment buttons ("Subtractive | Fm | Ringmod"). The generator writes each
+    # as a label with a data handle it never connects and "hide when the data is invalid", and an
+    # MPC then hides them all (seen on a Force, 2026-11-16: the buttons had no words). Shown
+    # always instead; and a caption too long for its segment gets a smaller font.
+    caption = re.compile(r'"name"\s*:\s*"[^"]* seg \d+"\s*,\s*"type"\s*:\s*"Label"')
+    out, at, fixed = [], 0, 0
+    for m in caption.finditer(tui):
+        end = tui.index("}", tui.index('"boundsType"', m.end()))
+        item = tui[m.start():end]
+        text = re.search(r'"text"\s*:\s*"([^"]*)"', item).group(1)
+        width = int(re.search(r'"bounds"\s*:\s*"\d+ \d+ (\d+) \d+"', item).group(1))
+        points = min(22.0, max(13.0, (width - 6) / (0.46 * max(1, len(text)))))
+        item = re.sub(r'("height"\s*:\s*)[0-9.]+', lambda h: "%s%.1f" % (h.group(1), points), item, count=1)
+        item = item.replace('"showWhenDataModelInvalid": "Hide"', '"showWhenDataModelInvalid": "Show"', 1)
+        out += [tui[at:m.start()], item]
+        at = end
+        fixed += 1
+    tui = "".join(out) + tui[at:]
+    if fixed:
+        sdk_build.log("  %d segment captions made visible" % fixed)
+    # "steps": {"<parameter name>": [first, last]}: a whole-number parameter the Q-Links and the
+    # data wheel must step through one at a time. An MPC moves a continuous parameter a hundredth
+    # of its range per click; only one with "replacementStrings" in the skin gets exact steps,
+    # and the SDK's tools write those for at most 64 choices. The strings are the signed numbers.
+    steps = spec.get("steps") or {}
+    if steps:
+        index = {p["name"]: p["index"] for p in json.load(open(params_json))["params"]}
+        entries = []
+        for param, (first, last) in steps.items():
+            if param not in index:
+                raise sdk_build.BuildError("tabs.json steps: no parameter called \"%s\"" % param)
+            if '"Parameter %d"' % index[param] in tui[tui.find('"replacementStrings"'):tui.find("]", tui.find('"replacementStrings"'))]:
+                raise sdk_build.BuildError("tabs.json steps: \"%s\" already has steps" % param)
+            strings = ", ".join('"%s%d"' % ("+" if v > 0 else "", v) for v in range(first, last + 1))
+            entries.append('{"key": "Parameter %d", "value": [%s]}' % (index[param], strings))
+        at = tui.find('"replacementStrings"')
+        if at < 0:
+            raise sdk_build.BuildError("tabs.json steps: the skin has no replacementStrings")
+        at = tui.index("[", at) + 1
+        empty = tui[at:tui.index("]", at)].strip() == ""
+        tui = tui[:at] + "\n" + ",\n".join(entries) + ("\n" if empty else ",") + tui[at:]
+        sdk_build.log("  tabs.json: %d parameters given exact steps" % len(steps))
+    if not buttons and not moved:
+        open(tui_path, "w", encoding="utf-8").write(tui)
+        return
     # "place": {"<parameter name>": "x y w h"} moves any control, to make room beside it.
     for param, where in moved.items():
         at = tui.find('"name": "%s",' % param)
@@ -312,7 +355,7 @@ def make_skins(project, out_dir, params_json, no_ui):
     made = _make_skins(project, out_dir, params_json, no_ui)
     if made:
         apply_tabs(project, out_dir, params_json)
-        apply_buttons(project, out_dir)
+        apply_buttons(project, out_dir, params_json)
     return made
 
 

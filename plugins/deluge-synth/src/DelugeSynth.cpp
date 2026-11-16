@@ -75,13 +75,27 @@ enum ParamIndex
     kPresetNext,
     kGold,           // first of 16: the preset's gold-knob assignments, in the Deluge's order
     kGrid = kGold + deluge_hosted::kNumKnobs,   // first of the shortcut-grid pads, in grid_table.h's order
-    kNumParams = kGrid + grid::kNumCells
+    kFine = kGrid + grid::kNumCells,            // the cents halves of the transposes (see isSplit), in grid order
+    kNumParams = kFine + 5
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
 // knobs and then the grid pads. Engine parameter m is plugin parameter kGold + m.
 constexpr int kNumEngineParams = deluge_hosted::kNumKnobs + grid::kNumCells;
 constexpr int kFirstCell = deluge_hosted::kNumKnobs;   // engine parameter of grid::kCells[0]
+
+// A transpose is one number in the firmware, in cents, -9600..9600. An MPC moves a continuous
+// parameter a hundredth of its range per click of a Q-Link or the data wheel, which here is 1.92
+// semitones, and a thousandth with Shift; it only steps exactly through a parameter with named
+// choices. So each transpose is two such parameters: semitones (the pad's own id) and cents
+// (-50..49, the kFine parameters). Together they are the one engine value.
+constexpr int kSemitones = 96;
+constexpr bool isSplit(const grid::Cell& cell)
+{
+    return cell.kind == grid::Kind::Number && cell.text == grid::Text::Hundredths && cell.max == kSemitones * 100;
+}
+constexpr int semitonesOf(int cents) { return (cents + 50 + kSemitones * 100) / 100 - kSemitones; }   // rounds to nearest
+constexpr int centsOf(int cents) { return cents - 100 * semitonesOf(cents); }                          // -50..49
 constexpr int slotOf(const grid::Cell& cell) { return deluge_hosted::gridSlot(cell.layer, cell.x, cell.y); }
 
 // One engine per process (see the header comment).
@@ -170,15 +184,38 @@ public:
                 addParam(mpc::choiceParam(cell.id, cell.name,
                                           std::vector<std::string>(cell.table, cell.table + (cell.max - cell.min + 1)),
                                           cell.initial - cell.min));
+            else if (isSplit(cell))
+            {
+                std::vector<std::string> semitones;
+                for (int v = -kSemitones; v <= kSemitones; ++v) semitones.push_back(signedText(v));
+                addParam(mpc::choiceParam(cell.id, cell.name, semitones, semitonesOf(cell.initial) + kSemitones));
+            }
             else
                 addParam(mpc::intParam(cell.id, cell.name, cell.min, cell.max, cell.initial));
             cellRelevant_[c].store(true);   // until a preset says otherwise
             snapRelevant_[c].store(true);
+            fineOfCell_[c] = -1;
+        }
+        // The cents of each transpose, after every pad so that the pads' places did not move.
+        int numFine = 0;
+        for (int c = 0; c < grid::kNumCells && numFine < kNumParams - kFine; ++c)
+        {
+            const grid::Cell& cell = grid::kCells[c];
+            if (!isSplit(cell)) continue;
+            // "Osc1 Transp" -> "Osc1 Fine"; the master one, "Transpose", -> "Fine Tune".
+            std::string name = cell.name;
+            const size_t at = name.find("Transp");
+            name = at == 0 ? "Fine Tune" : name.substr(0, at) + "Fine";
+            std::vector<std::string> cents;
+            for (int v = -50; v <= 49; ++v) cents.push_back(signedText(v));
+            addParam(mpc::choiceParam((std::string(cell.id) + "f").c_str(), name.c_str(), cents, centsOf(cell.initial) + 50));
+            fineOfCell_[c] = numFine;
+            cellOfFine_[numFine++] = c;
         }
         for (int m = 0; m < kNumEngineParams; ++m)
         {
             pending_[m].store(kNoChange);
-            host_[m].store(getInt(kGold + m));
+            host_[m].store(shownValue(m));
             lastHostChange_[m].store(0);
             snap_[m].store(0);
         }
@@ -251,8 +288,14 @@ public:
                 // mirroring the engine): remember it, and process() hands it to the engine.
                 if (index >= kGold && index < kNumParams && !tMirroringKnobs)
                 {
-                    const int m = index - kGold;
-                    const int value = (int)std::lround(plainValue);
+                    // A transpose's two halves make one engine value; the half that did not move
+                    // is taken from the last value known.
+                    const int m = index >= kFine ? kFirstCell + cellOfFine_[index - kFine] : index - kGold;
+                    int value = (int)std::lround(plainValue);
+                    if (index >= kFine)
+                        value = mpc::clamp(semitonesOf(host_[m].load()) * 100 + (value - 50), -kSemitones * 100, kSemitones * 100);
+                    else if (m >= kFirstCell && fineOfCell_[m - kFirstCell] >= 0)
+                        value = mpc::clamp((value - kSemitones) * 100 + centsOf(host_[m].load()), -kSemitones * 100, kSemitones * 100);
                     host_[m].store(value);
                     pending_[m].store(value);
                     // After the value is in place: a reader that sees the new stamp sees the value.
@@ -326,13 +369,14 @@ public:
             out = text;
             return true;
         }
-        if (index >= kGrid && index < kNumParams)
+        if (index >= kGrid && index < kFine)
         {
             // The firmware's own text for the value (grid_table.h), or "-" for a pad that does
             // nothing in the loaded preset.
             const int c = index - kGrid;
             const grid::Cell& cell = grid::kCells[c];
             if (!cellRelevant_[c].load(std::memory_order_relaxed)) { out = "-"; return true; }
+            if (fineOfCell_[c] >= 0) { out = signedText(mpc::clamp((int)std::lround(plainValue), 0, 2 * kSemitones) - kSemitones); return true; }
             const int value = mpc::clamp((int)std::lround(plainValue), (int)cell.min, (int)cell.max);
             if (cell.text == grid::Text::Table) { out = cell.table[value - cell.min]; return true; }
             for (int e = 0; e < cell.numExceptions; ++e)
@@ -341,6 +385,12 @@ public:
             if (cell.text == grid::Text::Hundredths) std::snprintf(text, sizeof text, "%.2f", (double)value / 100.0);
             else std::snprintf(text, sizeof text, "%d", value);
             out = text;
+            return true;
+        }
+        if (index >= kFine && index < kNumParams)
+        {
+            if (!cellRelevant_[cellOfFine_[index - kFine]].load(std::memory_order_relaxed)) { out = "-"; return true; }
+            out = signedText(mpc::clamp((int)std::lround(plainValue), 0, 99) - 50);
             return true;
         }
         if (index == kFolder)
@@ -422,9 +472,9 @@ public:
         for (int m = 0; m < kNumEngineParams; ++m)
         {
             const int wanted = host_[m].load();
-            if (getInt(kGold + m) == wanted) continue;
-            set(kGold + m, (float)wanted);
-            if (tellHost) tellHostLater(kGold + m);
+            if (shownValue(m) == wanted) continue;
+            show(m, wanted);
+            if (tellHost) tellHostOf(m);
         }
         tMirroringKnobs = false;
     }
@@ -734,7 +784,7 @@ private:
             if (m >= kFirstCell)
             {
                 const bool relevant = snapRelevant_[m - kFirstCell].load();
-                if (cellRelevant_[m - kFirstCell].exchange(relevant) != relevant) tellHostLater(kGold + m);   // its text changes
+                if (cellRelevant_[m - kFirstCell].exchange(relevant) != relevant) tellHostOf(m);   // its text changes
                 if (!relevant) continue;
             }
             else if (!snapKnobValid_[m].load()) continue;
@@ -749,13 +799,40 @@ private:
     // has set the parameter since `stamp` was read; then the MPC's value stands.
     void showEngineValue(int m, int value, int stamp)
     {
-        if (getInt(kGold + m) == value) { if (lastHostChange_[m].load() == stamp) host_[m].store(value); return; }
+        if (shownValue(m) == value) { if (lastHostChange_[m].load() == stamp) host_[m].store(value); return; }
         tMirroringKnobs = true;
-        set(kGold + m, (float)value);
-        if (lastHostChange_[m].load() != stamp) set(kGold + m, (float)host_[m].load());
+        show(m, value);
+        if (lastHostChange_[m].load() != stamp) show(m, host_[m].load());
         else { host_[m].store(value); statShown_.fetch_add(1); }
         tMirroringKnobs = false;
+        tellHostOf(m);
+    }
+
+    // Engine parameter m as the plugin's parameters show it, and making them show a value. One
+    // parameter each, with the engine's own number, except a transpose (isSplit): two.
+    int shownValue(int m) const
+    {
+        const int fine = m >= kFirstCell ? fineOfCell_[m - kFirstCell] : -1;
+        if (fine < 0) return getInt(kGold + m);
+        return mpc::clamp((getInt(kGold + m) - kSemitones) * 100 + (getInt(kFine + fine) - 50), -kSemitones * 100, kSemitones * 100);
+    }
+    void show(int m, int value)
+    {
+        const int fine = m >= kFirstCell ? fineOfCell_[m - kFirstCell] : -1;
+        if (fine < 0) { set(kGold + m, (float)value); return; }
+        set(kGold + m, (float)(semitonesOf(value) + kSemitones));
+        set(kFine + fine, (float)(centsOf(value) + 50));
+    }
+    void tellHostOf(int m)
+    {
         tellHostLater(kGold + m);
+        if (m >= kFirstCell && fineOfCell_[m - kFirstCell] >= 0) tellHostLater(kFine + fineOfCell_[m - kFirstCell]);
+    }
+    static std::string signedText(int v)
+    {
+        char text[8];
+        std::snprintf(text, sizeof text, v > 0 ? "+%d" : "%d", v);
+        return text;
     }
 
     // Called on the MPC's thread around a project save or load: gives the worker thread time to
@@ -875,8 +952,8 @@ private:
                 {
                     const grid::Cell& cell = grid::kCells[c];
                     const int slot = slotOf(cell);
-                    if (!relevantBefore[slot] || before[slot] == getInt(kGrid + c)) continue;
-                    deluge_hosted::engineCellSet(cell.layer, cell.x, cell.y, getInt(kGrid + c));
+                    if (!relevantBefore[slot] || before[slot] == shownValue(kFirstCell + c)) continue;
+                    deluge_hosted::engineCellSet(cell.layer, cell.x, cell.y, shownValue(kFirstCell + c));
                 }
                 deluge_hosted::engineGridRead(values, relevant);
                 bool changed = false;
@@ -897,7 +974,7 @@ private:
         {
             const int slot = slotOf(grid::kCells[c]);
             const bool nowRelevant = relevant[slot] != 0;
-            if (cellRelevant_[c].exchange(nowRelevant) != nowRelevant) tellHostLater(kGrid + c);
+            if (cellRelevant_[c].exchange(nowRelevant) != nowRelevant) tellHostOf(kFirstCell + c);
             if (!nowRelevant || !(keep || adopt)) continue;
             if (adopt) pending_[kFirstCell + c].store(kNoChange);
             showEngineValue(kFirstCell + c, (int)values[slot], lastHostChange_[kFirstCell + c].load());
@@ -1013,6 +1090,8 @@ private:
     std::atomic<bool> browseChanged_{false};   // parameterChanged moved Preset, Folder or a button: tell the MPC
     // Per engine parameter (gold knobs, then grid pads):
     static constexpr int kNoChange = -100000;
+    int               fineOfCell_[grid::kNumCells];        // which kFine parameter holds a pad's cents, or -1 (constructor only writes)
+    int               cellOfFine_[kNumParams - kFine] = {};
     std::atomic<int>  pending_[kNumEngineParams];          // set from outside, not yet given to the engine
     std::atomic<int>  host_[kNumEngineParams];             // the last value set from outside
     std::atomic<int>  lastHostChange_[kNumEngineParams];   // changeCounter_ when it was last set from outside
