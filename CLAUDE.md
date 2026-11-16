@@ -480,7 +480,8 @@ are not built.
   The SDK simulator with `--seed N` randomises every parameter and is a good stress test: it
   found both firmware problems above. 200 seeds on 2026-11-14: no crash; 194 pass, 5 save an
   impossible oscillator type, 1 hits the known gap.
-- **Not parameters, still to design:** the mod matrix (below), a sample browser, and anything
+- **Not parameters, still to design** (2026-11-16: the mod matrix and choosing a sample now
+  are, see their sections): anything
   per key zone beyond the first (a multisample's pads act on its first zone).
 
 ### Editing design: presets, the pad matrix, patching (Jamie, 2026-11-13; nothing built yet)
@@ -657,6 +658,45 @@ Jamie: "If I edit a synth sound, how do I get it back onto the Deluge?"
   replaces.** `deploy.sh` first copies the device's `Content/` back into the project, but only a
   deploy that builds carries it into the new copy: **do not use `--no-build` once Jamie has
   saved presets on the device**, or they are lost from the card (they stay in the project).
+
+### The mod matrix as cable slots (2026-11-16)
+
+Jamie: "loose ends: mod matrix 'wires'". Built as parameters on screens, like the rest; the
+grid picture and pressing a source pad to patch (the editing design, below) are still not built.
+
+- **What presets hold** (the 747 on the card): median 6 cables, nine in ten have 11 or fewer,
+  the most is 21 (`SYNT330`); the firmware allows 32. 48 have a cable onto another cable's
+  depth. So **24 slots**, on six screens of four (CABLES 1-6, a function key of their own; LFO
+  moved beside FILTER and ENV). A format allows 8 screens a key and 32 in all; 19 are used.
+- **`hosted/cables.h`**: `engineCableList` and `engineCableSet(source, destination, of,
+  amount)`, the way `gui/menu_item/patch_cable_strength.cpp` reads and writes (amount -5000 to
+  5000, the cable made on a non-zero amount and removed at zero). `of` is the depth kind: a
+  cable from `source` onto the depth of the cable from `of` to `destination`. No check of
+  `Sound::maySourcePatchToParam`: preset files hold cables it would refuse (LFO2 onto LFO1's
+  rate, anything onto the frequency of a filter that is off), inert, and a restore has to be
+  able to put back whatever a file holds. The old-format placeholder cable to "range" (the
+  firmware bug list) is not listed.
+- **`tools/gen_cables.py` writes `src/cable_table.h`**: 15 sources and 55 destinations by the
+  firmware's numbers and names (`tests/cable_table.cpp` prints them). `--check` after moving
+  the pin; `tools/corpus.sh` runs it.
+- **A slot is four parameters**: Source, Dest, Amount, Of ("C1 Source" ...). Source or Dest
+  unset, or Amount 0, is no cable in the engine, but the slot keeps what was chosen, so a cable
+  is set up a part at a time and can be turned to nothing without losing its place.
+- **Slots are matched to cables by what they connect, never by position** (`reconcileCables`):
+  the engine reorders its cables as they come and go. A cable no slot has (the preset's own,
+  one a gold knob or the Vibrato pad made) takes the first empty slot; a slot whose cable has
+  gone reads 0. A new preset fills the slots in the engine's order. More than 24 cables: the
+  rest play unseen and the diagnostics count them.
+- **Threads:** `slots_` belongs to whoever holds the engine lock. The MPC's changes are noted
+  per slot (`cableHost_`, `cableDirty_`) and applied at the start of a block
+  (`applyCableSlots`); the read-back reconciles and the worker shows the result
+  (`showCables`), as for pads. A restore gives the engine exactly the slots' cables
+  (`giveCables`) before the gold knobs and pads.
+- **Not done:** a cable's polarity (kept as the preset has it; new ones get the firmware's
+  default), and Amount moves 1.00 per click (0.10 with Shift), being a continuous parameter.
+- **Tests:** `tests/cable_table.cpp <preset> roundtrip` (remove every cable, put them back:
+  249 of 249 presets), `tools/plugintest.sh` (slots follow the Vibrato pad and the reverse, a
+  destination changed, a cable made in an empty slot and removed).
 
 ### 64-bit (done 2026-11-13)
 

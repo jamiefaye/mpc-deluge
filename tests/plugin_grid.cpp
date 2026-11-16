@@ -223,6 +223,62 @@ int main(int argc, char** argv) {
 		      shown(file) + ", " + shown("Osc1 Type"));
 	}
 
+	// --- the mod matrix: cable slots ---
+	{
+		// Sets a choice parameter to the option with this text.
+		auto choose = [&](int index, const char* text, int options) {
+			for (int i = 0; i < options; i++) {
+				fx->setParameter(fx, index, (float)i / (float)(options - 1));
+				if (shown(index) == text) {
+					return true;
+				}
+			}
+			return false;
+		};
+		auto slotParam = [&](int slot, const char* what) { return paramCalled(("C" + std::to_string(slot) + " " + what).c_str()); };
+		int used = 0, vibrato = 0, empty = 0;
+		for (int slot = 24; slot >= 1; slot--) {
+			const std::string source = shown(slotParam(slot, "Source")), dest = shown(slotParam(slot, "Dest"));
+			used += (source != "-" && dest != "-") ? 1 : 0;
+			if (source == "LFO1" && dest == "Master Pitch") {
+				vibrato = slot;
+			}
+			if (source == "-" && dest == "-") {
+				empty = slot;
+			}
+		}
+		check(used >= 3 && empty != 0, "the preset's cables fill the first slots", std::to_string(used) + " used, first empty " + std::to_string(empty));
+		check(vibrato != 0 && shown(slotParam(vibrato, "Amount")) == "0.00",
+		      "the vibrato cable the gold knob made earlier has a slot, now at 0.00", "slot " + std::to_string(vibrato));
+		// Amounts run -5000..5000.
+		auto setAmount = [&](int slot, int amount) { fx->setParameter(fx, slotParam(slot, "Amount"), (float)(amount + 5000) / 10000.0f); };
+		setAmount(vibrato, 1000);
+		run();
+		check(shown("Vibrato") == "10.00" && shown(slotParam(vibrato, "Amount")) == "10.00", "its Amount to 10.00: the Vibrato pad follows",
+		      shown("Vibrato"));
+		setValue("Vibrato", 2000);
+		run();
+		check(shown(slotParam(vibrato, "Amount")) == "20.00", "the Vibrato pad to 20.00: the slot follows", shown(slotParam(vibrato, "Amount")));
+		check(choose(slotParam(vibrato, "Dest"), "Osc1 pitch", 56), "the slot's destination can be changed");
+		run();
+		check(shown("Vibrato") == "0.00" && shown(slotParam(vibrato, "Amount")) == "20.00" && shown(slotParam(vibrato, "Dest")) == "Osc1 pitch",
+		      "to another destination: the old cable is gone (Vibrato 0.00), the slot keeps its amount",
+		      shown("Vibrato") + ", " + shown(slotParam(vibrato, "Amount")) + ", " + shown(slotParam(vibrato, "Dest")));
+		// A new cable in an empty slot, a part at a time, and a cable onto its depth in the next.
+		choose(slotParam(empty, "Source"), "LFO1", 16);
+		choose(slotParam(empty, "Dest"), "Master Pitch", 56);
+		run();
+		check(shown("Vibrato") == "0.00", "a slot with source and destination but no amount is no cable yet", shown("Vibrato"));
+		setAmount(empty, 1500);
+		run();
+		check(shown("Vibrato") == "15.00", "its Amount makes the cable", shown("Vibrato"));
+		setAmount(empty, 0);
+		setAmount(vibrato, 0);
+		run();
+		check(shown("Vibrato") == "0.00" && shown(slotParam(empty, "Source")) == "LFO1", "Amount 0 removes it and the slot keeps its place",
+		      shown("Vibrato") + ", " + shown(slotParam(empty, "Source")));
+	}
+
 	// --- one pad brings others to life ---
 	setValue("Synth Mode", 1);
 	run();

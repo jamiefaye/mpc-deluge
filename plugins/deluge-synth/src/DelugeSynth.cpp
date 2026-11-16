@@ -44,6 +44,8 @@
 
 #include "mpc_plugin.h"
 
+#include "cable_table.h"
+#include "cables.h"
 #include "engine.h"
 #include "grid_table.h"
 #include "matrix.h"
@@ -81,7 +83,9 @@ enum ParamIndex
     kSample = kFine + 5,
     kSave = kSample + 12,   // a button: write the sound as it stands to a new Deluge preset file
     kSaveResult,            // shows the name it was saved under, or why not
-    kNumParams
+    // The mod matrix: kCableSlots patch cables, each Source, Destination, Amount and Of (below).
+    kCable,
+    kNumParams = kCable + 24 * 4
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
@@ -89,6 +93,24 @@ enum ParamIndex
 constexpr int kNumEngineParams = deluge_hosted::kNumKnobs + grid::kNumCells;
 constexpr int kFirstCell = deluge_hosted::kNumKnobs;   // engine parameter of grid::kCells[0]
 constexpr int kNumFine = kSample - kFine;
+
+// A cable slot's four parameters. Source, Destination and Of are positions in cable_table.h's
+// lists plus one, 0 meaning none; Of, when set, makes it a cable onto another cable's depth: the
+// one from the Of source to the same destination (cables.h). Amount is -5000..5000, shown as
+// -50.00..50.00. A slot with no Source or no Destination, or an Amount of 0, is no cable in the
+// engine; the slot keeps what was chosen all the same, so a cable can be set up a part at a time
+// and turned to nothing without losing its place.
+constexpr int kCableSlots = (kNumParams - kCable) / 4;
+enum { kCSource = 0, kCDestination, kCAmount, kCOf };
+struct CableSlot
+{
+    int field[4] = {0, 0, 0, 0};
+    bool live() const { return field[kCSource] != 0 && field[kCDestination] != 0; }
+    bool sameCable(const CableSlot& o) const
+    {
+        return field[kCSource] == o.field[kCSource] && field[kCDestination] == o.field[kCDestination] && field[kCOf] == o.field[kCOf];
+    }
+};
 enum { kSFolder = 0, kSFile, kSFolderPrev, kSFolderNext, kSFilePrev, kSFileNext, kSParams };
 
 // A transpose is one number in the firmware, in cents, -9600..9600. An MPC moves a continuous
@@ -235,6 +257,21 @@ public:
         }
         addParam(mpc::boolParam("save", "Save", false));
         addParam(mpc::intParam("saveresult", "Saved As", 0, 999, 0));
+        {
+            std::vector<std::string> sources{"-"}, destinations{"-"};
+            for (const char* name : cables::kSources) sources.push_back(name);
+            for (const char* name : cables::kDestinations) destinations.push_back(name);
+            for (int slot = 0; slot < kCableSlots; ++slot)
+            {
+                const std::string id = "c" + std::to_string(slot + 1), name = "C" + std::to_string(slot + 1);
+                addParam(mpc::choiceParam((id + "src").c_str(), (name + " Source").c_str(), sources, 0));
+                addParam(mpc::choiceParam((id + "dst").c_str(), (name + " Dest").c_str(), destinations, 0));
+                addParam(mpc::intParam((id + "amt").c_str(), (name + " Amount").c_str(), -deluge_hosted::kCableAmountMax, deluge_hosted::kCableAmountMax, 0));
+                addParam(mpc::choiceParam((id + "of").c_str(), (name + " Of").c_str(), sources, 0));
+                for (int f = 0; f < 4; ++f) { cableHost_[slot][f].store(0); snapSlot_[slot][f].store(0); }
+                cableStamp_[slot].store(0);
+            }
+        }
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -312,6 +349,15 @@ public:
                 // mirroring the engine): remember it, and process() hands it to the engine.
                 if (index == kSave) { buttonSet(index, plainValue); if (pressed && !tReleasingButton) saveRequested_.store(true); break; }
                 if (index == kSaveResult) break;
+                if (index >= kCable && index < kNumParams)
+                {
+                    if (tMirroringKnobs) break;   // the worker showing what the engine holds
+                    const int slot = (index - kCable) / 4;
+                    cableHost_[slot][(index - kCable) % 4].store((int)std::lround(plainValue));
+                    cableStamp_[slot].store(changeCounter_.fetch_add(1) + 1);
+                    cableDirty_.fetch_or(uint32_t(1) << slot);
+                    break;
+                }
                 if (index >= kSample && index < kSave) { sampleParameterChanged(index, plainValue); break; }
                 if (index >= kGold && index < kSample && !tMirroringKnobs)
                 {
@@ -355,6 +401,119 @@ public:
         return kSample + ((slot - 4) / 4) * kSParams + kSFolderPrev + (slot - 4) % 4;
     }
 
+    // --- the mod matrix ---------------------------------------------------------------------------
+    // slots_ is what the plugin takes each slot to hold; it belongs to whoever holds the engine
+    // lock (process(), or the worker inside an EngineHold). The engine has only cables, in an
+    // order of its own that changes as they come and go, so a slot is matched to its cable by
+    // what it connects, never by position.
+    //
+    // Engine lock held. Slots the MPC has changed go to the engine. Returns whether any did.
+    bool applyCableSlots()
+    {
+        const uint32_t dirty = cableDirty_.exchange(0);
+        for (int slot = 0; slot < kCableSlots; ++slot)
+        {
+            if (!(dirty & (uint32_t(1) << slot))) continue;
+            CableSlot now;
+            for (int f = 0; f < 4; ++f) now.field[f] = cableHost_[slot][f].load();
+            const CableSlot was = slots_[slot];
+            // Another source, destination or Of is another cable: the old one goes.
+            if (!now.sameCable(was) && was.live() && was.field[kCAmount] != 0) engineCable(was, 0);
+            if (now.live()) engineCable(now, now.field[kCAmount]);
+            slots_[slot] = now;
+        }
+        return dirty != 0;
+    }
+    static void engineCable(const CableSlot& slot, int amount)
+    {
+        deluge_hosted::engineCableSet(slot.field[kCSource] - 1, slot.field[kCDestination] - 1, slot.field[kCOf] - 1, amount);
+    }
+    // Engine lock held. Makes slots_ agree with the engine's cables: a slot whose cable is there
+    // takes its amount, one whose cable is gone reads 0, and a cable no slot has (the preset's
+    // own, or one a gold knob or the Vibrato pad made) takes the first empty slot. `fresh`
+    // empties every slot first: a new preset fills them in the engine's order. The result is
+    // left for the worker in snapSlot_.
+    void reconcileCables(bool fresh)
+    {
+        deluge_hosted::Cable list[deluge_hosted::kMaxCables];
+        const int count = std::min(deluge_hosted::engineCableList(list, deluge_hosted::kMaxCables), (int)deluge_hosted::kMaxCables);
+        bool found[kCableSlots] = {};
+        if (fresh) for (CableSlot& slot : slots_) slot = CableSlot();
+        int hidden = 0;
+        for (int c = 0; c < count; ++c)
+        {
+            CableSlot cable;
+            cable.field[kCSource] = list[c].source + 1;
+            cable.field[kCDestination] = list[c].destination + 1;
+            cable.field[kCOf] = list[c].of + 1;
+            cable.field[kCAmount] = list[c].amount;
+            int slot = -1, empty = -1;
+            for (int i = 0; i < kCableSlots; ++i)
+            {
+                if (!found[i] && slots_[i].sameCable(cable)) { slot = i; break; }
+                if (empty < 0 && slots_[i].field[kCSource] == 0 && slots_[i].field[kCDestination] == 0 && slots_[i].field[kCOf] == 0) empty = i;
+            }
+            if (slot < 0) slot = empty;
+            if (slot < 0) { ++hidden; continue; }   // more cables than slots: it plays, unseen
+            slots_[slot] = cable;
+            found[slot] = true;
+        }
+        for (int i = 0; i < kCableSlots; ++i)
+        {
+            if (!found[i]) slots_[i].field[kCAmount] = 0;
+            for (int f = 0; f < 4; ++f) snapSlot_[i][f].store(slots_[i].field[f], std::memory_order_relaxed);
+        }
+        cablesHidden_.store(hidden, std::memory_order_relaxed);
+    }
+    // Worker thread: the slot parameters show snapSlot_, except a slot the MPC has changed since
+    // (`changes` is changeCounter_ before the values the read-back reflects went in).
+    void showCables(int changes)
+    {
+        const uint32_t dirty = cableDirty_.load();
+        for (int slot = 0; slot < kCableSlots; ++slot)
+        {
+            if ((dirty & (uint32_t(1) << slot)) || cableStamp_[slot].load() - changes > 0) continue;
+            for (int f = 0; f < 4; ++f)
+            {
+                const int value = snapSlot_[slot][f].load(), index = kCable + slot * 4 + f;
+                cableHost_[slot][f].store(value);
+                if (getInt(index) == value) continue;
+                tMirroringKnobs = true;
+                set(index, (float)value);
+                tMirroringKnobs = false;
+                tellHostLater(index);
+            }
+        }
+    }
+    // Worker thread, engine lock held, in syncKnobs() when the parameters are to be kept (a
+    // project restore): the engine gets exactly the cables the slot parameters describe.
+    void giveCables()
+    {
+        cableDirty_.store(0);
+        CableSlot want[kCableSlots];
+        for (int slot = 0; slot < kCableSlots; ++slot)
+            for (int f = 0; f < 4; ++f) { want[slot].field[f] = getInt(kCable + slot * 4 + f); cableHost_[slot][f].store(want[slot].field[f]); }
+        deluge_hosted::Cable list[deluge_hosted::kMaxCables];
+        const int count = std::min(deluge_hosted::engineCableList(list, deluge_hosted::kMaxCables), (int)deluge_hosted::kMaxCables);
+        // Cables on another's depth go first out and last in: they need the other to exist.
+        for (int pass = 0; pass < 2; ++pass)
+            for (int c = 0; c < count; ++c)
+            {
+                if ((list[c].of >= 0) != (pass == 0)) continue;
+                CableSlot cable;
+                cable.field[kCSource] = list[c].source + 1;
+                cable.field[kCDestination] = list[c].destination + 1;
+                cable.field[kCOf] = list[c].of + 1;
+                bool wanted = false;
+                for (const CableSlot& w : want) wanted = wanted || (w.live() && w.field[kCAmount] != 0 && w.sameCable(cable));
+                if (!wanted) engineCable(cable, 0);
+            }
+        for (int pass = 0; pass < 2; ++pass)
+            for (const CableSlot& w : want)
+                if (w.live() && w.field[kCAmount] != 0 && (w.field[kCOf] != 0) == (pass == 1)) engineCable(w, w.field[kCAmount]);
+        for (int slot = 0; slot < kCableSlots; ++slot) slots_[slot] = want[slot];
+    }
+
     // --- saving the sound as a Deluge preset ---------------------------------------------------
     // Worker thread. The file goes beside the preset the sound came from, under that preset's
     // name with the lowest number from 2 that is free ("SYNT008 2.XML"), as a Deluge names a
@@ -390,6 +549,7 @@ public:
                 const int value = pending_[m].exchange(kNoChange);
                 if (value != kNoChange) engineSet(m, value);
             }
+            applyCableSlots();
             error = deluge_hosted::engineSaveSynth(("SYNTHS/" + relative).c_str());
             break;
         }
@@ -555,6 +715,7 @@ public:
             const int value = pending_[m].exchange(kNoChange);
             if (value != kNoChange) engineSet(m, value);
         }
+        applyCableSlots();
         for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
         {
             int position = 0;
@@ -562,6 +723,8 @@ public:
         }
         showEngineGrid();
         showSamples();
+        reconcileCables(false);
+        showCables(changeCounter_.load());
         settleDone_.store(asked);
     }
 
@@ -655,6 +818,15 @@ public:
             if (cell.text == grid::Text::Hundredths) std::snprintf(text, sizeof text, "%.2f", (double)value / 100.0);
             else std::snprintf(text, sizeof text, "%d", value);
             out = text;
+            return true;
+        }
+        if (index >= kCable && index < kNumParams)
+        {
+            const int which = (index - kCable) % 4, v = (int)std::lround(plainValue);
+            char text[16];
+            if (which == kCAmount) { std::snprintf(text, sizeof text, "%.2f", (double)v / 100.0); out = text; }
+            else if (which == kCDestination) out = v >= 1 && v <= cables::kNumDestinations ? cables::kDestinations[v - 1] : "-";
+            else out = v >= 1 && v <= cables::kNumSources ? cables::kSources[v - 1] : "-";
             return true;
         }
         if (index == kSaveResult)
@@ -880,6 +1052,7 @@ public:
                 snapshotWanted_ = true;
             }
         }
+        if (cableDirty_.load(std::memory_order_relaxed) != 0 && applyCableSlots()) snapshotWanted_ = true;
         framesSinceSnapshot_ = std::min(framesSinceSnapshot_ + numFrames, kSnapshotSpacing);
         if (snapshotWanted_ && framesSinceSnapshot_ >= kSnapshotSpacing)
         {
@@ -997,6 +1170,7 @@ private:
             if (valid) snap_[k].store(position, std::memory_order_relaxed);
         }
         for (int s = 0; s < 2; ++s) snapSample_[s].store(deluge_hosted::engineSampleIdOf(s), std::memory_order_relaxed);
+        reconcileCables(false);
         snapChanges_.store(changes, std::memory_order_relaxed);
         snapSerial_.fetch_add(1);
         statSnapshots_.fetch_add(1, std::memory_order_relaxed);
@@ -1115,7 +1289,7 @@ private:
         for (int slot = 0; slot < kNumButtons; ++slot)
         {
             const int button = buttonIndex(slot);
-            if (get(button) == 0.0f || now - buttonOnSince_[slot].load() < 100) continue;
+            if (get(button) == 0.0f || now - buttonOnSince_[slot].load() < 300) continue;   // long enough for the slow emulator to read it back
             tReleasingButton = true;
             set(button, 0.0f);
             tReleasingButton = false;
@@ -1174,6 +1348,7 @@ private:
             showEngineValue(m, snap_[m].load(), stamp);
         }
         showSamples(true);   // a pad can take an oscillator's file away (its type changed from Sample)
+        showCables(changes);
     }
 
     // Worker thread: parameter m shows `value`, which is what the engine holds, unless the MPC
@@ -1309,8 +1484,8 @@ private:
             }
             for (int index = kGold; index < kNumParams && (size_t)(index - kGold) < values.size(); ++index)
             {
-                if (index >= kSave) continue;
-                if (index >= kSample && (index - kSample) % kSParams >= kSFolderPrev) continue;   // the buttons
+                if (index == kSave || index == kSaveResult) continue;
+                if (index >= kSample && index < kSave && (index - kSample) % kSParams >= kSFolderPrev) continue;   // the buttons
                 const float value = values[(size_t)(index - kGold)];
                 if (std::isnan(value))
                 {
@@ -1328,6 +1503,9 @@ private:
         const bool adopt = !keep && loaded == requestedPreset_.load();
         const int changesBefore = knobChanges_.load();
         knobsBusy_.store(true);
+        // The cables first: gold knobs and pads that reach a cable's depth come after and agree.
+        if (keep) giveCables();
+        else if (adopt) cableDirty_.store(0);   // a slot changed for the last preset
         tMirroringKnobs = true;
         for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
         {
@@ -1407,6 +1585,11 @@ private:
         }
         snapSeen_ = snapSerial_.load();   // an earlier read-back is of the engine as it was before this
         if (keep || adopt) showSamples();
+        if (keep || adopt)
+        {
+            reconcileCables(adopt);
+            showCables(changeCounter_.load());
+        }
         for (bool& leave : leaveCell_) leave = false;
 
         if (adopt)
@@ -1479,6 +1662,7 @@ private:
                       "project saves %u, restores %u (%u of them without usable knob values); waits that timed out %u\n"
                       "grid: %d of %d pads apply to this preset; engine read back %u times, %u parameter values changed to match\n"
                       "sample files found in Content/SAMPLES: %d in %d folders; files chosen for an oscillator %u, last error %d\n"
+                      "mod matrix: %d cable slots, %d cables beyond them (they play, unseen)\n"
                       "saved as a Deluge preset %u times, last as \"%s\", error %d\n"
                       "firmware error stops (its own consistency checks; should be 0): %d%s%s\n",
 #if defined(DELUGE_ENGINE_LINKED)
@@ -1503,6 +1687,7 @@ private:
                       statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load(),
                       relevantCells(), grid::kNumCells, statSnapshots_.load(), statShown_.load(),
                       (int)sampleFiles_.size(), (int)sampleFolders_.size(), sampleLoads_.load(), sampleError_.load(),
+                      kCableSlots, cablesHidden_.load(),
                       saves_.load(), saveText_[saveTextNow_.load() & 1], saveError_.load(),
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_);
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
@@ -1556,6 +1741,12 @@ private:
     std::atomic<bool> sampleBrowseChanged_{false};
     std::atomic<uint32_t> settleAsked_{0}, settleDone_{0};   // waits begun, and the last one the worker read the engine back for
     bool                  leaveCell_[grid::kNumCells] = {};   // worker thread: pads a restore does not set
+    CableSlot             slots_[kCableSlots];                 // engine lock held: what each slot is taken to hold
+    std::atomic<int>      cableHost_[kCableSlots][4];          // the slot parameters as last set from outside, or shown
+    std::atomic<int>      cableStamp_[kCableSlots];            // changeCounter_ when a slot was last set from outside
+    std::atomic<uint32_t> cableDirty_{0};                      // slots set from outside, not yet given to the engine
+    std::atomic<int>      snapSlot_[kCableSlots][4];           // slots_ at the last reconcile, for the worker
+    std::atomic<int>      cablesHidden_{0};                    // cables the engine has beyond the slots
     std::atomic<bool>     saveRequested_{false};
     char                  saveText_[2][80] = {};  // the worker writes the one not showing, then switches
     std::atomic<int>      saveTextNow_{0};

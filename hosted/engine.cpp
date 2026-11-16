@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "engine.h"
+#include "cables.h"
 
 #include "definitions_cxx.hpp"
 #include "extern.h"
@@ -21,6 +22,8 @@
 #include "modulation/params/param.h"
 #include "modulation/params/param_collection.h"
 #include "modulation/params/param_descriptor.h"
+#include "modulation/patch/patch_cable.h"
+#include "modulation/patch/patch_cable_set.h"
 #include "playback/mode/playback_mode.h"
 #include "playback/mode/session.h"
 #include "processing/engines/audio_engine.h"
@@ -561,6 +564,95 @@ int engineSaveSynth(const char* presetPath) {
 	static_cast<Output*>(synth)->writeToFile(clip, song);
 	error = GetSerializer().closeFileAfterWriting(presetPath, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n", "\n</sound>\n");
 	return (int)error;
+}
+
+// --- patch cables (cables.h) ---------------------------------------------------------------------------
+
+int engineCableList(Cable* out, int max) {
+	InEngine inEngine;
+	if (synth == nullptr || clip == nullptr) {
+		return 0;
+	}
+	PatchCableSet* set = clip->paramManager.getPatchCableSet();
+	int count = 0;
+	for (int c = 0; c < set->numPatchCables; c++) {
+		PatchCable& cable = set->patchCables[c];
+		// Presets from before V3.2 can hold a cable to the placeholder parameter "range" with no
+		// cable to attach it to (CLAUDE.md, the firmware bug list). It does nothing; not listed.
+		if (cable.destinationParamDescriptor.getJustTheParam() >= deluge::modulation::params::kNumParams) {
+			continue;
+		}
+		if (count < max) {
+			ParamDescriptor destination = cable.destinationParamDescriptor;
+			out[count].source = (int16_t)cable.from;
+			out[count].destination = (int16_t)destination.getJustTheParam();
+			out[count].of = destination.isJustAParam() ? (int16_t)-1 : (int16_t)destination.getBottomLevelSource();
+			// PatchCableStrength::readCurrentValue(): -(2^30)..2^30 to -5000..5000, rounded.
+			out[count].amount = (int32_t)(((int64_t)cable.param.getCurrentValue() * kCableAmountMax + (1 << 29)) >> 30);
+		}
+		count++;
+	}
+	return count;
+}
+
+void engineCableSet(int source, int destination, int of, int32_t amount) {
+	InEngine inEngine;
+	namespace params = deluge::modulation::params;
+	if (synth == nullptr || clip == nullptr || source < 0 || source >= kNumPatchSources || destination < 0
+	    || destination >= params::kNumParams || of >= kNumPatchSources) {
+		return;
+	}
+	amount = std::clamp<int32_t>(amount, -kCableAmountMax, kCableAmountMax);
+	// No check of whether the firmware would offer this cable on a Deluge
+	// (Sound::maySourcePatchToParam): it refuses by the sound's present state (a filter that is
+	// off, a per-voice source on a parameter the whole sound shares), yet preset files hold such
+	// cables, inert, and what a file can hold has to be settable here to restore a project.
+	// PatchCableStrength::getModelStack() and writeCurrentValue(): the destination with the source
+	// added names the cable; asking for it with creation allowed makes it.
+	ParamDescriptor descriptor;
+	if (of < 0) {
+		descriptor.setToHaveParamOnly(destination);
+	}
+	else {
+		descriptor.setToHaveParamAndSource(destination, (PatchSource)of);
+	}
+	descriptor.addSource((PatchSource)source);
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithThreeMainThings* modelStack = setupModelStackWithSong(modelStackMemory, song)
+	                                                ->addTimelineCounter(clip)
+	                                                ->addOtherTwoThingsButNoNoteRow(synth, &clip->paramManager);
+	ModelStackWithParamCollection* withCollection = clip->paramManager.getPatchCableSet(modelStack);
+	ModelStackWithParamId* withId = withCollection->addParamId(descriptor.data);
+	ModelStackWithAutoParam* withParam = withId->paramCollection->getAutoParamFromId(withId, amount != 0);
+	if (withParam == nullptr || withParam->autoParam == nullptr) {
+		return; // no such cable and none wanted, or no room for another
+	}
+	const int64_t magicConstant = 922337203685477; // (2^30 / 5000) << 32, the firmware's constant
+	withParam->autoParam->setCurrentValueInResponseToUserInput((int32_t)((magicConstant * amount) >> 32), withParam);
+}
+
+bool engineCableSourceName(int source, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	if (source < 0 || source >= kNumPatchSources) {
+		return false;
+	}
+	std::snprintf(out, (size_t)outSize, "%s", getSourceDisplayNameForOLED((PatchSource)source));
+	return true;
+}
+
+bool engineCableDestinationName(int destination, char* out, int outSize) {
+	namespace params = deluge::modulation::params;
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	if (destination < 0 || destination >= params::kNumParams) {
+		return false;
+	}
+	const char* name = params::getPatchedParamDisplayName(destination);
+	std::snprintf(out, (size_t)outSize, "%s", name != nullptr ? name : "");
+	return true;
 }
 
 static void sendNote(bool on, int note, int velocity) {

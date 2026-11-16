@@ -17,10 +17,16 @@
     ],
     [
       "FILTER",
-      "ENV"
+      "ENV",
+      "LFO"
     ],
     [
-      "LFO"
+      "CABLES 1",
+      "CABLES 2",
+      "CABLES 3",
+      "CABLES 4",
+      "CABLES 5",
+      "CABLES 6"
     ],
     [
       "MOD FX",

@@ -25,6 +25,15 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
   computer, and the desktop VST) contains a placeholder sine tone instead, because the
   firmware's signal processing is ARM NEON code.
 
+## The mod matrix
+
+Screens CABLES 1 to 6 hold the sound's patch cables, four to a screen: for each, the Source, the
+Dest(ination), the Amount (-50.00 to 50.00, as a Deluge shows it) and Of. Of is for a cable that
+moves another cable's depth: Source "Y", Dest "Master Pitch", Of "LFO1" is the mod wheel setting
+how much vibrato LFO1 gives. Pick a source and a destination in an empty row and turn Amount up
+to make a cable; Amount at 0.00 removes it. A preset's own cables fill the first rows. A sound
+with more than 24 cables plays them all but shows the first 24.
+
 ## Samples
 
 Screens SAMPLE 1 and SAMPLE 2 choose the file each oscillator plays from the WAV and AIFF files

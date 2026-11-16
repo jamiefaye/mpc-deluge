@@ -710,6 +710,516 @@
       ]
     },
     {
+      "name": "CABLES 1",
+      "controls": [
+        {
+          "param": "C1 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C1 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C1 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C1 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C2 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C2 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C2 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C2 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C3 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C3 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C3 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C3 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C4 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C4 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C4 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C4 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        }
+      ]
+    },
+    {
+      "name": "CABLES 2",
+      "controls": [
+        {
+          "param": "C5 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C5 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C5 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C5 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C6 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C6 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C6 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C6 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C7 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C7 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C7 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C7 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C8 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C8 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C8 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C8 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        }
+      ]
+    },
+    {
+      "name": "CABLES 3",
+      "controls": [
+        {
+          "param": "C9 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C9 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C9 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C9 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C10 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C10 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C10 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C10 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C11 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C11 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C11 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C11 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C12 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C12 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C12 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C12 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        }
+      ]
+    },
+    {
+      "name": "CABLES 4",
+      "controls": [
+        {
+          "param": "C13 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C13 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C13 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C13 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C14 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C14 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C14 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C14 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C15 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C15 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C15 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C15 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C16 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C16 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C16 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C16 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        }
+      ]
+    },
+    {
+      "name": "CABLES 5",
+      "controls": [
+        {
+          "param": "C17 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C17 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C17 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C17 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C18 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C18 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C18 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C18 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C19 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C19 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C19 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C19 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C20 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C20 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C20 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C20 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        }
+      ]
+    },
+    {
+      "name": "CABLES 6",
+      "controls": [
+        {
+          "param": "C21 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C21 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C21 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C21 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C22 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C22 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C22 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C22 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C23 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C23 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C23 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C23 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C24 Source",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C24 Dest",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "C24 Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "C24 Of",
+          "widget": "slider",
+          "overlay": "menu"
+        }
+      ]
+    },
+    {
       "name": "MOD FX",
       "controls": [
         {

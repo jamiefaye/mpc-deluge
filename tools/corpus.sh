@@ -125,4 +125,26 @@ for target in arm32 native; do
   printf '%-7s %s\n' "$target" "$(tr -d '\r' < "$out/instances-$target.raw" | grep '^INSTANCES' || echo 'did not finish (see the .raw file)')"
   tr -d '\r' < "$out/instances-$target.raw" | grep -q '^INSTANCES.* 0 not repeatable alone, 0 differ paired, 0 differ disturbed.* 0 would not load; firmware error stops 0' || status=1
 done
+# Sixth pass, on this computer: a sound saved as a preset and loaded again is the same sound
+# (tests/engine_save.cpp), and every cable of a preset can be removed and put back
+# (tests/cable_table.cpp), each on every seventh preset; and the plugin's table of cable sources
+# and destinations is the firmware's.
+echo "== pass: save and load, patch cables"
+tools/build_firmware.py native --test tests/engine_save.cpp | tail -1
+tools/build_firmware.py native --test tests/cable_table.cpp | tail -1
+DELUGE_SCRUB=165 build/firmware/native/engine_save "$out/root" SYNTHS 7 > "$out/save-native.raw" 2>&1 || true
+printf 'native  %s\n' "$(grep '^SAVE' "$out/save-native.raw" || echo 'did not finish (see the .raw file)')"
+# One differs for a known reason (CLAUDE.md, "Saving a sound as a Deluge preset").
+grep -q '^SAVE.* [01] different, 0 failed' "$out/save-native.raw" || status=1
+cables_bad=0
+cables_total=0
+while IFS= read -r preset; do
+  cables_total=$((cables_total + 1))
+  build/firmware/native/cable_table "$out/root" "SYNTHS/$preset" roundtrip 2>&1 | tail -1 | grep -q 'ok$' || { cables_bad=$((cables_bad + 1)); echo "  cables: $preset"; }
+done <<LIST
+$(ls "$out/root/SYNTHS" | grep -i '\.xml$' | awk 'NR % 7 == 1')
+LIST
+printf 'native  CABLES %s presets: %s could not have their cables removed and put back\n' "$cables_total" "$cables_bad"
+[ "$cables_bad" = 0 ] || status=1
+tools/gen_cables.py --check "$out/root" || status=1
 exit $status

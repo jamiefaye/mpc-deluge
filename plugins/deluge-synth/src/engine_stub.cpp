@@ -11,6 +11,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #if !defined(DELUGE_ENGINE_LINKED)
 
+#include "cables.h"
 #include "engine.h"
 #include "matrix.h"
 
@@ -37,6 +38,9 @@ struct Placeholder {
 Placeholder placeholders[kMaxInstances];
 // The placeholder remembers the name so that the plugin's File parameters behave.
 char sampleNames[kMaxInstances][2][256];
+// And the cables it is given, so that the mod-matrix parameters behave.
+Cable stubCables[kMaxInstances][kMaxCables];
+int stubCableCount[kMaxInstances];
 int current = 0;
 #define tones (placeholders[current].tones)
 #define knobs (placeholders[current].knobs)
@@ -78,6 +82,7 @@ int engineCurrentInstance() {
 
 int engineLoadSynth(const char*) {
 	sampleNames[current][0][0] = sampleNames[current][1][0] = 0;
+	stubCableCount[current] = 0;
 	for (Tone& t : tones) {
 		t = Tone();
 	}
@@ -111,6 +116,43 @@ bool engineSampleGet(int source, char* out, int outSize) {
 
 uint32_t engineSampleIdOf(int source) {
 	return (source < 0 || source > 1 || sampleNames[current][source][0] == 0) ? 0 : engineSampleId(sampleNames[current][source]);
+}
+
+int engineCableList(Cable* out, int max) {
+	for (int i = 0; i < stubCableCount[current] && i < max; i++) {
+		out[i] = stubCables[current][i];
+	}
+	return stubCableCount[current];
+}
+void engineCableSet(int source, int destination, int of, int32_t amount) {
+	Cable* list = stubCables[current];
+	int& count = stubCableCount[current];
+	for (int i = 0; i < count; i++) {
+		if (list[i].source == source && list[i].destination == destination && list[i].of == of) {
+			if (amount == 0) {
+				list[i] = list[--count];
+			}
+			else {
+				list[i].amount = amount;
+			}
+			return;
+		}
+	}
+	if (amount != 0 && count < kMaxCables) {
+		list[count++] = Cable{(int16_t)source, (int16_t)destination, (int16_t)of, amount};
+	}
+}
+bool engineCableSourceName(int, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	return false;
+}
+bool engineCableDestinationName(int, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	return false;
 }
 
 int engineSaveSynth(const char*) {
