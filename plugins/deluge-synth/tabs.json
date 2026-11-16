@@ -81,6 +81,14 @@
     "S2 File +": {
       "image": "arrow_down",
       "bounds": "569 125 105 80"
+    },
+    "Preset -10": {
+      "image": "arrow_up2",
+      "bounds": "1099 45 105 80"
+    },
+    "Preset +10": {
+      "image": "arrow_down2",
+      "bounds": "1099 125 105 80"
     }
   },
   "big": {

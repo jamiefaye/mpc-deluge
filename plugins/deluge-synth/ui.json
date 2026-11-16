@@ -41,6 +41,14 @@
         {
           "param": "Saved As",
           "widget": "slider"
+        },
+        {
+          "param": "Preset -10",
+          "widget": "switch"
+        },
+        {
+          "param": "Preset +10",
+          "widget": "switch"
         }
       ]
     },

@@ -85,7 +85,10 @@ enum ParamIndex
     kSaveResult,            // shows the name it was saved under, or why not
     // The mod matrix: kCableSlots patch cables, each Source, Destination, Amount and Of (below).
     kCable,
-    kNumParams = kCable + 24 * 4
+    // Two more buttons for MAIN, added later: ten presets back, ten on.
+    kPresetBack10 = kCable + 24 * 4,
+    kPresetOn10,
+    kNumParams
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
@@ -100,7 +103,7 @@ constexpr int kNumFine = kSample - kFine;
 // -50.00..50.00. A slot with no Source or no Destination, or an Amount of 0, is no cable in the
 // engine; the slot keeps what was chosen all the same, so a cable can be set up a part at a time
 // and turned to nothing without losing its place.
-constexpr int kCableSlots = (kNumParams - kCable) / 4;
+constexpr int kCableSlots = (kPresetBack10 - kCable) / 4;
 enum { kCSource = 0, kCDestination, kCAmount, kCOf };
 struct CableSlot
 {
@@ -272,6 +275,8 @@ public:
                 cableStamp_[slot].store(0);
             }
         }
+        addParam(mpc::boolParam("presetback10", "Preset -10", false));
+        addParam(mpc::boolParam("preseton10", "Preset +10", false));
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -344,12 +349,14 @@ public:
             case kPresetNext: buttonSet(index, plainValue); if (pressed) browse(+1, 0, -1); break;
             case kFolderPrev: buttonSet(index, plainValue); if (pressed) browse(0, -1, -1); break;
             case kFolderNext: buttonSet(index, plainValue); if (pressed) browse(0, +1, -1); break;
+            case kPresetBack10: buttonSet(index, plainValue); if (pressed) browse(-10, 0, -1); break;
+            case kPresetOn10:   buttonSet(index, plainValue); if (pressed) browse(+10, 0, -1); break;
             default:
                 // A gold knob or grid pad moved by the user or the host (not by this thread
                 // mirroring the engine): remember it, and process() hands it to the engine.
                 if (index == kSave) { buttonSet(index, plainValue); if (pressed && !tReleasingButton) saveRequested_.store(true); break; }
                 if (index == kSaveResult) break;
-                if (index >= kCable && index < kNumParams)
+                if (index >= kCable && index < kPresetBack10)
                 {
                     if (tMirroringKnobs) break;   // the worker showing what the engine holds
                     const int slot = (index - kCable) / 4;
@@ -387,15 +394,17 @@ public:
         if (plainValue != 0.0f && !tReleasingButton) buttonOnSince_[buttonSlot(index)].store(nowMs());
     }
     // The buttons: four on MAIN, then four for each oscillator's sample.
-    static constexpr int kNumButtons = 13;
+    static constexpr int kNumButtons = 15;
     static int buttonSlot(int index)
     {
+        if (index == kPresetBack10 || index == kPresetOn10) return 13 + (index - kPresetBack10);
         if (index == kSave) return 12;
         if (index < kSample) return index - kFolderPrev;
         return 4 + ((index - kSample) / kSParams) * 4 + ((index - kSample) % kSParams - kSFolderPrev);
     }
     static int buttonIndex(int slot)
     {
+        if (slot >= 13) return kPresetBack10 + (slot - 13);
         if (slot == 12) return kSave;
         if (slot < 4) return kFolderPrev + slot;
         return kSample + ((slot - 4) / 4) * kSParams + kSFolderPrev + (slot - 4) % 4;
@@ -820,7 +829,7 @@ public:
             out = text;
             return true;
         }
-        if (index >= kCable && index < kNumParams)
+        if (index >= kCable && index < kPresetBack10)
         {
             const int which = (index - kCable) % 4, v = (int)std::lround(plainValue);
             char text[16];
@@ -1484,7 +1493,7 @@ private:
             }
             for (int index = kGold; index < kNumParams && (size_t)(index - kGold) < values.size(); ++index)
             {
-                if (index == kSave || index == kSaveResult) continue;
+                if (index == kSave || index == kSaveResult || index >= kPresetBack10) continue;
                 if (index >= kSample && index < kSave && (index - kSample) % kSParams >= kSFolderPrev) continue;   // the buttons
                 const float value = values[(size_t)(index - kGold)];
                 if (std::isnan(value))

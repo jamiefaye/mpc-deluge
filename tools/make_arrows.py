@@ -18,13 +18,18 @@ ACCENT = (0xd3, 0x11, 0x45, 255)  # the mpc-red kit's accent
 WHITE = (255, 255, 255, 255)
 
 for direction in ("up", "down"):
-    for state, fill in (("off", PANEL), ("on", ACCENT)):
-        image = Image.new("RGBA", (W * SCALE, H * SCALE), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle([0, 0, W * SCALE - 1, H * SCALE - 1], radius=12 * SCALE, fill=fill)
-        cx, cy, half, tall = W * SCALE / 2, H * SCALE / 2, 20 * SCALE, 22 * SCALE
-        tip = cy - tall / 2 if direction == "up" else cy + tall / 2
-        base = cy + tall / 2 if direction == "up" else cy - tall / 2
-        draw.polygon([(cx, tip), (cx + half, base), (cx - half, base)], fill=WHITE)
-        image.resize((W, H), Image.LANCZOS).save(os.path.join(OUT, "arrow_%s_%s.png" % (direction, state)))
-print("wrote four images to", OUT)
+    for count in (1, 2):   # one arrow: a step of one; two, one above the other: a step of ten
+        for state, fill in (("off", PANEL), ("on", ACCENT)):
+            image = Image.new("RGBA", (W * SCALE, H * SCALE), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            draw.rounded_rectangle([0, 0, W * SCALE - 1, H * SCALE - 1], radius=12 * SCALE, fill=fill)
+            half, tall = (20 * SCALE, 22 * SCALE) if count == 1 else (18 * SCALE, 15 * SCALE)
+            cx = W * SCALE / 2
+            for k in range(count):
+                cy = H * SCALE / 2 + (k - (count - 1) / 2) * (tall + 4 * SCALE)
+                tip = cy - tall / 2 if direction == "up" else cy + tall / 2
+                base = cy + tall / 2 if direction == "up" else cy - tall / 2
+                draw.polygon([(cx, tip), (cx + half, base), (cx - half, base)], fill=WHITE)
+            name = "arrow_%s%s_%s.png" % (direction, "" if count == 1 else "2", state)
+            image.resize((W, H), Image.LANCZOS).save(os.path.join(OUT, name))
+print("wrote eight images to", OUT)
