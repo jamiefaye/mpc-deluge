@@ -524,9 +524,10 @@ public:
     }
 
     // --- saving the sound as a Deluge preset ---------------------------------------------------
-    // Worker thread. The file goes beside the preset the sound came from, under that preset's
-    // name with the lowest number from 2 that is free ("SYNT008 2.XML"), as a Deluge names a
-    // copy; a skin has no way to type a name. The firmware's own writer makes it, so it is the
+    // Worker thread. The file goes in Content/SYNTHS/User, so that the collections the presets
+    // came from stay as they were, under the preset's name with the lowest number from 2 that
+    // is free there ("SYNT008 2.XML"), as a Deluge names a copy; a skin has no way to type a
+    // name. The firmware's own writer makes it, so it is the
     // file a Deluge would have saved. It joins the Preset list when the plugin next starts (the
     // list, and the Preset parameter's range, are fixed when the plugin loads).
     void applySave()
@@ -536,6 +537,8 @@ public:
         if (loaded < 0 || loaded != requestedPreset_.load() || goldPreset_.load() != loaded || resync_.load() || reloadPreset_.load()) return;   // once it has settled
         saveRequested_.store(false);
         std::string stem = presets_[(size_t)loaded].substr(0, presets_[(size_t)loaded].size() - 4);   // without ".XML"
+        stem = "User/" + stem.substr(stem.rfind('/') == std::string::npos ? 0 : stem.rfind('/') + 1);
+        mkdir((mpc::contentPath("SYNTHS") + "/User").c_str(), 0777);   // there already, as a rule
         // A copy of a copy keeps counting: "Name 2" saves as "Name 3".
         const size_t space = stem.rfind(' ');
         if (space != std::string::npos && space + 1 < stem.size() && stem.find_first_not_of("0123456789", space + 1) == std::string::npos)

@@ -698,6 +698,27 @@ grid picture and pressing a source pad to patch (the editing design, below) are 
   249 of 249 presets), `tools/plugintest.sh` (slots follow the Vibrato pad and the reverse, a
   destination changed, a cable made in an empty slot and removed).
 
+### The preset library on the Force (2026-11-16)
+
+- **The plugin lives on the Force's drive `MPCstuff HD`** (931 GB exFAT, always in the Force;
+  `.mpc.env` targets it) and no longer on the USB stick, which still holds an old copy to
+  remove when it is next plugged in.
+- **`tools/organize_library.py [card]`** lays out a Deluge card's 747 flat SYNTH presets as
+  folders in `build/library/Content`: Factory by hundreds (300 and up together), BOD 1, BOD 2-3,
+  BOD 4, BOD 5, BOD 6, Other, and an empty User; with the 142 sample files they use (199 MB).
+  Which numbered presets are which Boards of Deluge volume is inferred from file dates (see the
+  tool); where volume 2 ends is unknown. Folders sort by name, so BOD comes before Factory.
+- **`./deploy.sh plugins/deluge-synth --content build/library`** installs the built plugin with
+  that library as its `Content/`, keeping what Save wrote on the device (`SYNTHS/User`). The
+  project's own `Content/` stays the small set the tests and the emulator use (a 200 MB plugin
+  folder would not fit the emulator's RAM disk). **Use `--content` for every deploy to the
+  Force from now on**, or the library is replaced by the small set.
+- **Save writes to `SYNTHS/User`**, not beside the source preset.
+- The factory presets are Synthstrom's and the Boards of Deluge collections are bought: none
+  of it is in the repo or in anything packaged for others. Jamie raised bundling the factory
+  set (2026-11-16); it needs Synthstrom's word first.
+- MAIN has ten-preset steps (double arrows) beside the single ones.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

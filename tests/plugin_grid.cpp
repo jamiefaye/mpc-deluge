@@ -339,14 +339,14 @@ int main(int argc, char** argv) {
 	run(500);
 	restoredAs("state restored over the same preset, changed");
 
-	// --- Save writes the sound to a new preset file beside the one it came from ---
+	// --- Save writes the sound to a new preset file in the User folder ---
 	{
 		// The native build's Content/ is the project's own: <library>/../../Content.
 		std::string content = argv[1];
 		for (int up = 0; up < 3; up++) {
 			content.resize(content.rfind('/'));
 		}
-		const std::string file = content + "/Content/SYNTHS/" + shown("Folder") + "/" + presetName + " 2.XML";
+		const std::string file = content + "/Content/SYNTHS/User/" + presetName + " 2.XML";
 		std::remove(file.c_str());
 		fx->setParameter(fx, paramCalled("Save"), 1.0f);
 		run(1200);

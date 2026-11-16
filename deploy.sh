@@ -6,6 +6,11 @@
 #   ./deploy.sh plugins/deluge-proto --restart    ... then restart the MPC app so it rescans
 #   ./deploy.sh --info | --doctor | --list        talk to the MPC without building
 #   ./deploy.sh plugins/deluge-proto --no-build   install what is already in build/
+#   ./deploy.sh plugins/deluge-synth --content build/library
+#                                                 install with <folder>/Content in place of the
+#                                                 project's Content/ (a full preset library; see
+#                                                 tools/organize_library.py). Presets saved on the
+#                                                 device (Content/SYNTHS/User) are kept.
 #
 # The MPC only loads a new binary when its app starts, so a changed plugin needs --restart (or a
 # power cycle). RESTARTING DISCARDS ANY UNSAVED PROJECT ON THE MPC.
@@ -37,8 +42,12 @@ project=
 restart=no
 build=yes
 pull=no
+content=
+want_content=no
 for arg in "$@"; do
+  if [ "$want_content" = yes ]; then content=$arg; want_content=no; continue; fi
   case $arg in
+    --content) want_content=yes ;;
     --info)    remote info; exit ;;
     --doctor)  remote doctor; exit ;;
     --list)    remote list ${MPC_DRIVE:+--drive "$MPC_DRIVE"}; exit ;;
@@ -64,7 +73,7 @@ cd "$here"
 # plugin folder (Content/), and installing replaces that folder. So first bring back whatever is
 # in the installed copy's Content/ and merge it into the project's Content/ (never overwriting a
 # local file); the build then carries it into the new copy. Skipped when nothing is installed.
-if [ -d "$project/Content" ] || [ "$pull" = yes ]; then
+if [ -z "$content" ] && { [ -d "$project/Content" ] || [ "$pull" = yes ]; }; then
   name=$(python3 -c 'import json,sys; j=json.load(open(sys.argv[1])); print(j["manufacturer"]+" - VST - "+j["name"])' "$project/plugin.json")
   tmp=$(mktemp -d)
   if remote --drive "$MPC_DRIVE" --yes export "$name" --out "$tmp" >/dev/null 2>&1 && ls "$tmp"/*.zip >/dev/null 2>&1; then
@@ -82,7 +91,32 @@ fi
 # build.sh stops on a build, validation or host_sim failure, so a broken build is never sent.
 [ "$build" = yes ] && ./build.sh "$project"
 
-remote --drive "$MPC_DRIVE" --yes update "$project"
+if [ -n "$content" ]; then
+  # A copy of the built plugin folder with the library as its Content/, and in it whatever the
+  # Save button has written on the device.
+  [ -d "$content/Content" ] || { echo "no $content/Content" >&2; exit 1; }
+  name=$(python3 -c 'import json,sys; j=json.load(open(sys.argv[1])); print(j["manufacturer"]+" - VST - "+j["name"])' "$project/plugin.json")
+  stage=$here/build/stage
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  cp -R "$project/build/$name" "$stage/$name"
+  rm -rf "$stage/$name/Content"
+  cp -R "$content/Content" "$stage/$name/Content"
+  tmp=$(mktemp -d)
+  if remote --drive "$MPC_DRIVE" --yes export "$name" --out "$tmp" >/dev/null 2>&1 && ls "$tmp"/*.zip >/dev/null 2>&1; then
+    (cd "$tmp" && unzip -q -o ./*.zip "$name/Content/SYNTHS/User/*" -d unpacked 2>/dev/null || true)
+    if [ -d "$tmp/unpacked/$name/Content/SYNTHS/User" ]; then
+      mkdir -p "$stage/$name/Content/SYNTHS/User" "$project/Content/SYNTHS/User"
+      cp -R -n "$tmp/unpacked/$name/Content/SYNTHS/User/." "$stage/$name/Content/SYNTHS/User/" 2>/dev/null || true
+      cp -R -n "$tmp/unpacked/$name/Content/SYNTHS/User/." "$project/Content/SYNTHS/User/" 2>/dev/null || true
+      echo "Kept $(find "$tmp/unpacked/$name/Content/SYNTHS/User" -type f | wc -l | tr -d ' ') presets saved on the device (a copy is in $project/Content/SYNTHS/User)"
+    fi
+  fi
+  rm -rf "$tmp"
+  remote --drive "$MPC_DRIVE" --yes add "$stage/$name"
+else
+  remote --drive "$MPC_DRIVE" --yes update "$project"
+fi
 
 if [ "$restart" = yes ]; then
   remote --yes restart
