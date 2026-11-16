@@ -13,6 +13,8 @@ The folders, and how a preset is put in one (Jamie's card, 2026-11-16: 747 prese
                           where the files' dates divide (1-50, 51-150, 151-211); where volume 2
                           ends and 3 begins is not known, so they share a folder.
     Other                 everything else ("BASS - ...", "PADS - ...")
+    <a folder at the card's root with its own SYNTHS>
+                          a collection unpacked there: "Boards Of Deluge 7" becomes "BOD 7"
     User                  where the plugin's Save button writes; made empty here
 These files belong to whoever owns the card, and the Boards of Deluge collections are bought:
 build/ is not tracked by git, and nothing here goes in a package for anyone else.
@@ -55,6 +57,20 @@ for folder in sorted(groups):
     subprocess.run([sys.executable, os.path.join(HERE, "tools", "bundle_presets.py"), card, out, folder] + groups[folder],
                    check=True, stdout=subprocess.DEVNULL)
     print("%-18s %4d presets" % (folder, len(groups[folder])))
+# A collection bought later and unpacked into a folder of its own at the card's root, laid out as
+# a small card (its own SYNTHS and SAMPLES): "Boards Of Deluge 7" becomes the folder "BOD 7".
+for extra in sorted(os.listdir(card)):
+    synths = os.path.join(card, extra, "SYNTHS")
+    if not os.path.isdir(synths):
+        continue
+    m = re.match(r"(?i)boards of deluge (\d+)$", extra)
+    folder = "BOD %s" % m.group(1) if m else extra
+    names = sorted(f for f in os.listdir(synths) if f.lower().endswith(".xml"))
+    subprocess.run([sys.executable, os.path.join(HERE, "tools", "bundle_presets.py"), os.path.join(card, extra), out, folder] + names,
+                   check=True, stdout=subprocess.DEVNULL)
+    print("%-18s %4d presets   (from %s)" % (folder, len(names), extra))
+    presets += names
+    groups[folder] = names
 samples = sum(len(files) for _, _, files in os.walk(os.path.join(out, "Content", "SAMPLES")))
 size = sum(os.path.getsize(os.path.join(d, f)) for d, _, files in os.walk(os.path.join(out, "Content")) for f in files)
 print("%d presets in %d folders, %d sample files, %.0f MB, in %s" % (len(presets), len(groups), samples, size / 1e6,
