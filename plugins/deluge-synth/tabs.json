@@ -41,7 +41,10 @@
   },
   "steps": {
     "Osc1 Transp": [-96, 96], "Osc2 Transp": [-96, 96], "Mod1 Transp": [-96, 96], "Mod2 Transp": [-96, 96], "Transpose": [-96, 96],
-    "Osc1 Fine": [-50, 49], "Osc2 Fine": [-50, 49], "Mod1 Fine": [-50, 49], "Mod2 Fine": [-50, 49], "Fine Tune": [-50, 49]
+    "Osc1 Fine": [-50, 49], "Osc2 Fine": [-50, 49], "Mod1 Fine": [-50, 49], "Mod2 Fine": [-50, 49], "Fine Tune": [-50, 49],
+    "S1 Speed": [-48, 48], "S2 Speed": [-48, 48],
+    "Osc1 Phase": [-1, 360, {"-1": "Off"}], "Osc2 Phase": [-1, 360, {"-1": "Off"}],
+    "Mod1 Phase": [-1, 360, {"-1": "Off"}], "Mod2 Phase": [-1, 360, {"-1": "Off"}]
   },
   "programQLinks": [
     "Gold 1",

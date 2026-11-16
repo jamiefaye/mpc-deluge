@@ -195,7 +195,7 @@ def apply_buttons(project, out_dir, params_json):
     tui = "".join(out) + tui[at:]
     if fixed:
         sdk_build.log("  %d segment captions made visible" % fixed)
-    # "steps": {"<parameter name>": [first, last]}: a whole-number parameter the Q-Links and the
+    # "steps": {"<parameter name>": [first, last]} or [first, last, {"<value>": "<word>"}]: a whole-number parameter the Q-Links and the
     # data wheel must step through one at a time. An MPC moves a continuous parameter a hundredth
     # of its range per click; only one with "replacementStrings" in the skin gets exact steps,
     # and the SDK's tools write those for at most 64 choices. The strings are the signed numbers.
@@ -203,12 +203,15 @@ def apply_buttons(project, out_dir, params_json):
     if steps:
         index = {p["name"]: p["index"] for p in json.load(open(params_json))["params"]}
         entries = []
-        for param, (first, last) in steps.items():
+        for param, limits in steps.items():
+            first, last = limits[0], limits[1]
+            named = limits[2] if len(limits) > 2 else {}  # {"-1": "Off"}: values the plugin shows as a word
             if param not in index:
                 raise sdk_build.BuildError("tabs.json steps: no parameter called \"%s\"" % param)
             if '"Parameter %d"' % index[param] in tui[tui.find('"replacementStrings"'):tui.find("]", tui.find('"replacementStrings"'))]:
                 raise sdk_build.BuildError("tabs.json steps: \"%s\" already has steps" % param)
-            strings = ", ".join('"%s%d"' % ("+" if v > 0 else "", v) for v in range(first, last + 1))
+            sign = "+" if first < 0 and not named else ""
+            strings = ", ".join('"%s"' % named.get(str(v), "%s%d" % (sign if v > 0 else "", v)) for v in range(first, last + 1))
             entries.append('{"key": "Parameter %d", "value": [%s]}' % (index[param], strings))
         at = tui.find('"replacementStrings"')
         if at < 0:
