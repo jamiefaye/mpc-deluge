@@ -5,7 +5,7 @@ both 32-bit ARM), built with inMusic's MPC Plugin SDK. Started 2026-11-12. The a
 synth engine on the MPC: "Deluge Synth" is the whole firmware engine playing SYNTH presets, on
 32-bit and (since 2026-11-13) 64-bit ARM.
 
-## Status (2026-11-14) - read this first
+## Status (2026-11-16) - read this first
 
 Older sections below are a dated log; where one says something "has not run yet", this section
 and the dated note nearest the topic win.
@@ -26,6 +26,26 @@ and the dated note nearest the topic win.
   the Deluge's 16 x 8 grid are plugin parameters on ten new screens; see "The shortcut grid as
   parameters". Built and tested in the simulators on all three targets. The build on the Force
   and on the card is still the 2026-11-13 one, without it.
+
+- **The grid build ran on the Force on 2026-11-16** and crashed on sample presets until the
+  allocator fix below; with it, Jamie's repeatable crash (Folder to Samples, second preset) is
+  gone. **One crash is unexplained:** "twiddling the params in the ARP screen", once, on the
+  build before the fix, preset unknown. Not reproduced in the emulator on either build
+  (`tests/plugin_browse.cpp` with the ARP screen's parameters, 300 steps, seven runs).
+- **Every block from the firmware's allocator was 8 past a multiple of 16** (found 2026-11-16).
+  `MemoryRegion::setup` aligns the region start to 16 and the first block begins 8 later, the
+  opposite of what its comment claims. `VoiceSample` and `TimeStretcher` hold an `Interpolator`
+  (`alignas(16)`), come from that allocator, and clang copies them with `vld1.64 [r0:128]`:
+  a bus error on 32-bit ARM in `SampleLowLevelReader`'s copy constructor, called from
+  `TimeStretcher::init`, so only when a time-stretched sample starts. Patched under
+  `DELUGE_HOSTED` to start 8 short of a multiple of 16. The corpus never hit it (it does not
+  time-stretch); `tests/plugin_browse.cpp` does: a VST2 host that browses folders and presets
+  with random pauses and held notes, or moves a named list of parameters. Build it for arm32
+  with the SDK's zig and run it with `tools/armtest/run.py --file "<plugin folder>=/plugins/DS"
+  --exe <program> /plugins/DS/VST/deluge-synth-arm32.so <seed> <steps> [Samples | "params:..."]`.
+  It prints where the plugin was loaded; subtract that from a crash PC and find the instruction
+  bytes in `objdump -d build/firmware/arm32/libdeluge.a` (the plugin `.so` is stripped).
+  `diagnostics.txt` is no help after a crash: the restarted plugin overwrites it.
 
 Pending:
 0. **Try the grid build on the Force and the MPC Live** (Jamie is away from both until Monday

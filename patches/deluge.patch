@@ -433,7 +433,23 @@ diff -ruN a/deluge/src/deluge/memory/general_memory_allocator.cpp b/deluge/src/d
 diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memory/memory_region.cpp
 --- a/deluge/src/deluge/memory/memory_region.cpp
 +++ b/deluge/src/deluge/memory/memory_region.cpp
-@@ -42,11 +42,11 @@
+@@ -35,18 +35,27 @@
+ 	emptySpaces.setStaticMemory(emptySpacesMemory, emptySpacesMemorySize);
+ 	// bit of a hack - the allocations start with a 4 byte type+size header, this ensures the
+ 	// resulting allocations are still aligned to 16 bytes (which should generally be fine for anything?)
++#if defined(DELUGE_HOSTED)
++	// mpc-deluge: the line below does not do what its comment says. The first allocation is at
++	// regionBegin + 8 and every block with its headers is a multiple of 16, so every address handed
++	// out is 8 past a multiple of 16. Types with 16-byte alignment live here (VoiceSample and
++	// TimeStretcher hold an Interpolator), and clang copies them with NEON loads that fault on
++	// 32-bit ARM unless the address really is aligned. Start 8 short of a multiple of 16 instead.
++	regionBegin = ((regionBegin + 23) & 0xFFFFFFF0) - 8;
++#else
+ 	regionBegin = (regionBegin & 0xFFFFFFF0) + 16;
++#endif
+ 
+ 	start = regionBegin;
+ 	// this is actually the location of the footer but that's better anyway
  	end = regionEnd - 8;
  	uint32_t memorySizeWithoutHeaders = regionEnd - regionBegin - 16;
  
@@ -449,7 +465,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	emptySpaces.insertAtIndex(0);
  	EmptySpaceRecord* firstRecord = (EmptySpaceRecord*)emptySpaces.getElementAddress(0);
-@@ -104,17 +104,17 @@
+@@ -104,17 +113,17 @@
  void MemoryRegion::verifyMemoryNotFree(void* address, uint32_t spaceSize) {
  	for (int32_t i = 0; i < emptySpaces.getNumElements(); i++) {
  		EmptySpaceRecord* emptySpaceRecord = (EmptySpaceRecord*)emptySpaces.getElementAddress(i);
@@ -472,7 +488,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  			FREEZE_WITH_ERROR("eeee");
  			D_PRINTLN("free mem overlap on right!");
  		}
-@@ -140,7 +140,7 @@
+@@ -140,7 +149,7 @@
  
  	// Can we merge left?
  	if (mayLookLeft) {
@@ -481,7 +497,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  		if ((*lookLeft & SPACE_TYPE_MASK) == SPACE_HEADER_EMPTY) {
  			emptySpaceToLeft.length = *lookLeft & SPACE_SIZE_MASK;
  
-@@ -158,7 +158,7 @@
+@@ -158,7 +167,7 @@
  			if (!mayLookRight) {
  				goto goingToReplaceOldRecord;
  			}
@@ -490,7 +506,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  			if ((*lookRight & SPACE_TYPE_MASK) != SPACE_HEADER_EMPTY) {
  				goto goingToReplaceOldRecord;
  			}
-@@ -166,7 +166,7 @@
+@@ -166,7 +175,7 @@
  			// If we are still here, we are going to merge right as well as left, so gather a little bit more info
  			emptySpaceToRight.length = *lookRight & SPACE_SIZE_MASK;
  			spaceSize += emptySpaceToRight.length + 8;
@@ -499,7 +515,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  			EmptySpaceRecord* recordToDelete = &emptySpaceToRight; // The default, which we may override below.
  
  			// If the "right" space is bigger, delete the "left" one's record
-@@ -198,11 +198,11 @@
+@@ -198,11 +207,11 @@
  	// Even if we didn't merge left, we may still want to merge right - and in this case, where that is the only merge
  	// we are doing, it's much simpler.
  	if (mayLookRight) {
@@ -513,7 +529,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  			recordToMergeWith = &emptySpaceToRight;
  			goto goingToReplaceOldRecord;
-@@ -269,8 +269,8 @@
+@@ -269,8 +278,8 @@
  	}
  
  	// Update headers and footers
@@ -524,7 +540,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	uint32_t headerData = SPACE_HEADER_EMPTY | spaceSize;
  	*header = headerData;
-@@ -333,9 +333,9 @@
+@@ -333,9 +342,9 @@
  					extraSpaceAddress = allocatedAddress + allocatedSize + 8;
  				}
  
@@ -536,7 +552,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  				// Update headers and footers
  				uint32_t headerData = SPACE_HEADER_EMPTY | extraSpaceSizeWithoutItsHeaders;
-@@ -423,8 +423,8 @@
+@@ -423,8 +432,8 @@
  		return nullptr; // Our empty-space records are corrupt - report allocation failure rather than hand this out
  	}
  
@@ -547,7 +563,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	uint32_t headerData = (makeStealable ? SPACE_HEADER_STEALABLE : SPACE_HEADER_ALLOCATED) | allocatedSize;
  	*header = headerData;
-@@ -432,7 +432,11 @@
+@@ -432,7 +441,11 @@
  
  	numAllocations_++;
  
@@ -560,7 +576,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  }
  
  // Returns new size
-@@ -443,7 +447,7 @@
+@@ -443,7 +456,7 @@
  	uint32_t allocationType = *header & SPACE_TYPE_MASK;
  
  	// Looking to what's directly right of our old allocated space
@@ -569,7 +585,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	int32_t newSizeLowerLimit = oldAllocatedSize;
  	if ((*lookRight & SPACE_TYPE_MASK) != SPACE_HEADER_EMPTY) {
-@@ -461,7 +465,7 @@
+@@ -461,7 +474,7 @@
  	uint32_t* __restrict__ footer = (uint32_t*)((char*)address + newSize);
  	*footer = *header;
  
@@ -578,7 +594,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  	uint32_t emptySpaceSize = oldAllocatedSize - newSize - 8;
  
  	markSpaceAsEmpty(emptySpaceStart, emptySpaceSize, false, true);
-@@ -481,7 +485,7 @@
+@@ -481,7 +494,7 @@
  	newSize = padSize(newSize);
  
  	// Looking to what's directly left of our old allocated space
@@ -587,7 +603,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	int32_t newSizeLowerLimit = oldAllocatedSize;
  	if ((*lookLeft & SPACE_TYPE_MASK) != SPACE_HEADER_EMPTY) {
-@@ -505,7 +509,7 @@
+@@ -505,7 +518,7 @@
  	*header = newSize | allocationType;
  	*footer = *header;
  
@@ -596,7 +612,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	return amountShortened;
  }
-@@ -516,8 +520,8 @@
+@@ -516,8 +529,8 @@
  
  	// Because the steal() function is allowed to deallocate or shorten other existing memory, we'd better get
  	// our headers in order so it sees that we've claimed what we've claimed so far
@@ -607,7 +623,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  	*newHeader = headerValue;
  	*footer = headerValue;
  }
-@@ -529,14 +533,14 @@
+@@ -529,14 +542,14 @@
  	uint32_t spaceSize = (*header & SPACE_SIZE_MASK);
  	uint32_t currentSpaceType = *header & SPACE_TYPE_MASK;
  
@@ -625,7 +641,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  		if (!stealable->mayBeStolen(nullptr)) {
  			goto finished;
  		}
-@@ -579,7 +583,7 @@
+@@ -579,7 +592,7 @@
  
  	NeighbouringMemoryGrabAttemptResult toReturn;
  
@@ -634,7 +650,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	toReturn.amountsExtended[0] = 0;
  	toReturn.amountsExtended[1] = 0;
-@@ -594,8 +598,8 @@
+@@ -594,8 +607,8 @@
  
  		uint32_t amountOfExtraSpaceFoundSoFar = 0;
  
@@ -645,7 +661,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  tryNotStealingFirst:
  		// At each point in the exploration, we want to first look both left and right before "stealing", as opposed to
-@@ -617,7 +621,7 @@
+@@ -617,7 +630,7 @@
  				uint32_t emptySpaceHereSizeWithoutHeaders = *lookLeftOrRight & SPACE_SIZE_MASK;
  
  				uint32_t spaceHereAddress =
@@ -654,7 +670,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  				Stealable* stealable;
  
-@@ -628,7 +632,7 @@
+@@ -628,7 +641,7 @@
  					if (!tryingStealingYet) {
  						break;
  					}
@@ -663,7 +679,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  					if (!stealable->mayBeStolen(thingNotToStealFrom)) {
  #ifdef DO_AUDIO_LOG
  						AudioEngine::logAction("found a stealable with a reason");
-@@ -781,7 +785,7 @@
+@@ -781,7 +794,7 @@
  			surplusWeGot -= amountToCutRightIncludingHeaders;
  			grabResult.amountsExtended[0] -= amountToCutRightIncludingHeaders;
  
@@ -672,7 +688,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  			                 amountToCutRightIncludingHeaders - 8, false, false);
  		}
  
-@@ -813,11 +817,11 @@
+@@ -813,11 +826,11 @@
  	uint32_t newHeaderData = newSize | oldHeader;
  
  	// Write header
@@ -686,7 +702,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  	*footer = newHeaderData;
  }
  
-@@ -830,11 +834,11 @@
+@@ -830,11 +843,11 @@
  
  	// uint16_t startTime = *TCNT[TIMER_SYSTEM_FAST];
  
@@ -700,7 +716,7 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  		// deallocating outside our region
  		FREEZE_WITH_ERROR("M001");
  		return; // Not ours - marking it empty would corrupt our empty-space records
-@@ -845,7 +849,7 @@
+@@ -845,7 +858,7 @@
  		return; // Already empty - freeing again would corrupt our empty-space records
  	}
  
