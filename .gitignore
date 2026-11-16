@@ -6,3 +6,4 @@ third_party/argon/
 third_party/etl/
 .mpc.env
 diagnostics.txt
+diagnostics-*.txt

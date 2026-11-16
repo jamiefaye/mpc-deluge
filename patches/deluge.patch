@@ -725,6 +725,34 @@ diff -ruN a/deluge/src/deluge/memory/memory_region.cpp b/deluge/src/deluge/memor
  
  	/*
  	uint16_t endTime = *TCNT[TIMER_SYSTEM_FAST];
+diff -ruN a/deluge/src/deluge/memory/object_pool.h b/deluge/src/deluge/memory/object_pool.h
+--- a/deluge/src/deluge/memory/object_pool.h
++++ b/deluge/src/deluge/memory/object_pool.h
+@@ -19,6 +19,9 @@
+ #include <memory>
+ #include <stack>
+ #include <vector>
++#if defined(DELUGE_HOSTED)
++extern "C" int deluge_hosted_scrub; // hosted/memory.c
++#endif
+ 
+ namespace deluge::memory {
+ /// @brief A simple object pool implementation
+@@ -104,6 +107,14 @@
+ 			obj = objects_.top();
+ 			objects_.pop();
+ 		}
++#if defined(DELUGE_HOSTED)
++		// mpc-deluge: a recycled object keeps its old bytes, and the firmware reads some before
++		// writing them (Voice::noteOn). With DELUGE_SCRUB set (hosted.h) they are filled first, as
++		// newly allocated memory is, so that test runs can be compared sample for sample.
++		if (deluge_hosted_scrub >= 0) {
++			__builtin_memset(static_cast<void*>(obj), deluge_hosted_scrub, sizeof(T));
++		}
++#endif
+ 		return {new (obj) T(std::forward<Args>(args)...), &recycle};
+ 	}
+ 
 diff -ruN a/deluge/src/deluge/memory/operators.cpp b/deluge/src/deluge/memory/operators.cpp
 --- a/deluge/src/deluge/memory/operators.cpp
 +++ b/deluge/src/deluge/memory/operators.cpp
@@ -1328,7 +1356,20 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  #include <cstdint>
  #include <cstring>
  #include <etl/vector.h>
-@@ -177,8 +177,8 @@
+@@ -133,7 +133,12 @@
+ // to the limit
+ constexpr int MIN_VOICES = 7;
+ 
++#if defined(DELUGE_HOSTED)
++static dsp::Reverb firstReverb{}; // mpc-deluge: see HostedReverb in the header
++HostedReverb reverb{&firstReverb};
++#else
+ dsp::Reverb reverb{};
++#endif
+ PLACE_INTERNAL_FRUNK SideChain reverbSidechain{};
+ int32_t reverbSidechainVolume;
+ int32_t reverbSidechainShape;
+@@ -177,8 +182,8 @@
  // then ~50ms to fade it in so monitoring doesn't switch on with a click.
  constexpr uint32_t kInputMonitoringWarmupSamples = kSampleRate / 2;
  constexpr uint32_t kInputMonitoringFadeInSamples = kSampleRate / 20;
@@ -1339,7 +1380,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  volatile int voices_started_this_render = 0;
  bool headphonesPluggedIn;
  bool micPluggedIn;
-@@ -229,9 +229,9 @@
+@@ -229,9 +234,9 @@
  
  	sampleForPreview->sideChainSendLevel = 2147483647;
  
@@ -1351,7 +1392,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  	                 + ((SSI_RX_BUFFER_NUM_SAMPLES - SSI_TX_BUFFER_NUM_SAMPLES - 16)
  	                    << (2 + NUM_MONO_INPUT_CHANNELS_MAGNITUDE)); // Subtracting 5 or more seems fine
  
-@@ -748,7 +748,7 @@
+@@ -748,7 +753,7 @@
  
  	GeneralMemoryAllocator::get().checkStack("AudioDriver::routine");
  
@@ -1360,7 +1401,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  	size_t numSamples = ((uint32_t)(saddr - i2sTXBufferPos) >> (2 + NUM_MONO_OUTPUT_CHANNELS_MAGNITUDE))
  	                    & (SSI_TX_BUFFER_NUM_SAMPLES - 1);
  
-@@ -1294,7 +1294,7 @@
+@@ -1294,7 +1299,7 @@
  }
  
  int32_t getNumSamplesLeftToOutputFromPreviousRender() {
@@ -1369,7 +1410,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  }
  
  // Returns whether we got to the end
-@@ -1311,14 +1311,14 @@
+@@ -1311,14 +1316,14 @@
  	while (renderingBufferOutputPosNow != renderingBufferOutputEnd) {
  
  		// If we've reached the end of the known space in the output buffer...
@@ -1387,7 +1428,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  			      & (SSI_TX_BUFFER_NUM_SAMPLES - 1))) {
  				break;
  			}
-@@ -1383,12 +1383,12 @@
+@@ -1383,12 +1388,12 @@
  	}
  
  	renderingBufferOutputPos = renderingBufferOutputPosNow; // Write back from __restrict__ pointer to permanent pointer
@@ -1402,7 +1443,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  			i2sRXBufferPos -= (SSI_RX_BUFFER_NUM_SAMPLES << (NUM_MONO_INPUT_CHANNELS_MAGNITUDE + 2));
  		}
  
-@@ -1411,14 +1411,14 @@
+@@ -1411,14 +1416,14 @@
  				// if the buffer wrapped around, we'll just go to the end of the buffer, and not worry about the
  				// extra bit at the start - that'll get done next time.
  				uint32_t stopPos =
@@ -1420,7 +1461,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  
  				// this is extremely janky, but essentially because feedAudio only works on an interleaved stream of
  				// stereo samples, we can offset it one sample to get it to operate on the right channel
-@@ -1734,7 +1734,7 @@
+@@ -1734,7 +1739,7 @@
  	// correct it. The correct latency for the RX buffer is between (SSI_TX_BUFFER_NUM_SAMPLES) and (2 *
  	// SSI_TX_BUFFER_NUM_SAMPLES).
  
@@ -1429,7 +1470,7 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  	uint32_t latencyWithinAppropriateWindow =
  	    (((rxBufferWriteAddr - (uint32_t)i2sRXBufferPos) >> (2 + NUM_MONO_INPUT_CHANNELS_MAGNITUDE))
  	     - SSI_TX_BUFFER_NUM_SAMPLES)
-@@ -1742,7 +1742,7 @@
+@@ -1742,7 +1747,7 @@
  
  	while (latencyWithinAppropriateWindow >= SSI_TX_BUFFER_NUM_SAMPLES) {
  		i2sRXBufferPos += (SSI_TX_BUFFER_NUM_SAMPLES << (2 + NUM_MONO_INPUT_CHANNELS_MAGNITUDE));
@@ -1441,7 +1482,17 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
 diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.h b/deluge/src/deluge/processing/engines/audio_engine.h
 --- a/deluge/src/deluge/processing/engines/audio_engine.h
 +++ b/deluge/src/deluge/processing/engines/audio_engine.h
-@@ -213,8 +213,8 @@
+@@ -21,6 +21,9 @@
+ #include "definitions_cxx.hpp"
+ #include "dsp/compressor/rms_feedback.h"
+ #include "dsp/envelope_follower/absolute_value.h"
++#if defined(DELUGE_HOSTED)
++#include "dsp/reverb/reverb.hpp" // mpc-deluge: for HostedReverb below
++#endif
+ #include "memory/fast_allocator.h"
+ #include "memory/object_pool.h"
+ #include "model/output.h"
+@@ -213,8 +216,8 @@
  extern bool inputMonitoringWarmedUp;
  extern bool mustUpdateReverbParamsBeforeNextRender;
  extern bool bypassCulling;
@@ -1452,6 +1503,39 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.h b/deluge/src/del
  extern int32_t cpuDireness;
  extern InputMonitoringMode inputMonitoringMode;
  extern bool audioRoutineLocked;
+@@ -223,7 +226,32 @@
+ extern SideChain reverbSidechain;
+ extern uint32_t timeThereWasLastSomeReverb;
+ extern deluge::fast_vector<Sound*> sounds;
++#if defined(DELUGE_HOSTED)
++// mpc-deluge: a host runs several songs in one engine, one per plugin instance, and each needs
++// its own reverb (this one object holds the delay lines). `reverb` here forwards to whichever
++// the host has made current (hosted/engine.cpp, engineUse); the firmware's uses are unchanged.
++struct HostedReverb {
++	using Model = deluge::dsp::Reverb::Model;
++	deluge::dsp::Reverb* current;
++	void setModel(Model m) { current->setModel(m); }
++	Model getModel() { return current->getModel(); }
++	void process(std::span<int32_t> input, std::span<StereoSample> output) { current->process(input, output); }
++	void setPanLevels(int32_t left, int32_t right) { current->setPanLevels(left, right); }
++	void setRoomSize(float value) { current->setRoomSize(value); }
++	[[nodiscard]] float getRoomSize() const { return current->getRoomSize(); }
++	void setDamping(float value) { current->setDamping(value); }
++	[[nodiscard]] float getDamping() const { return current->getDamping(); }
++	void setWidth(float value) { current->setWidth(value); }
++	[[nodiscard]] float getWidth() const { return current->getWidth(); }
++	void setHPF(float f) { current->setHPF(f); }
++	[[nodiscard]] float getHPF() const { return current->getHPF(); }
++	void setLPF(float f) { current->setLPF(f); }
++	[[nodiscard]] float getLPF() const { return current->getLPF(); }
++};
++extern HostedReverb reverb;
++#else
+ extern deluge::dsp::Reverb reverb;
++#endif
+ extern uint32_t nextVoiceState;
+ extern SoundDrum* sampleForPreview;
+ extern int32_t reverbSidechainVolume;
 diff -ruN a/deluge/src/deluge/processing/sound/sound.cpp b/deluge/src/deluge/processing/sound/sound.cpp
 --- a/deluge/src/deluge/processing/sound/sound.cpp
 +++ b/deluge/src/deluge/processing/sound/sound.cpp

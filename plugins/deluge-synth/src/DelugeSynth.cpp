@@ -27,9 +27,18 @@
 // Choosing a preset: the Preset parameter is the position in the sorted list of preset files, and
 // Folder is the folder it sits in. Four button parameters step through presets and folders.
 //
-// Threads: the engine must never be entered by two threads at once. process() (audio thread)
-// takes the engine lock with try_lock and outputs silence if it cannot have it. A worker thread
-// owned by the plugin loads presets, holding the lock while it does.
+// Instances: the process has one engine (the firmware keeps its state in globals), and every
+// plugin instance has an instance of its own inside it (engine.h): its own song, so its own
+// reverb and master stage, sharing the voice pools, the sample files and the memory. Past
+// kMaxInstances (16) a plugin instance gets none and is silent.
+//
+// Threads: the engine must never be entered by two threads at once, whichever instances they
+// belong to. Everything but process() takes the engine lock with EngineHold, which also makes
+// the instance current. process() (an audio thread) never waits for those: while one holds or
+// wants the lock it outputs silence, so a preset loading in one instance is a gap in all of
+// them (the load cannot run beside the render, the firmware's allocator being one of the shared
+// things). It does wait for another instance's process(), which is over in a fraction of a
+// block. A worker thread owned by the plugin loads presets.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -77,7 +86,45 @@ constexpr int slotOf(const grid::Cell& cell) { return deluge_hosted::gridSlot(ce
 
 // One engine per process (see the header comment).
 std::mutex gEngineLock;
-std::atomic<void*> gEngineOwner{nullptr};
+std::atomic<int> gEngineHolds{0};   // threads holding or waiting for the lock that are not in process()
+
+// The engine, for everything but process(): the lock, and this plugin instance's engine instance
+// made current.
+struct EngineHold
+{
+    explicit EngineHold(int instance)
+    {
+        gEngineHolds.fetch_add(1);
+        gEngineLock.lock();
+        if (instance >= 0) deluge_hosted::engineUse(instance);
+    }
+    ~EngineHold()
+    {
+        gEngineLock.unlock();
+        gEngineHolds.fetch_sub(1);
+    }
+    EngineHold(const EngineHold&) = delete;
+    EngineHold& operator=(const EngineHold&) = delete;
+};
+
+// The engine for process(). False (silence) while a preset load or the like has it or is waiting;
+// another instance's process() is waited for, at most about two blocks' worth, on the assumption
+// that an MPC renders its tracks on more than one thread. (If it does not, this never waits.)
+inline bool engineForAudio(int instance)
+{
+    if (instance < 0) return false;
+    const auto start = std::chrono::steady_clock::now();
+    for (int spins = 0;; ++spins)
+    {
+        if (gEngineHolds.load(std::memory_order_acquire) > 0) return false;
+        if (gEngineLock.try_lock())
+        {
+            deluge_hosted::engineUse(instance);
+            return true;
+        }
+        if ((spins & 255) == 255 && std::chrono::steady_clock::now() - start > std::chrono::milliseconds(6)) return false;
+    }
+}
 
 constexpr int kMaxPresets = 4096;
 
@@ -143,11 +190,11 @@ public:
         quit_.store(true);
         if (worker_.joinable()) worker_.join();
         workerRunning_.store(false);
-        if (gEngineOwner.load() == this)
+        const int instance = engineInstance_.exchange(-1);
+        if (instance >= 0)
         {
-            std::lock_guard<std::mutex> lock(gEngineLock);
-            deluge_hosted::engineAllNotesOff();
-            gEngineOwner.store(nullptr);
+            EngineHold engine(instance);
+            deluge_hosted::engineDeleteInstance(instance);
         }
     }
 
@@ -156,13 +203,14 @@ public:
     void prepare(double sampleRate, int maxBlockSize) override
     {
         (void)sampleRate; (void)maxBlockSize;   // the MPC and the Deluge both run at 44100 Hz
-        void* nobody = nullptr;
-        if (gEngineOwner.load() != this && gEngineOwner.compare_exchange_strong(nobody, this))
+        if (engineInstance_.load() < 0 && !triedForInstance_)
         {
-            std::lock_guard<std::mutex> lock(gEngineLock);
-            deluge_hosted::engineInit(mpc::contentFolder().c_str());
+            triedForInstance_ = true;
+            EngineHold engine(-1);
+            deluge_hosted::engineInit(mpc::contentFolder().c_str());   // only the first call starts it
+            engineInstance_.store(deluge_hosted::engineNewInstance());
         }
-        if (gEngineOwner.load() == this && !worker_.joinable())
+        if (engineInstance_.load() >= 0 && !worker_.joinable())
         {
             // The first preset is loaded here, before processing starts, so the first notes are
             // not lost while it loads. Later changes go through the worker thread.
@@ -389,10 +437,11 @@ public:
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
         statCalls_.fetch_add(1, std::memory_order_relaxed);
 
-        // Silence (the outputs are already zero) when this instance does not own the engine or
-        // the worker thread has it (loading a preset, or handing it a restored project's knobs).
-        const bool owner = gEngineOwner.load(std::memory_order_relaxed) == this;
-        if (!owner || !gEngineLock.try_lock())
+        // Silence (the outputs are already zero) when this instance has no place in the engine or
+        // a worker thread has it (loading a preset, or handing it a restored project's knobs).
+        const int instance = engineInstance_.load(std::memory_order_relaxed);
+        const bool owner = instance >= 0;
+        if (!engineForAudio(instance))
         {
             statSilentCalls_.fetch_add(1, std::memory_order_relaxed);
             // The notes in this block are lost, but a note-off must not be: its note would sound
@@ -742,14 +791,14 @@ private:
             // project has just set them all and they have to go to the engine together.
             if (goldPreset_.load() != wanted || resync_.load())
             {
-                std::lock_guard<std::mutex> lock(gEngineLock);
+                EngineHold engine(engineInstance_.load());
                 resync_.store(false);
                 syncKnobs();
             }
             return;
         }
         const std::string path = "SYNTHS/" + presets_[(size_t)wanted];
-        std::lock_guard<std::mutex> lock(gEngineLock);
+        EngineHold engine(engineInstance_.load());
         resync_.store(false);
         loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
         int samplesLoaded = 0, samplesFailed = 0;
@@ -896,6 +945,13 @@ private:
         return n;
     }
 
+    // The first instance writes diagnostics.txt, the others diagnostics-2.txt and so on.
+    std::string diagnosticsName() const
+    {
+        const int instance = engineInstance_.load();
+        return instance <= 1 ? "/diagnostics.txt" : "/diagnostics-" + std::to_string(instance) + ".txt";
+    }
+
     void writeDiagnostics()
     {
         const std::string folder = mpc::pluginFolder();
@@ -907,7 +963,7 @@ private:
         const int loaded = loadedPreset_.load();
         std::snprintf(text, sizeof text,
                       "Deluge Synth diagnostics (written on prepare, on project/preset save, and every 3 s while audio runs)\n"
-                      "engine: %s build; this instance %s the engine\n"
+                      "engine: %s build; this is instance %d in it (-1: none, too many instances)\n"
                       "presets found in Content/SYNTHS: %d\n"
                       "loaded preset: %d (%s), load error %d, loads so far %d\n"
                       "its samples: %d held in memory, %d could not be loaded (looked for under Content/, e.g. Content/SAMPLES/...)\n"
@@ -929,7 +985,7 @@ private:
 #else
                       "PLACEHOLDER TONE (the firmware is not in this build)",
 #endif
-                      gEngineOwner.load() == this ? "owns" : "does NOT own",
+                      engineInstance_.load(),
                       (int)presets_.size(), loaded, loaded >= 0 && loaded < (int)presets_.size() ? presets_[(size_t)loaded].c_str() : "none",
                       loadError_.load(), loads_.load(), samplesLoaded_.load(), samplesFailed_.load(), statCalls_.load(), statSilentCalls_.load(), statNoteOns_.load(),
                       (double)statPeak_.load(), seconds, seconds > 0 ? 100.0 * ((double)ns * 1e-9) / seconds : 0.0,
@@ -940,7 +996,7 @@ private:
                       statSaves_.load(), statRestores_.load(), statRestoresWithoutKnobs_.load(), statWaitTimeouts_.load(),
                       relevantCells(), grid::kNumCells, statSnapshots_.load(), statShown_.load(),
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_);
-        if (FILE* f = std::fopen((folder + "/diagnostics.txt").c_str(), "w"))
+        if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
             std::fputs(text, f);
             std::fputs("gold knobs (name, position -64..64):", f);
@@ -1009,6 +1065,8 @@ private:
     std::atomic<int>      firmwareErrors_{0};
     char                  latestFirmwareError_[8] = {0};   // worker thread writes; read for the diagnostics file
     std::atomic<int>      statMinBlock_{INT32_MAX}, statMaxBlock_{0};
+    std::atomic<int>      engineInstance_{-1};          // this plugin instance's place in the engine (engine.h)
+    bool                  triedForInstance_ = false;    // prepare() only
     std::mutex            diagnosticsLock_;
     int64_t               diagnosticsWrittenMs_ = 0;   // worker thread only
     uint32_t              diagnosticsCalls_ = 0;       // worker thread only

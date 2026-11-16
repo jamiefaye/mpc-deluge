@@ -27,7 +27,9 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
 
 ## What it does not do yet
 
-- Only one instance per MPC project makes sound; a second one is silent.
+- Up to sixteen instances per MPC project play at once, each with its own preset, reverb and
+  master stage (since 2026-11-16; tested in the simulators, not yet on hardware). While one of
+  them loads a preset the others are silent for the length of the load.
 - No tempo sync (synced LFOs, arpeggiator and delay have no clock) and no MPE. Pitch bend, mod
   wheel and channel pressure work, as a Deluge treats them on a synth's input channel.
 - An oscillator that plays the Deluge's audio input is silent: the plugin has no input.
@@ -86,8 +88,8 @@ tools/vendor.sh                      # once
 ## Diagnostics
 
 `diagnostics.txt` in the plugin's folder on the device (written when the MPC prepares the plugin,
-on every project save and every few seconds while audio runs): whether this instance owns the
-engine, the loaded preset and any load error, note and call counts, time spent rendering, how
+on every project save and every few seconds while audio runs; a second instance writes
+`diagnostics-2.txt`, and so on): which instance of the engine this is, the loaded preset and any load error, note and call counts, time spent rendering, how
 many grid pads apply to the preset, and how often the firmware stopped at one of its own
 consistency checks (should be 0). `mpc_remote.py export` brings it back.
 

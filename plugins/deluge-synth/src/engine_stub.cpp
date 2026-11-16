@@ -26,14 +26,53 @@ struct Tone {
 	bool held = false;
 	float level = 0.0f, phase = 0.0f;
 };
-Tone tones[8];
 // No engine to hold them, so the placeholder remembers what the knobs and grid pads were set to:
-// the plugin reads them back after every change and expects to find them.
-int knobs[kNumKnobs];
-int32_t pads[kGridSlots];
+// the plugin reads them back after every change and expects to find them. One set per instance.
+struct Placeholder {
+	bool inUse = false;
+	Tone tones[8];
+	int knobs[kNumKnobs] = {};
+	int32_t pads[kGridSlots] = {};
+};
+Placeholder placeholders[kMaxInstances];
+int current = 0;
+#define tones (placeholders[current].tones)
+#define knobs (placeholders[current].knobs)
+#define pads (placeholders[current].pads)
 } // namespace
 
-void engineInit(const char*) {}
+void engineInit(const char*) {
+	placeholders[0].inUse = true;
+}
+
+int engineNewInstance() {
+	for (int i = 1; i < kMaxInstances; i++) {
+		if (!placeholders[i].inUse) {
+			placeholders[i] = Placeholder();
+			placeholders[i].inUse = true;
+			current = i;
+			return i;
+		}
+	}
+	return -1;
+}
+
+void engineUse(int instance) {
+	if (instance >= 0 && instance < kMaxInstances && placeholders[instance].inUse) {
+		current = instance;
+	}
+}
+
+void engineDeleteInstance(int instance) {
+	if (instance >= 1 && instance < kMaxInstances) {
+		placeholders[instance].inUse = false;
+		current = 0;
+	}
+}
+
+int engineCurrentInstance() {
+	return current;
+}
 
 int engineLoadSynth(const char*) {
 	for (Tone& t : tones) {

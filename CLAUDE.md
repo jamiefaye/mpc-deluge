@@ -47,6 +47,9 @@ and the dated note nearest the topic win.
   bytes in `objdump -d build/firmware/arm32/libdeluge.a` (the plugin `.so` is stripped).
   `diagnostics.txt` is no help after a crash: the restarted plugin overwrites it.
 
+- **More than one instance plays (2026-11-16; in the simulators, not yet on the Force).** See
+  "Several instances". Each plugin instance has its own song in the one engine.
+
 Pending:
 0. **Try the grid build on the Force and the MPC Live** (Jamie is away from both until Monday
    2026-11-16; the Live is to become the home test platform once Jamie has it back). Never
@@ -523,6 +526,50 @@ are not built.
 - **Open:** sample selection (the `file0SelectorMenu` pad is a file browser on the Deluge; no
   equivalent found in MPC skins yet).
 
+### Several instances (2026-11-16)
+
+Jamie: "we want to play more than one Deluge track at a time (like the Deluge does)". Until now
+the first plugin instance owned the engine and the rest were silent.
+
+- **One engine, one song per instance** (`engine.h`, "instances": `engineNewInstance`,
+  `engineUse`, `engineDeleteInstance`; `kMaxInstances` 16). The alternative, one song holding
+  every instance's sound as a Deluge does, would have shared one reverb and one master stage
+  across MPC tracks and left the reverb's output with nowhere to go but one of them. A song per
+  instance gives each track its own, and no audio has to be separated.
+- **How:** `engineUse()` swaps what belongs to a song's sound in and out of the firmware's
+  globals: `currentSong`, the reverb, the reverb sidechain and its settings, the sample clock
+  and the times taken from it, the level follower, both noise generators (the list and the
+  reasons are above `struct Instance` in `hosted/engine.cpp`). Everything else is shared: voice
+  pools, sample files, the allocator. Instance 0 is what `engineInit` makes, so the test
+  programs that play one sound did not change; the plugin always makes a new one.
+- **The reverb** is the one firmware global that is big DSP state and used by name in thirty
+  places. `AudioEngine::reverb` is now a small forwarding object (`HostedReverb`, in
+  `audio_engine.h`) pointing at the current instance's `dsp::Reverb`; no use site changed.
+- **Samples:** each instance holds the clusters of its own sound's files (found through the
+  sound's oscillators, no longer "every file the engine knows"), each with a reason of its
+  own, so one instance changing preset cannot take a shared file's data from another.
+  `engineLoadSynth` kills only its own sound's voices.
+- **`tests/engine_instances.cpp`** proves they do not hear one another: a preset gives the same
+  samples alone, beside another instance, and while another loads, plays and is deleted. It
+  needs `DELUGE_SCRUB`, which now also fills recycled pool objects (`memory/object_pool.h`): a
+  `Voice` from the pool keeps its last user's bytes and `Voice::noteOn` reads some (the bug
+  list, below), so without that 15 of 107 presets differed from one take to the next, alone or
+  not. With it, all match but one sample preset that differs in 18 samples 114 dB down (counted
+  as "faintly"). `tools/corpus.sh` runs it as a fifth pass on arm32 and this computer.
+- **The plugin:** `gEngineOwner` is gone; `prepare()` takes an instance, the destructor gives it
+  back. Everything but `process()` enters through `EngineHold` (lock, then `engineUse`).
+  `process()` never waits for those: while one holds or wants the lock it outputs silence. So
+  **a preset loading in one instance is a gap in all of them** (the load uses the shared
+  allocator and cannot run beside a render). It does spin for another instance's `process()`,
+  in case the MPC renders tracks on several threads (unknown). `tests/plugin_two.cpp`
+  (`tools/plugintest.sh` runs it) plays several instances on threads of their own.
+  Diagnostics: the first instance writes `diagnostics.txt`, the others `diagnostics-N.txt`.
+- **Not looked at:** the firmware's object pools are `thread_local` (`ObjectPool::get`), so
+  each thread that enters the engine has its own stock of voices; objects move between them
+  as they are recycled. Harmless so far. The stutter effect has one buffer for the engine;
+  nothing starts it yet. CPU and memory with many instances on the Force are unmeasured (each
+  has a reverb of its own).
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
@@ -642,9 +689,10 @@ Next up: the pending list under Status, at the top of this file.
 
 Open problems:
 - **Globals.** The firmware assumes one of everything (`AudioEngine`, the voice pool, the
-  allocator, `currentSong`). Two plugin instances in one MPC project share one copy of the
-  library, so only the first makes sound. They either share a single engine behind a lock or
-  the globals have to be made per-instance.
+  allocator, `currentSong`), and plugin instances in one MPC project share one copy of the
+  library. Solved 2026-11-16 by giving each a song and swapping the song-bound globals: see
+  "Several instances". What is left of it: a preset load in one instance silences the others
+  for its length.
 - **Size and load time.** The arm32 library is 2.5 MB, arm64 3.3 MB. The MPC checks free memory
   before loading a plugin; unmeasured.
 - **Compared with a real Deluge once, roughly** (2026-11-13): Factory `SYNT000`, short low notes
@@ -689,7 +737,7 @@ tools/vendor.sh              # once, and after changing patches/: fill third_par
 ./build.sh plugins/<name>    # e.g. plugins/deluge-proto
 tools/mkpatch.sh             # after editing files under third_party/: rewrite patches/
 tools/corpus.sh              # every preset on the card, on arm32, arm64 and this computer; must match
-tools/plugintest.sh          # the built plugin's knobs, grid pads and state, driven as a host would
+tools/plugintest.sh          # the built plugin's knobs, grid pads and state, driven as a host would; then several instances at once
 tools/gen_grid.py            # after moving the firmware pin: rewrite the table of grid pads
 python3 ../mpc-plugin-builder-sdk/tools/new_plugin.py "<Name>" --vendor "Fentonia" --kind instrument --dir plugins
 python3 ../mpc-plugin-builder-sdk/tools/package.py plugins/<name>     # zip for sharing

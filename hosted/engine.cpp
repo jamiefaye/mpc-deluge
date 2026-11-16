@@ -25,6 +25,11 @@
 #include "processing/engines/audio_engine.h"
 #include "processing/sound/sound_instrument.h"
 #include "model/sample/sample.h"
+#include "modulation/sidechain/sidechain.h"
+#include "processing/source.h"
+#include "storage/audio/audio_file_holder.h"
+#include "storage/multi_range/multi_range.h"
+#include "util/waves.h"
 #include "storage/audio/audio_file_manager.h"
 #include "storage/cluster/cluster.h"
 #include "storage/flash_storage.h"
@@ -36,6 +41,7 @@
 #include <ranges>
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 
@@ -49,17 +55,120 @@ extern int32_t masterVolumeAdjustmentR;
 extern volatile int voices_started_this_render;
 extern int32_t numSamplesLastTime;
 extern int32_t sideChainHitPending;
+// The rest of what belongs to one song's sound rather than to the engine: see Instance below.
+extern int32_t reverbSidechainVolumeInEffect;
+extern int32_t reverbSidechainShapeInEffect;
 } // namespace AudioEngine
 
 namespace deluge_hosted {
 
 namespace {
 bool started = false;
+
+// The current instance's song, clip and sound. Everything below works on these; engineUse()
+// changes which instance they, and the firmware's globals, belong to.
 Song* song = nullptr;
 InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
 std::vector<Cluster*> residentClusters; // sample data held in memory for the loaded preset
 int samplesLoaded = 0, samplesFailed = 0;
+
+// An instance that is not the current one, put away: its song, and the firmware globals that
+// hold a song's sound between renders. The firmware has one of each because a Deluge plays one
+// song. Listed by reading AudioEngine::renderAudio and what it calls:
+// - the reverb's delay lines, and the sidechain that ducks it, with their settings
+// - the sample clock (sounds and voices keep times taken from it) and the times of the last
+//   sidechain hit and the last reverb input
+// - the output level follower, which keeps the reverb running while there is sound
+// - the noise generator (ladder filters and the output dither draw from it), so that what one
+//   instance plays does not depend on how much another has rendered
+// Not per instance: the voice pools, the sample files and the allocator, which are shared and
+// meant to be; the stutter effect's one buffer, which nothing here starts; cpuDireness, 0.
+struct Instance {
+	bool inUse = false;
+	Song* song = nullptr;
+	InstrumentClip* clip = nullptr;
+	SoundInstrument* synth = nullptr;
+	std::vector<Cluster*> residentClusters;
+	int samplesLoaded = 0, samplesFailed = 0;
+
+	deluge::dsp::Reverb* reverb = nullptr;
+	SideChain reverbSidechain;
+	int32_t reverbSidechainVolume = 0, reverbSidechainShape = 0, reverbPan = 0;
+	int32_t reverbSidechainVolumeInEffect = 0, reverbSidechainShapeInEffect = 0;
+	bool mustUpdateReverbParamsBeforeNextRender = false;
+	int32_t sideChainHitPending = 0;
+	uint32_t timeLastSideChainHit = 0;
+	int32_t sizeLastSideChainHit = 0;
+	uint32_t timeThereWasLastSomeReverb = 0;
+	uint32_t audioSampleTimer = 0;
+	StereoFloatSample approxRMSLevel{0};
+	AbsValueFollower envelopeFollower{};
+	uint32_t noise = 0, noiseZ = 0, noiseW = 0;
+};
+Instance instances[kMaxInstances];
+int current = 0;
+Instance fresh; // the globals as they stood when the engine had just started: a new instance's
+
+void putAway(Instance& to) {
+	to.song = song;
+	to.clip = clip;
+	to.synth = synth;
+	to.residentClusters.swap(residentClusters);
+	to.samplesLoaded = samplesLoaded;
+	to.samplesFailed = samplesFailed;
+	to.reverb = AudioEngine::reverb.current;
+	to.reverbSidechain = AudioEngine::reverbSidechain;
+	to.reverbSidechainVolume = AudioEngine::reverbSidechainVolume;
+	to.reverbSidechainShape = AudioEngine::reverbSidechainShape;
+	to.reverbPan = AudioEngine::reverbPan;
+	to.reverbSidechainVolumeInEffect = AudioEngine::reverbSidechainVolumeInEffect;
+	to.reverbSidechainShapeInEffect = AudioEngine::reverbSidechainShapeInEffect;
+	to.mustUpdateReverbParamsBeforeNextRender = AudioEngine::mustUpdateReverbParamsBeforeNextRender;
+	to.sideChainHitPending = AudioEngine::sideChainHitPending;
+	to.timeLastSideChainHit = AudioEngine::timeLastSideChainHit;
+	to.sizeLastSideChainHit = AudioEngine::sizeLastSideChainHit;
+	to.timeThereWasLastSomeReverb = AudioEngine::timeThereWasLastSomeReverb;
+	to.audioSampleTimer = AudioEngine::audioSampleTimer;
+	to.approxRMSLevel = AudioEngine::approxRMSLevel;
+	to.envelopeFollower = AudioEngine::envelopeFollower;
+	to.noise = jcong;
+	to.noiseZ = z;
+	to.noiseW = w;
+}
+
+void bringBack(Instance& from) {
+	song = from.song;
+	clip = from.clip;
+	synth = from.synth;
+	residentClusters.swap(from.residentClusters);
+	samplesLoaded = from.samplesLoaded;
+	samplesFailed = from.samplesFailed;
+	currentSong = song;
+	AudioEngine::reverb.current = from.reverb;
+	AudioEngine::reverbSidechain = from.reverbSidechain;
+	AudioEngine::reverbSidechainVolume = from.reverbSidechainVolume;
+	AudioEngine::reverbSidechainShape = from.reverbSidechainShape;
+	AudioEngine::reverbPan = from.reverbPan;
+	AudioEngine::reverbSidechainVolumeInEffect = from.reverbSidechainVolumeInEffect;
+	AudioEngine::reverbSidechainShapeInEffect = from.reverbSidechainShapeInEffect;
+	AudioEngine::mustUpdateReverbParamsBeforeNextRender = from.mustUpdateReverbParamsBeforeNextRender;
+	AudioEngine::sideChainHitPending = from.sideChainHitPending;
+	AudioEngine::timeLastSideChainHit = from.timeLastSideChainHit;
+	AudioEngine::sizeLastSideChainHit = from.sizeLastSideChainHit;
+	AudioEngine::timeThereWasLastSomeReverb = from.timeThereWasLastSomeReverb;
+	AudioEngine::audioSampleTimer = from.audioSampleTimer;
+	AudioEngine::approxRMSLevel = from.approxRMSLevel;
+	AudioEngine::envelopeFollower = from.envelopeFollower;
+	jcong = from.noise;
+	z = from.noiseZ;
+	w = from.noiseW;
+	// The firmware's "what the gold knobs are editing" pointer is into whichever song was last
+	// looked at; nothing here reads it, and it must not outlive that song.
+	view.activeModControllableModelStack.modControllable = nullptr;
+	view.activeModControllableModelStack.setTimelineCounter(nullptr);
+	view.activeModControllableModelStack.paramManager = nullptr;
+}
 
 // Marks this thread as being inside the engine for the length of a call: see operators.cpp.
 struct InEngine {
@@ -100,7 +209,87 @@ void engineInit(const char* root) {
 	FlashStorage::resetSettings();
 	runtimeFeatureSettings.init();
 
+	// Instance 0. What the globals hold now is what every later instance starts from.
+	putAway(fresh);
+	fresh.residentClusters.swap(residentClusters);
+	instances[0].inUse = true;
+	current = 0;
 	makeBlankSong();
+}
+
+void engineUse(int instance) {
+	InEngine inEngine;
+	if (!started || instance == current || instance < 0 || instance >= kMaxInstances || !instances[instance].inUse) {
+		return;
+	}
+	putAway(instances[current]);
+	current = instance;
+	bringBack(instances[current]);
+}
+
+int engineNewInstance() {
+	InEngine inEngine;
+	if (!started) {
+		return -1;
+	}
+	int id = 1;
+	while (id < kMaxInstances && instances[id].inUse) {
+		id++;
+	}
+	if (id == kMaxInstances) {
+		return -1;
+	}
+	// Its reverb is ordinary memory, not the firmware allocator's: it is a megabyte or so that
+	// lives as long as the instance, and nothing in the firmware keys on its address.
+	void* reverbMemory = nullptr;
+	if (posix_memalign(&reverbMemory, alignof(deluge::dsp::Reverb) < 16 ? 16 : alignof(deluge::dsp::Reverb),
+	                   sizeof(deluge::dsp::Reverb))
+	    != 0) {
+		return -1;
+	}
+	putAway(instances[current]);
+	current = id;
+	instances[id] = Instance{};
+	instances[id].inUse = true;
+	Instance start = fresh; // bringBack() swaps the cluster list out of what it is given
+	start.reverb = new (reverbMemory) deluge::dsp::Reverb();
+	bringBack(start);
+	makeBlankSong();
+	return id;
+}
+
+static void releaseResidentSamples();
+
+void engineDeleteInstance(int instance) {
+	InEngine inEngine;
+	if (!started || instance < 1 || instance >= kMaxInstances || !instances[instance].inUse) {
+		return;
+	}
+	if (instance != current) {
+		putAway(instances[current]);
+		current = instance;
+		bringBack(instances[current]);
+	}
+	if (synth != nullptr) {
+		synth->killAllVoices();
+	}
+	releaseResidentSamples();
+	Song* toDelete = song;
+	deluge::dsp::Reverb* itsReverb = AudioEngine::reverb.current;
+	// Instance 0 becomes current before the song is deleted: destructors on the way down ask the
+	// current song questions, so it must be a live one that is not being deleted.
+	instances[instance] = Instance{};
+	current = 0;
+	bringBack(instances[0]);
+	void* toDealloc = dynamic_cast<void*>(toDelete);
+	toDelete->~Song();
+	delugeDealloc(toDealloc);
+	itsReverb->~Reverb();
+	std::free(itsReverb);
+}
+
+int engineCurrentInstance() {
+	return current;
 }
 
 // The Deluge streams samples from its card, a cluster at a time, and may discard clusters it is
@@ -110,12 +299,39 @@ void engineInit(const char* root) {
 static void makeSamplesResident() {
 	samplesLoaded = 0;
 	samplesFailed = 0;
-	for (int32_t f = 0; f < audioFileManager.audioFiles.getNumElements(); f++) {
-		AudioFile* file = (AudioFile*)audioFileManager.audioFiles.getElement(f);
-		if (file == nullptr || file->type != AudioFileType::SAMPLE) {
+	if (synth == nullptr) {
+		return;
+	}
+	// The files this sound's oscillators use, each once. (Not every file the engine knows: other
+	// instances have theirs, and each keeps its own hold, so that one changing preset does not
+	// take a shared file's data away from another.)
+	std::vector<Sample*> samples;
+	for (int32_t s = 0; s < kNumSources; s++) {
+		Source& source = synth->sources[s];
+		if (source.oscType != OscType::SAMPLE) {
 			continue; // wavetables are read whole when they load
 		}
-		Sample* sample = static_cast<Sample*>(file);
+		for (int32_t e = 0; e < source.ranges.getNumElements(); e++) {
+			AudioFileHolder* holder = source.ranges.getElement(e)->getAudioFileHolder();
+			if (holder == nullptr) {
+				continue;
+			}
+			if (holder->audioFile == nullptr) {
+				if (!holder->filePath.isEmpty()) {
+					samplesFailed++; // named in the preset, not found under the root
+				}
+				continue;
+			}
+			if (holder->audioFile->type != AudioFileType::SAMPLE) {
+				continue;
+			}
+			Sample* sample = static_cast<Sample*>(holder->audioFile);
+			if (std::find(samples.begin(), samples.end(), sample) == samples.end()) {
+				samples.push_back(sample);
+			}
+		}
+	}
+	for (Sample* sample : samples) {
 		bool ok = true;
 		int32_t numClusters = sample->clusters.getNumElements();
 		// Only the clusters that hold audio. A WAV file can carry other chunks after its audio
@@ -126,9 +342,7 @@ static void makeSamplesResident() {
 		}
 		for (int32_t i = 0; i < numClusters; i++) {
 			SampleCluster* slot = sample->clusters.getElement(i);
-			if (slot->cluster != nullptr && slot->cluster->loaded) {
-				continue; // already in memory (and already counted, if we loaded it)
-			}
+			// Asked for even if it is already in memory: each call is one more reason to keep it.
 			Error error = Error::NONE;
 			Cluster* cluster = slot->getCluster(sample, (uint32_t)i, CLUSTER_LOAD_IMMEDIATELY, 0xFFFFFFFF, &error);
 			if (cluster == nullptr) {
@@ -148,17 +362,27 @@ static void makeSamplesResident() {
 // The firmware is about to mark this file unused (hosted.h): give up our hold on its clusters, or
 // its check that an unused file has no data claimed stops it (E396). This happens when an
 // oscillator stops using its sample, for instance on changing from Sample to Wavetable.
-extern "C" void deluge_hosted_audio_file_unused(void* audioFile) {
+static void letGoOf(std::vector<Cluster*>& clusters, void* audioFile) {
 	size_t kept = 0;
-	for (Cluster* cluster : residentClusters) {
+	for (Cluster* cluster : clusters) {
 		if (static_cast<void*>(static_cast<AudioFile*>(cluster->sample)) == audioFile) {
 			audioFileManager.removeReasonFromCluster(*cluster, "HOST");
 		}
 		else {
-			residentClusters[kept++] = cluster;
+			clusters[kept++] = cluster;
 		}
 	}
-	residentClusters.resize(kept);
+	clusters.resize(kept);
+}
+
+// No sound in any instance uses the file now, so every instance's hold goes.
+extern "C" void deluge_hosted_audio_file_unused(void* audioFile) {
+	letGoOf(residentClusters, audioFile);
+	for (int i = 0; i < kMaxInstances; i++) {
+		if (i != current && instances[i].inUse) {
+			letGoOf(instances[i].residentClusters, audioFile);
+		}
+	}
 }
 
 int engineFirmwareErrors(char* latest, int size) {
@@ -192,7 +416,9 @@ int engineLoadSynth(const char* presetPath) {
 	// song questions. Abandoning the old song instead, as this did at first, runs the allocator
 	// dry after a hundred or so preset changes.
 	if (song != nullptr && (synth != nullptr || clip != nullptr)) {
-		AudioEngine::killAllVoices(true);
+		if (synth != nullptr) {
+			synth->killAllVoices(); // this instance's only: AudioEngine::killAllVoices is everybody's
+		}
 		releaseResidentSamples();
 		view.activeModControllableModelStack.modControllable = nullptr;
 		view.activeModControllableModelStack.setTimelineCounter(nullptr);

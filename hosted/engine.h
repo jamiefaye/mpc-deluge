@@ -2,6 +2,8 @@
 // preset, send notes, render audio. Nothing from the firmware is visible through this header.
 //
 // One engine per process: the firmware keeps its state in globals (see CLAUDE.md, "Globals").
+// It can hold several sounds at once, each an "instance" with its own song (so its own reverb and
+// master stage); every function below acts on the instance last chosen with engineUse().
 //
 // Threads: none of this is thread-safe. The caller makes sure only one thread is inside any of
 // these functions at a time (the plugin holds a lock around every call). Other threads may run
@@ -20,6 +22,21 @@ constexpr int kMaxRenderFrames = 128; // the firmware's own render size
 // folder that stands in for the Deluge's SD card; preset and sample paths are relative to it.
 // Safe to call again; later calls only change the root.
 void engineInit(const char* root);
+
+// --- instances ---------------------------------------------------------------------------------------
+// engineInit() makes instance 0 and leaves it current, which is all a program playing one sound
+// needs. A plugin makes one per plugin instance and calls engineUse() each time it enters the
+// engine. Instances share the voice pools, the sample files and the memory, and nothing they play
+// reaches one another: each renders exactly what it would alone.
+constexpr int kMaxInstances = 16;
+// Makes a new instance, with nothing loaded, and makes it current. Returns its number, or -1 if
+// there are kMaxInstances already or no memory.
+int engineNewInstance();
+// Makes `instance` the one the other functions act on. Cheap enough to call before every use.
+void engineUse(int instance);
+// Stops and frees an instance (not 0). Instance 0 is current afterwards.
+void engineDeleteInstance(int instance);
+int engineCurrentInstance();
 
 // Loads a SYNTH preset (path relative to the root, e.g. "SYNTHS/SYNT100.XML") into a new clip, the
 // way the firmware sets up a song's first clip. Returns 0, or the firmware's Error code.

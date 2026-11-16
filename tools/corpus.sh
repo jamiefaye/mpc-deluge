@@ -110,4 +110,19 @@ for target in arm64 native; do
   fi
 done
 tools/gen_grid.py --check "$out/root" || status=1
+
+# Fifth pass: several instances in one engine (tests/engine_instances.cpp). Every seventh preset
+# is played alone, then beside another instance and while another loads and is deleted, and must
+# come out the same. On arm32 (in the emulator) and on this computer.
+echo "== pass: instances beside one another"
+for target in arm32 native; do
+  tools/build_firmware.py $target --test tests/engine_instances.cpp | tail -1
+done
+# shellcheck disable=SC2086
+ARMTEST_TIMEOUT=1800 tools/armtest/run.py --env DELUGE_SCRUB=165 --exe build/firmware/arm32/engine_instances /sd SYNTHS 7 $files > "$out/instances-arm32.raw" 2>&1 || true
+DELUGE_SCRUB=165 build/firmware/native/engine_instances "$out/root" SYNTHS 7 > "$out/instances-native.raw" 2>&1 || true
+for target in arm32 native; do
+  printf '%-7s %s\n' "$target" "$(tr -d '\r' < "$out/instances-$target.raw" | grep '^INSTANCES' || echo 'did not finish (see the .raw file)')"
+  tr -d '\r' < "$out/instances-$target.raw" | grep -q '^INSTANCES.* 0 not repeatable alone, 0 differ paired, 0 differ disturbed.* 0 would not load; firmware error stops 0' || status=1
+done
 exit $status
