@@ -1,0 +1,45 @@
+{
+  "about": "Starter sounds for Deluge Synth, written in Tone.js terms (seconds, Hz, Q, octaves) and turned into Deluge presets by tools/make_starter.py. The first four are the melodic voices of LJam (ljam/src/synths.js). Ours, GPL-3.0-or-later like the rest of the repository.",
+  "voices": [
+    {
+      "name": "LJam Bass",
+      "notes": "Resonant saw with a snappy filter envelope over a sine sub an octave down. In LJam the sub skips the filter and has its own envelope; here both oscillators share them.",
+      "testNote": 36,
+      "oscillators": [
+        { "type": "sawtooth" },
+        { "type": "sine", "transpose": -12, "db": -2 }
+      ],
+      "filter": { "Q": 2, "rolloff": -24 },
+      "envelope": { "attack": 0.004, "decay": 0.22, "sustain": 0.55, "release": 0.18 },
+      "filterEnvelope": { "attack": 0.004, "decay": 0.2, "sustain": 0.2, "release": 0.2, "baseFrequency": 110, "octaves": 3.4, "exponent": 2 },
+      "mono": true,
+      "portamento": 0.05
+    },
+    {
+      "name": "LJam Lead",
+      "notes": "Three detuned saws through a filter envelope and a light chorus.",
+      "oscillators": [ { "type": "fatsawtooth", "count": 3, "spread": 18 } ],
+      "filter": { "Q": 1.2, "rolloff": -24 },
+      "envelope": { "attack": 0.01, "decay": 0.25, "sustain": 0.55, "release": 0.3 },
+      "filterEnvelope": { "attack": 0.01, "decay": 0.3, "sustain": 0.35, "release": 0.4, "baseFrequency": 350, "octaves": 3.2 },
+      "chorus": { "frequency": 1.2, "depth": 12 }
+    },
+    {
+      "name": "LJam Pad",
+      "notes": "Wide saws, slow amplitude and filter swell, deep chorus. Wants reverb.",
+      "oscillators": [ { "type": "fatsawtooth", "count": 3, "spread": 28 } ],
+      "filter": { "Q": 0.7, "rolloff": -12 },
+      "envelope": { "attack": 0.5, "decay": 1.0, "sustain": 0.8, "release": 1.8 },
+      "filterEnvelope": { "attack": 1.2, "decay": 1.5, "sustain": 0.45, "release": 1.8, "baseFrequency": 180, "octaves": 2.6 },
+      "chorus": { "frequency": 0.35, "depth": 22, "stereo": true }
+    },
+    {
+      "name": "LJam Arp",
+      "notes": "A plucked square, resonant filter snapping shut. Wants a dotted delay.",
+      "oscillators": [ { "type": "square" } ],
+      "filter": { "Q": 2.5, "rolloff": -24 },
+      "envelope": { "attack": 0.002, "decay": 0.22, "sustain": 0.08, "release": 0.22 },
+      "filterEnvelope": { "attack": 0.002, "decay": 0.14, "sustain": 0.02, "release": 0.2, "baseFrequency": 420, "octaves": 3.2, "exponent": 2 }
+    }
+  ]
+}

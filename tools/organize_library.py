@@ -15,6 +15,8 @@ The folders, and how a preset is put in one (Jamie's card, 2026-11-16: 747 prese
     Other                 everything else ("BASS - ...", "PADS - ...")
     <a folder at the card's root with its own SYNTHS>
                           a collection unpacked there: "Boards Of Deluge 7" becomes "BOD 7"
+    Starter               the repository's own presets (plugins/deluge-synth/starter/presets,
+                          made by tools/make_starter.py): the only ones that may be given away
     User                  where the plugin's Save button writes; made empty here
 These files belong to whoever owns the card, and the Boards of Deluge collections are bought:
 build/ is not tracked by git, and nothing here goes in a package for anyone else.
@@ -71,6 +73,12 @@ for extra in sorted(os.listdir(card)):
     print("%-18s %4d presets   (from %s)" % (folder, len(names), extra))
     presets += names
     groups[folder] = names
+starter = os.path.join(HERE, "plugins", "deluge-synth", "starter", "presets")
+names = sorted(f for f in os.listdir(starter) if f.lower().endswith(".xml"))
+shutil.copytree(starter, os.path.join(out, "Content", "SYNTHS", "Starter"))
+print("%-18s %4d presets   (the repository's own)" % ("Starter", len(names)))
+presets += names
+groups["Starter"] = names
 samples = sum(len(files) for _, _, files in os.walk(os.path.join(out, "Content", "SAMPLES")))
 size = sum(os.path.getsize(os.path.join(d, f)) for d, _, files in os.walk(os.path.join(out, "Content")) for f in files)
 print("%d presets in %d folders, %d sample files, %.0f MB, in %s" % (len(presets), len(groups), samples, size / 1e6,

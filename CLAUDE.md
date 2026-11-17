@@ -733,6 +733,42 @@ grid picture and pressing a source pad to patch (the editing design, below) are 
   machine's run, and with the full library on the Force the Folder bar then offered the test
   set's three folders.
 
+### Starter presets of our own (2026-11-16)
+
+- **`plugins/deluge-synth/starter/`** holds presets the repository may give away: `voices.json`
+  describes each sound in Tone.js terms (seconds, Hz, Q, octaves), `INIT.XML` is an empty
+  sound of ours (the least a SYNTH file needs to load: the two oscillators and an empty
+  `defaultParams`, without which the firmware reports the file corrupted), and `presets/` is
+  what `tools/make_starter.py` writes from them, committed. The first four are LJam's melodic
+  voices (`ljam/src/synths.js`): LJam Bass, Lead, Pad, Arp. LJam's drum voices were left out
+  (Jamie, 2026-11-16); Jamie may want more timbres, which are new entries in `voices.json`.
+- **`tools/make_starter.py` asks the engine instead of assuming formulas.** The Deluge's
+  settings are steps 0..50 on its own curves, so the tool plays the engine at each step
+  through `tests/engine_script.cpp` (a command-line driver: set pads by the firmware's menu
+  title, set cables, play, render to a file, save), measures the result, and picks the nearest
+  step. The presets are written by the firmware's writer and read back to check.
+- **What was measured (v1.3.0), for when a sound is made by hand:**
+  - Envelope decay to 1/e: step 5 is 0.11 s, 10 0.23, 25 0.88, 40 2.8, 50 11 s. Release is
+    about half of that at the same step. Attack to half level: under 10 ms up to step 20,
+    13 ms at 25, 0.13 s at 40, 0.68 s at 50. Sustain is even in level (step 25 is 0.53).
+  - Low-pass cutoff: step 25 is about 590 Hz and a step is 0.22 octaves (both ladder modes).
+    Resonance in 24 dB mode: step 10 is a 5 dB peak, 20 11 dB, 25 16 dB, 40 31 dB.
+  - **An envelope reaches a cable as -1..1, not 0..1**: at rest it pulls the parameter down as
+    far as it pushes it up at the top, and at sustain 25 it does nothing. On the cutoff, 10.00
+    of amount is 1.58 octaves each way. So a sweep from a low frequency up N octaves is the
+    cutoff control set to the middle of the sweep and an amount of N / 2 / 1.58 x 10.
+  - Oscillator level and master level are square laws (step 25 of 50 is a quarter). Unison
+    detune is the whole spread in cents. Velocity to Level at 25.00 is about in proportion to
+    velocity (presets from a Deluge mostly have 50.00). Portamento step 9 glides an octave in
+    50 ms. Chorus rate: step 14 is 0.33 Hz, 20 1.24 Hz, 24 3 Hz.
+  - One full-velocity note of a preset made on a Deluge peaks around -18 dBFS (middle of a
+    sample of 21; they range from -33 to -1), which is where the starters are set.
+- **Not the same sound as Tone.js**, and not meant to be measured against it further: the
+  filters are different designs, Tone sweeps the cutoff along a straight line of Hz where the
+  Deluge sweeps in pitch, the Deluge's chorus has no mix control (its depth was set by
+  judgement), and LJam's bass sub skips the filter. Nobody has listened to them yet.
+- `tools/organize_library.py` puts them in the library as the folder `Starter`.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sound
+	firmwareVersion="c1.3.0"
+	earliestCompatibleFirmware="4.1.0-alpha"
+	polyphonic="poly"
+	mode="subtractive">
+	<osc1 type="saw" transpose="0" cents="0" />
+	<osc2 type="saw" transpose="0" cents="0" />
+	<defaultParams>
+	</defaultParams>
+</sound>
