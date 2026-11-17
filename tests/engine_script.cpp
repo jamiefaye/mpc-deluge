@@ -12,6 +12,7 @@
 //   render|40|/tmp/a.raw           render 40 blocks of 128 frames, appending interleaved stereo
 //                                    int32 to the file (no file name: render and discard)
 //   save|SYNTHS/New.XML            write the sound as a preset (will not overwrite)
+//   samples                        print how the preset's sample files fared
 //   pads    cables    names        print what there is
 //
 // Any command that fails stops the program with status 1 and says why.
@@ -185,6 +186,15 @@ int main(int argc, char** argv) {
 			const int error = engineSaveSynth(f[1].c_str());
 			if (error != 0) {
 				fail("save " + f[1] + " -> firmware error " + std::to_string(error));
+			}
+		}
+		else if (c == "samples") {
+			int loaded = 0, failed = 0;
+			engineSampleCounts(&loaded, &failed);
+			std::printf("SAMPLES|loaded %d|not loaded %d|found elsewhere %d\n", loaded, failed, engineSamplesFoundElsewhere());
+			char path[512];
+			for (int i = 0; engineMissingSample(i, path, sizeof path); i++) {
+				std::printf("MISSING|%s\n", path);
 			}
 		}
 		else if (c == "pads") {

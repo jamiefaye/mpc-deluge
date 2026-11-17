@@ -164,6 +164,16 @@ int engineSaveSynth(const char*) {
 	return 1; // nothing to write: there is no sound
 }
 
+int engineSamplesFoundElsewhere() {
+	return 0;
+}
+bool engineMissingSample(int, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	return false;
+}
+
 void engineSampleCounts(int* loaded, int* failed) {
 	*loaded = 0;
 	*failed = 0;

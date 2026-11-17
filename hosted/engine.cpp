@@ -49,6 +49,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <string>
+#include <strings.h>
+
+// The host's directories (hosted/dirs.c): the system's own header cannot be included here, its
+// DIR and the firmware's FatFS DIR being different things with one name.
+extern "C" {
+int deluge_hosted_dir_open(const char* hostPath);
+int deluge_hosted_dir_next(int handle, char* name, size_t nameSize, int* isDir, unsigned long long* size);
+void deluge_hosted_dir_close(int handle);
+}
 
 // Defined in audio_engine.cpp but, in the firmware's words, "deliberately not in header".
 namespace AudioEngine {
@@ -77,6 +87,13 @@ InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
 std::vector<Cluster*> residentClusters; // sample data held in memory for the loaded preset
 int samplesLoaded = 0, samplesFailed = 0;
+// Files the loaded preset names that are not at the path it gives: how many were found
+// somewhere else under SAMPLES and loaded from there, and the paths of those not found at all.
+int samplesElsewhere = 0;
+std::vector<std::string> missingSamples;
+std::string rootPath = ".";          // the folder standing in for the card
+std::vector<std::string> sampleIndex; // every file under SAMPLES, as a path under the root
+bool sampleIndexRead = false;
 float tempo = 0; // the host's, in beats a minute, for the instance's song and the songs that replace it; 0: none given
 
 // An instance that is not the current one, put away: its song, and the firmware globals that
@@ -97,6 +114,8 @@ struct Instance {
 	SoundInstrument* synth = nullptr;
 	std::vector<Cluster*> residentClusters;
 	int samplesLoaded = 0, samplesFailed = 0;
+	int samplesElsewhere = 0;
+	std::vector<std::string> missingSamples;
 	float tempo = 0;
 
 	deluge::dsp::Reverb* reverb = nullptr;
@@ -124,6 +143,8 @@ void putAway(Instance& to) {
 	to.residentClusters.swap(residentClusters);
 	to.samplesLoaded = samplesLoaded;
 	to.samplesFailed = samplesFailed;
+	to.samplesElsewhere = samplesElsewhere;
+	to.missingSamples.swap(missingSamples);
 	to.tempo = tempo;
 	to.reverb = AudioEngine::reverb.current;
 	to.reverbSidechain = AudioEngine::reverbSidechain;
@@ -152,6 +173,8 @@ void bringBack(Instance& from) {
 	residentClusters.swap(from.residentClusters);
 	samplesLoaded = from.samplesLoaded;
 	samplesFailed = from.samplesFailed;
+	samplesElsewhere = from.samplesElsewhere;
+	missingSamples.swap(from.missingSamples);
 	tempo = from.tempo;
 	currentSong = song;
 	AudioEngine::reverb.current = from.reverb;
@@ -221,6 +244,10 @@ static void makeBlankSong() {
 void engineInit(const char* root) {
 	InEngine inEngine;
 	deluge_hosted_set_root(root);
+	if (rootPath != root) {
+		rootPath = root;
+		sampleIndexRead = false;
+	}
 	if (started) {
 		return;
 	}
@@ -319,6 +346,132 @@ int engineCurrentInstance() {
 	return current;
 }
 
+// --- samples that are not where the preset says ---------------------------------------------------
+// A preset names its samples by path under the card's root ("SAMPLES/Kicks/909.wav"). People
+// copying a card's files to another drive put folders in other places, and a Deluge does not
+// tell upper case from lower where a Linux drive does. So when a path leads nowhere, the file is
+// looked for under SAMPLES: first at the same path whatever the case of its letters, then by
+// its name alone, anywhere; of several with the name, the one whose folders agree with the
+// preset's furthest back from the name.
+
+static void indexSamples(const std::string& relative, int depth) {
+	// Names first and folders after, so that only one directory is open at a time.
+	const int dir = deluge_hosted_dir_open((rootPath + "/" + relative).c_str());
+	if (dir < 0) {
+		return;
+	}
+	std::vector<std::string> folders;
+	char name[256];
+	int isDir = 0;
+	unsigned long long size = 0;
+	while (deluge_hosted_dir_next(dir, name, sizeof name, &isDir, &size) != 0) {
+		if (name[0] == '.') {
+			continue;
+		}
+		if (isDir != 0) {
+			folders.push_back(relative + "/" + name);
+		}
+		else if (sampleIndex.size() < 100000) {
+			sampleIndex.push_back(relative + "/" + name);
+		}
+	}
+	deluge_hosted_dir_close(dir);
+	if (depth < 12) {
+		for (const std::string& folder : folders) {
+			indexSamples(folder, depth + 1);
+		}
+	}
+}
+
+// How many folders, counting back from the file's name, the two paths share. The names are
+// known to be the same already.
+static int foldersShared(const std::string& a, const std::string& b) {
+	int shared = 0;
+	size_t endA = a.rfind('/'), endB = b.rfind('/');
+	while (endA != std::string::npos && endB != std::string::npos && endA > 0 && endB > 0) {
+		const size_t startA = a.rfind('/', endA - 1), startB = b.rfind('/', endB - 1);
+		const size_t fromA = startA == std::string::npos ? 0 : startA + 1, fromB = startB == std::string::npos ? 0 : startB + 1;
+		if (endA - fromA != endB - fromB || strncasecmp(a.c_str() + fromA, b.c_str() + fromB, endA - fromA) != 0) {
+			break;
+		}
+		shared++;
+		endA = startA;
+		endB = startB;
+	}
+	return shared;
+}
+
+// Where a file named `wanted` (a path under the root, not there) can be had instead, or "".
+static std::string findSampleElsewhere(const char* wanted) {
+	while (*wanted == '/') {
+		wanted++;
+	}
+	const std::string path = wanted;
+	const size_t slash = path.rfind('/');
+	const char* name = wanted + (slash == std::string::npos ? 0 : slash + 1);
+	const std::string* best = nullptr;
+	int bestShared = -1;
+	for (const std::string& have : sampleIndex) {
+		if (strcasecmp(have.c_str(), wanted) == 0) {
+			return have;
+		}
+		const size_t haveSlash = have.rfind('/');
+		if (strcasecmp(have.c_str() + (haveSlash == std::string::npos ? 0 : haveSlash + 1), name) != 0) {
+			continue;
+		}
+		const int shared = foldersShared(have, path);
+		if (shared > bestShared) {
+			bestShared = shared;
+			best = &have;
+		}
+	}
+	return best != nullptr ? *best : std::string();
+}
+
+// After a preset's files have been asked for at the paths it names: for each that was not there,
+// load it from where it is, if it is anywhere. The preset then names the place it was found (so
+// does a copy saved from here); start, end and loop points stay the preset's.
+static void loadSamplesFromElsewhere() {
+	samplesElsewhere = 0;
+	if (synth == nullptr) {
+		return;
+	}
+	bool readThisTime = false;
+	for (int32_t s = 0; s < kNumSources; s++) {
+		Source& source = synth->sources[s];
+		if (source.oscType != OscType::SAMPLE && source.oscType != OscType::WAVETABLE) {
+			continue;
+		}
+		for (int32_t e = 0; e < source.ranges.getNumElements(); e++) {
+			AudioFileHolder* holder = source.ranges.getElement(e)->getAudioFileHolder();
+			if (holder == nullptr || holder->audioFile != nullptr || holder->filePath.isEmpty()) {
+				continue;
+			}
+			// The folder is read once, and once more per load that still misses a file: someone
+			// may have put it there since.
+			if (!sampleIndexRead || !readThisTime) {
+				sampleIndex.clear();
+				indexSamples("SAMPLES", 0);
+				std::sort(sampleIndex.begin(), sampleIndex.end());
+				sampleIndexRead = readThisTime = true;
+			}
+			const std::string found = findSampleElsewhere(holder->filePath.get());
+			if (found.empty()) {
+				continue;
+			}
+			const std::string named = holder->filePath.get();
+			holder->filePath.set(found.c_str());
+			holder->loadFile(source.sampleControls.isCurrentlyReversed(), false, true, CLUSTER_ENQUEUE, nullptr, true);
+			if (holder->audioFile != nullptr) {
+				samplesElsewhere++;
+			}
+			else {
+				holder->filePath.set(named.c_str()); // it would not load from there either
+			}
+		}
+	}
+}
+
 // The Deluge streams samples from its card, a cluster at a time, and may discard clusters it is
 // not using. Here every cluster of every sample is loaded now and held: asking for a cluster
 // with CLUSTER_LOAD_IMMEDIATELY gives it a "reason to be loaded", and keeping that reason stops
@@ -326,6 +479,7 @@ int engineCurrentInstance() {
 static void makeSamplesResident() {
 	samplesLoaded = 0;
 	samplesFailed = 0;
+	missingSamples.clear();
 	if (synth == nullptr) {
 		return;
 	}
@@ -335,8 +489,8 @@ static void makeSamplesResident() {
 	std::vector<Sample*> samples;
 	for (int32_t s = 0; s < kNumSources; s++) {
 		Source& source = synth->sources[s];
-		if (source.oscType != OscType::SAMPLE) {
-			continue; // wavetables are read whole when they load
+		if (source.oscType != OscType::SAMPLE && source.oscType != OscType::WAVETABLE) {
+			continue;
 		}
 		for (int32_t e = 0; e < source.ranges.getNumElements(); e++) {
 			AudioFileHolder* holder = source.ranges.getElement(e)->getAudioFileHolder();
@@ -346,6 +500,10 @@ static void makeSamplesResident() {
 			if (holder->audioFile == nullptr) {
 				if (!holder->filePath.isEmpty()) {
 					samplesFailed++; // named in the preset, not found under the root
+					if (std::find(missingSamples.begin(), missingSamples.end(), holder->filePath.get())
+					    == missingSamples.end()) {
+						missingSamples.push_back(holder->filePath.get());
+					}
 				}
 				continue;
 			}
@@ -429,6 +587,21 @@ void engineSampleCounts(int* loaded, int* failed) {
 	*failed = samplesFailed;
 }
 
+int engineSamplesFoundElsewhere() {
+	return samplesElsewhere;
+}
+
+bool engineMissingSample(int index, char* out, int outSize) {
+	if (outSize > 0) {
+		out[0] = 0;
+	}
+	if (index < 0 || index >= (int)missingSamples.size()) {
+		return false;
+	}
+	std::snprintf(out, (size_t)outSize, "%s", missingSamples[(size_t)index].c_str());
+	return true;
+}
+
 void engineSetTempo(float beatsPerMinute) {
 	if (!(beatsPerMinute >= 20.0f && beatsPerMinute <= 999.0f) || beatsPerMinute == tempo || song == nullptr) {
 		return;
@@ -492,6 +665,7 @@ int engineLoadSynth(const char* presetPath) {
 	synth = static_cast<SoundInstrument*>(instrument);
 
 	instrument->loadAllAudioFiles(true);
+	loadSamplesFromElsewhere();
 	makeSamplesResident();
 	clip->setAudioInstrument(instrument, song, true, &newParamManager);
 	song->addOutput(instrument);

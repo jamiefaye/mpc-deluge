@@ -49,6 +49,10 @@
         {
           "param": "Preset +10",
           "widget": "switch"
+        },
+        {
+          "param": "Samples",
+          "widget": "slider"
         }
       ]
     },

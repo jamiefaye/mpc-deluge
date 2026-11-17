@@ -63,6 +63,14 @@ int engineSaveSynth(const char* presetPath);
 // relative to the root, normally "SAMPLES/...".
 void engineSampleCounts(int* loaded, int* failed);
 
+// A file that is not at the path the preset gives is looked for under SAMPLES: at the same path
+// whatever the case of its letters, then by its name anywhere (of several, the one whose folders
+// agree with the preset's furthest back from the name). How many of the loaded preset's files
+// were found that way; they count as loaded, and the preset now names where they were found.
+int engineSamplesFoundElsewhere();
+// The paths the preset names that were found nowhere, each once. Returns false past the end.
+bool engineMissingSample(int index, char* out, int outSize);
+
 // How many times the firmware has stopped at one of its own consistency checks (on a Deluge: an
 // error code on the display, and a button to carry on) since the engine started, and the latest
 // code. Each is a bug, in the firmware or in how it is driven here; the engine carries on.

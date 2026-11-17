@@ -95,8 +95,10 @@ positions.
 `Content/` inside the plugin folder is laid out like a Deluge SD card: SYNTH `.XML` files in
 `Content/SYNTHS/` (subfolders allowed; the Preset parameter lists them by path), and the samples
 they use in `Content/SAMPLES/...` at the paths the presets name. Samples are loaded whole into
-memory when a preset loads, not streamed as on the Deluge; a preset whose sample file is missing
-plays without it.
+memory when a preset loads, not streamed as on the Deluge. A sample that is not at the path its
+preset names is looked for under `Content/SAMPLES`, first ignoring case and then by file name
+anywhere; one found nowhere is left out, the Samples line on MAIN says so, and
+`missing-samples.txt` in the plugin folder lists it with the preset that wanted it.
 
 `tools/bundle_presets.py <card> plugins/deluge-synth <subfolder> <preset>...` copies presets and
 their samples from a card into the project. `Content/` is not in git: those files are not ours to

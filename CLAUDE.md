@@ -808,6 +808,37 @@ grid picture and pressing a source pad to patch (the editing design, below) are 
   judgement), and LJam's bass sub skips the filter. Nobody has listened to them yet.
 - `tools/organize_library.py` puts them in the library as the folder `Starter`.
 
+### Samples that are not where the preset says (2026-11-17)
+
+Jamie expects misplaced samples to be the main trouble users have. Until now a preset whose
+sample was not at the path it names played without it and said nothing.
+
+- **The engine finds it anyway** (`loadSamplesFromElsewhere` in `hosted/engine.cpp`, after the
+  firmware has tried the paths as named): the same path whatever the case of its letters (a
+  Deluge does not tell them apart; a Linux drive does), then the same file name anywhere under
+  `SAMPLES`, taking of several the one whose folders agree with the preset's furthest back from
+  the name. The list of files under `SAMPLES` is read on the first miss and again once per
+  load that still misses. Start, end and loop points stay the preset's. The preset in memory
+  then names where the file was found, so a copy saved from the plugin does too. Wavetable
+  files are covered as well as samples.
+- **`engineSamplesFoundElsewhere()`, `engineMissingSample(i, ...)`** report it. In the engine
+  layer on purpose: anything else built on the engine (kit rows, if ever) inherits it.
+- **The plugin says so**: a read-only `Samples` line on MAIN ("2 found", "2 found, 1 by name",
+  "1 of 2 MISSING", "none used"), a line in `diagnostics.txt`, and `missing-samples.txt` in
+  the plugin folder, which gathers every missing file's expected place and the preset that
+  wanted it, each once, across sessions (gitignored; `release.sh` leaves it out).
+- `tests/missing_samples.py <card root> <preset>` plays a preset with its samples as named, in
+  the other case, all in another folder, and absent: the first three must sound the same and
+  the last must report every path. On a Mac the case test proves little (its file system does
+  not tell case apart either); it has not been run on the arm32 build.
+- Not done: the project restore of a sample chosen on SAMPLE 1 / 2 still matches by exact path,
+  and nothing helps when the file was never copied, beyond saying which.
+- **Kits** (Jamie, 2026-11-17): not worth a plugin. Deluge kits are a weak point of the Deluge
+  and the Force's own drum programs are better; there is little market in Deluge kits. What a
+  kit can hold that the Force cannot play is synth rows, which are ordinary sounds: a tool
+  that saves a kit's synth rows as SYNTH presets would bring them over. Converting sample kits
+  to Force drum programs is a someday idea (only from files Jamie's devices write).
+
 ### Releasing (2026-11-17)
 
 - **`./release.sh`** makes `dist/deluge-synth-<version>-mpc.zip`, the only thing that is given

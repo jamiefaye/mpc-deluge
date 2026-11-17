@@ -37,16 +37,23 @@ to their makers. If you own a Deluge, you can use the presets on your own SD car
    choosing. Keep each subfolder to about a hundred presets: the Folder bar on the MAIN screen
    picks the subfolder and the Preset bar picks a preset inside it, one per click of the data
    wheel.
-3. Copy the samples those presets use into `Content/SAMPLES`, at the same paths they have under
-   `SAMPLES` on the card. A preset whose sample is missing plays without it.
+3. Copy the samples those presets use into `Content/SAMPLES`, best at the same paths they have
+   under `SAMPLES` on the card. A sample that is not at its path is looked for by name anywhere
+   under `Content/SAMPLES`, so a folder in the wrong place still works.
 4. Restart the MPC, or remove the plugin from the track and add it again.
+
+**If a preset is silent or thin**, look at the Samples line on the MAIN screen. "1 of 2 MISSING"
+means a sample file was found nowhere. The file `missing-samples.txt` in the plugin folder
+lists each missing file, where it was expected, and the preset that wanted it: copy those
+files from your card and load the preset again.
 
 Samples are loaded whole into memory when a preset loads, so very large multisamples take a
 moment and take room.
 
 ## Using it
 
-- **MAIN**: Folder and Preset with step arrows (single and by ten), Volume, and the Save button.
+- **MAIN**: Folder and Preset with step arrows (single and by ten), Volume, the Save button, and
+  whether the preset's sample files were found.
 - **GOLD**: the Deluge's sixteen gold-knob assignments for the loaded preset, by name.
 - **OSC, SAMPLE 1, SAMPLE 2, FM, VOICE, ARP, FILTER, ENV, LFO, MOD FX, REVERB**: the Deluge's
   shortcut-grid parameters. SAMPLE 1 and 2 choose a sample file for each oscillator.

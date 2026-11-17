@@ -60,6 +60,7 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -88,6 +89,7 @@ enum ParamIndex
     // Two more buttons for MAIN, added later: ten presets back, ten on.
     kPresetBack10 = kCable + 24 * 4,
     kPresetOn10,
+    kSampleState,           // shows whether the preset's sample files were found
     kNumParams
 };
 
@@ -283,6 +285,7 @@ public:
         }
         addParam(mpc::boolParam("presetback10", "Preset -10", false));
         addParam(mpc::boolParam("preseton10", "Preset +10", false));
+        addParam(mpc::intParam("samplestate", "Samples", 0, 999, 0));
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -365,7 +368,7 @@ public:
                 // A gold knob or grid pad moved by the user or the host (not by this thread
                 // mirroring the engine): remember it, and process() hands it to the engine.
                 if (index == kSave) { buttonSet(index, plainValue); if (pressed && !tReleasingButton) saveRequested_.store(true); break; }
-                if (index == kSaveResult) break;
+                if (index == kSaveResult || index == kSampleState) break;
                 if (index >= kCable && index < kPresetBack10)
                 {
                     if (tMirroringKnobs) break;   // the worker showing what the engine holds
@@ -694,6 +697,7 @@ public:
         deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
         samplesLoaded_.store(samplesLoaded);
         samplesFailed_.store(samplesFailed);
+        noteSamples(loadedPreset_.load());
         return true;
     }
     // Worker thread: a file chosen on the MPC since the preset settled.
@@ -856,6 +860,11 @@ public:
         if (index == kSaveResult)
         {
             out = saveText_[saveTextNow_.load() & 1];
+            return true;
+        }
+        if (index == kSampleState)
+        {
+            out = sampleText_[sampleTextNow_.load() & 1];
             return true;
         }
         if (index >= kSample && index < kSave)
@@ -1549,10 +1558,69 @@ private:
         deluge_hosted::engineSampleCounts(&samplesLoaded, &samplesFailed);
         samplesLoaded_.store(samplesLoaded);
         samplesFailed_.store(samplesFailed);
+        noteSamples(wanted);
         loadedPreset_.store(wanted);
         loads_.fetch_add(1);
         syncKnobs();
         noteFirmwareErrors();
+    }
+
+    // Worker thread, engine lock held, after a preset or a sample file has been loaded: say on
+    // MAIN how the sound's sample files fared, and add the ones found nowhere to
+    // missing-samples.txt in the plugin folder, each line once, so that someone whose preset is
+    // silent can see which files to copy and where to.
+    void noteSamples(int loaded)
+    {
+        const int elsewhere = deluge_hosted::engineSamplesFoundElsewhere();
+        std::vector<std::string> missing;
+        char path[512];
+        for (int i = 0; deluge_hosted::engineMissingSample(i, path, (int)sizeof path); ++i) missing.push_back(path);
+        samplesElsewhere_.store(elsewhere);
+        samplesMissing_.store((int)missing.size());
+        const int next = (sampleTextNow_.load() + 1) & 1;
+        const int used = samplesLoaded_.load() + (int)missing.size();
+        if (!missing.empty()) std::snprintf(sampleText_[next], sizeof sampleText_[next], "%d of %d MISSING", (int)missing.size(), used);
+        else if (used == 0) std::snprintf(sampleText_[next], sizeof sampleText_[next], "none used");
+        else if (elsewhere > 0) std::snprintf(sampleText_[next], sizeof sampleText_[next], "%d found, %d by name", used, elsewhere);
+        else std::snprintf(sampleText_[next], sizeof sampleText_[next], "%d found", used);
+        sampleTextNow_.store(next);
+        tellHostLater(kSampleState);
+        if (missing.empty()) return;
+
+        const std::string file = mpc::pluginFolder() + "/missing-samples.txt";
+        if (!missingRead_)
+        {
+            missingRead_ = true;
+            if (FILE* f = std::fopen(file.c_str(), "r"))
+            {
+                char line[1200];
+                while (std::fgets(line, sizeof line, f) != nullptr)
+                {
+                    line[std::strcspn(line, "\r\n")] = 0;
+                    missingWritten_.insert(line);
+                }
+                std::fclose(f);
+            }
+        }
+        const std::string preset = loaded >= 0 && loaded < (int)presets_.size() ? presets_[(size_t)loaded] : "?";
+        FILE* f = nullptr;
+        for (const std::string& name : missing)
+        {
+            const std::string line = "Content/" + name + "    wanted by SYNTHS/" + preset;
+            if (!missingWritten_.insert(line).second) continue;
+            if (f == nullptr)
+            {
+                const bool fresh = missingWritten_.size() == 1;
+                f = std::fopen(file.c_str(), "a");
+                if (f == nullptr) return;
+                if (fresh)
+                    std::fputs("Sample files that presets asked for and Deluge Synth could not find. Each line is where the\n"
+                               "file should be, inside the plugin folder; a file with that name anywhere under Content/SAMPLES\n"
+                               "is found too. Delete this file to start the list again.\n", f);
+            }
+            std::fprintf(f, "%s\n", line.c_str());
+        }
+        if (f != nullptr) std::fclose(f);
     }
 
     // Worker thread. Needs no engine lock: it reads a counter and a few characters.
@@ -1766,7 +1834,8 @@ private:
                       "mod matrix: %d cable slots, %d cables beyond them (they play, unseen)\n"
                       "saved as a Deluge preset %u times, last as \"%s\", error %d\n"
                       "firmware error stops (its own consistency checks; should be 0): %d%s%s\n"
-                      "tempo: the host last gave %.2f (0: never), the engine is at %.2f\n",
+                      "tempo: the host last gave %.2f (0: never), the engine is at %.2f\n"
+                      "this preset's sample files: %d found by name in another folder, %d found nowhere (see missing-samples.txt)\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
                       "Deluge firmware, 64-bit ARM",
@@ -1792,7 +1861,8 @@ private:
                       kCableSlots, cablesHidden_.load(),
                       saves_.load(), saveText_[saveTextNow_.load() & 1], saveError_.load(),
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_,
-                      (double)statTempoGiven_.load(), (double)statTempo_.load());
+                      (double)statTempoGiven_.load(), (double)statTempo_.load(),
+                      samplesElsewhere_.load(), samplesMissing_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
             std::fputs(text, f);
@@ -1853,6 +1923,11 @@ private:
     std::atomic<int>      snapSlot_[kCableSlots][4];           // slots_ at the last reconcile, for the worker
     std::atomic<int>      cablesHidden_{0};                    // cables the engine has beyond the slots
     std::atomic<bool>     saveRequested_{false};
+    char                  sampleText_[2][48] = {"none used", "none used"};   // likewise, for Samples
+    std::atomic<int>      sampleTextNow_{0};
+    std::atomic<int>      samplesElsewhere_{0}, samplesMissing_{0};
+    bool                  missingRead_ = false;        // worker thread only, with the set below
+    std::set<std::string> missingWritten_;             // the lines missing-samples.txt holds
     char                  saveText_[2][80] = {};  // the worker writes the one not showing, then switches
     std::atomic<int>      saveTextNow_{0};
     std::atomic<uint32_t> saves_{0};
