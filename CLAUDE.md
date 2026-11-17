@@ -839,6 +839,16 @@ sample was not at the path it names played without it and said nothing.
   that saves a kit's synth rows as SYNTH presets would bring them over. Converting sample kits
   to Force drum programs is a someday idea (only from files Jamie's devices write).
 
+### No segment buttons (2026-11-17)
+
+Choices with two to four options (Synth Mode, S1 Repeat, Delay Type...) were drawn as the
+SDK's `switch`: a row of segment buttons captioned with the option names. On the Force the
+captions never showed, before or after the caption workaround in `tools/build.py` (which is
+now idle: no segments are left), so the setting could only be read by opening it. All sixteen
+are now `slider` with `"overlay": "menu"`, like the longer choices: a bar that shows the
+setting's name, steps with the data wheel or Q-Link, and opens a list on a double tap. The
+picture buttons (arrows, Save) are still `switch`. Use `switch` for nothing else.
+
 ### Releasing (2026-11-17)
 
 - **`./release.sh`** makes `dist/deluge-synth-<version>-mpc.zip`, the only thing that is given

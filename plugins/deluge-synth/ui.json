@@ -233,19 +233,23 @@
         },
         {
           "param": "S1 Repeat",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S1 Interp",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S1 Reverse",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S1 Pitch/Spd",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S1 Speed",
@@ -295,19 +299,23 @@
         },
         {
           "param": "S2 Repeat",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S2 Interp",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S2 Reverse",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S2 Pitch/Spd",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "S2 Speed",
@@ -341,7 +349,8 @@
         },
         {
           "param": "Osc Sync",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "Mod1 Transp",
@@ -373,7 +382,8 @@
         },
         {
           "param": "Mod2 Dest",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "widget": "empty"
@@ -397,7 +407,8 @@
         },
         {
           "param": "Synth Mode",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "Uni Number",
@@ -449,7 +460,8 @@
         },
         {
           "param": "Priority",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "Portamento",
@@ -486,7 +498,8 @@
         },
         {
           "param": "Rand Lock",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "Stutter Dir",
@@ -578,7 +591,8 @@
         },
         {
           "param": "HPF Mode",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "Treble Freq",
@@ -1249,7 +1263,8 @@
         },
         {
           "param": "Delay PingPong",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "ModFX Rate",
@@ -1289,7 +1304,8 @@
         },
         {
           "param": "Delay Type",
-          "widget": "switch"
+          "widget": "slider",
+          "overlay": "menu"
         }
       ]
     },
