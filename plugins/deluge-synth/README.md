@@ -100,9 +100,9 @@ plays without it.
 their samples from a card into the project. `Content/` is not in git: those files are not ours to
 redistribute.
 
-`starter/presets/` holds presets that are ours and may be given away with the plugin: four to
-begin with (LJam Bass, Lead, Pad and Arp), converted from the Tone.js voices of the LJam
-sequencer. `starter/voices.json` describes each in Tone.js terms and `tools/make_starter.py`
+`starter/presets/` holds presets that are ours and may be given away with the plugin: LJam Bass,
+Lead, Pad and Arp (the last with the arpeggiator on), converted from the Tone.js voices of the
+LJam sequencer, and FM Keys, an FM electric piano. `starter/voices.json` describes each in Tone.js terms and `tools/make_starter.py`
 turns the descriptions into Deluge presets by measuring the engine (see its header); a new sound
 is a new entry there. They load on a Deluge too.
 

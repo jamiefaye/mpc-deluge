@@ -20,6 +20,10 @@ What a voice may say (all optional but "name" and "oscillators"):
     filterEnvelope   the same plus {baseFrequency, octaves, exponent}: sweeps the low-pass
     mono, portamento one voice with legato, and the glide time
     chorus           {frequency (Hz), depth (the Deluge's own 0..50), stereo}
+    fm               {modulator1, modulator2: {transpose (semitones), level, feedback (the Deluge's
+                     own 0..50)}}; modulator2 may say "on": "Modulator 1". The oscillators are then
+                     the sine carriers, and a filter is used only if the voice gives one
+    arp              {preset (Up, Down, Both, Random, Walk), octaves, sync, gate}: the arpeggiator
     pads             {"<firmware pad title>": value, ...} set last, as given: for anything else
     cables           [[source, destination, amount], ...] likewise
     testNote         the note the level is set with (default 60)
@@ -287,6 +291,17 @@ class Maker:
         if not 1 <= len(oscillators) <= 2:
             sys.exit(voice["name"] + ": one or two oscillators")
         loudest = max(o.get("db", 0) for o in oscillators)
+        fm = voice.get("fm")
+        if fm is not None:
+            # FM: the oscillators are the two sine carriers, each with the modulators on it
+            c.append("pad|Synth Mode|Fm")
+            for n in (1, 2):
+                m = fm.get(f"modulator{n}")
+                if m is not None:
+                    c += [f"pad|FM Mod{n} tran|{round(m.get('transpose', 0) * 100)}", f"pad|FM Mod{n} level|{m['level']}",
+                          f"pad|FM Mod{n} feedb|{m.get('feedback', 0)}"]
+            if fm.get("modulator2", {}).get("on"):
+                c.append(f"pad|FM Mod2 dest|{fm['modulator2']['on']}")
         for n in (1, 2):
             if n > len(oscillators):
                 c.append(f"pad|Osc{n} level|0")
@@ -298,7 +313,11 @@ class Maker:
                 c += [f"pad|Unison number|{o.get('count', 3)}", f"pad|Unison detune|{min(50, round(o.get('spread', 20)))}"]
             # the level control is a square law: step 50 is full, 25 a quarter
             amplitude = 10 ** ((o.get("db", 0) - loudest) / 20)
-            c += [f"pad|Osc{n} type|{WAVES[kind]}", f"pad|Osc{n} transpose|{round(o.get('transpose', 0) * 100)}",
+            if fm is None:
+                c.append(f"pad|Osc{n} type|{WAVES[kind]}")
+            elif kind != "sine":
+                sys.exit(voice["name"] + ": FM carriers are sines")
+            c += [f"pad|Osc{n} transpose|{round(o.get('transpose', 0) * 100)}",
                   f"pad|Osc{n} level|{round(50 * math.sqrt(amplitude))}"]
 
         env = voice.get("envelope", {"attack": 0.005, "decay": 0.1, "sustain": 1, "release": 0.1})
@@ -309,7 +328,7 @@ class Maker:
 
         f = voice.get("filter")
         if f is None:
-            c.append("pad|LPF mode|Off")
+            c += ["pad|LPF mode|Off", "pad|HPF mode|Off"]
         else:
             mode = MODES[f.get("rolloff", -12)]
             cutoff, resonance = self.filter_tables(mode)
@@ -357,6 +376,10 @@ class Maker:
             c += [f"pad|MOD-FX type|{'Stereo Chorus' if chorus.get('stereo') else 'Chorus'}", f"pad|MOD-FX rate|{step}",
                   f"pad|Depth|{chorus.get('depth', 15)}"]
             said.append(f"chorus: {chorus['frequency']:g} Hz -> {step} ({self.chorus[step]:.2f} Hz)")
+        arp = voice.get("arp")
+        if arp is not None:
+            c += [f"pad|Arp preset|{arp.get('preset', 'Up')}", f"pad|Arp octaves|{arp.get('octaves', 1)}",
+                  f"pad|Arp sync|{arp.get('sync', '16TH-notes')}", f"pad|Arp gate|{arp.get('gate', 25)}"]
         for title, value in voice.get("pads", {}).items():
             c.append(f"pad|{title}|{value}")
         for source, destination, amount in voice.get("cables", []):

@@ -742,6 +742,11 @@ grid picture and pressing a source pad to patch (the editing design, below) are 
   what `tools/make_starter.py` writes from them, committed. The first four are LJam's melodic
   voices (`ljam/src/synths.js`): LJam Bass, Lead, Pad, Arp. LJam's drum voices were left out
   (Jamie, 2026-11-16); Jamie may want more timbres, which are new entries in `voices.json`.
+  The set is also meant to show the features off, one or two presets each and no more (Jamie):
+  LJam Arp has the arpeggiator on (Up, two octaves, 16ths), and FM Keys, which is not from
+  LJam, is the FM example (an electric piano: modulator depth on envelope 2 and velocity, a
+  short tine from a second modulator on envelope 3). Its depths were set by watching the
+  harmonics fall after the strike and rise with velocity, not by ear.
 - **`tools/make_starter.py` asks the engine instead of assuming formulas.** The Deluge's
   settings are steps 0..50 on its own curves, so the tool plays the engine at each step
   through `tests/engine_script.cpp` (a command-line driver: set pads by the firmware's menu

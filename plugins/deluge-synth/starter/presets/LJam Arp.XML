@@ -35,7 +35,7 @@
 		oscBPulseWidth="0x00000000"
 		oscBWavetablePosition="0x00000000"
 		noiseVolume="0x80000000"
-		volume="0x47AE1457"
+		volume="0x33333313"
 		pan="0x00000000"
 		lpfFrequency="0x1999997E"
 		lpfResonance="0xFFFFFFE9"
@@ -63,7 +63,7 @@
 		modFXOffset="0x00000000"
 		modFXFeedback="0x00000000"
 		compressorThreshold="0x00000000"
-		arpeggiatorGate="0x00000000"
+		arpeggiatorGate="0xFFFFFFE9"
 		noteProbability="0x7FFFFFFF"
 		bassProbability="0x80000000"
 		swapProbability="0x80000000"
@@ -120,11 +120,11 @@
 			trebleFrequency="0x00000000" />
 	</defaultParams>
 	<arpeggiator
-		mode="off"
+		mode="arp"
 		syncLevel="7"
 		numOctaves="2"
 		syncType="0"
-		arpMode="off"
+		arpMode="arp"
 		chordType="0"
 		noteMode="up"
 		octaveMode="up"

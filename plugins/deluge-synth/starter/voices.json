@@ -39,7 +39,18 @@
       "oscillators": [ { "type": "square" } ],
       "filter": { "Q": 2.5, "rolloff": -24 },
       "envelope": { "attack": 0.002, "decay": 0.22, "sustain": 0.08, "release": 0.22 },
-      "filterEnvelope": { "attack": 0.002, "decay": 0.14, "sustain": 0.02, "release": 0.2, "baseFrequency": 420, "octaves": 3.2, "exponent": 2 }
+      "filterEnvelope": { "attack": 0.002, "decay": 0.14, "sustain": 0.02, "release": 0.2, "baseFrequency": 420, "octaves": 3.2, "exponent": 2 },
+      "arp": { "preset": "Up", "octaves": 2, "sync": "16TH-notes", "gate": 25 }
+    },
+    {
+      "name": "FM Keys",
+      "notes": "Not from LJam: an FM electric piano. One modulator at the carrier's pitch whose depth falls away after the strike (envelope 2), a second three octaves and a fifth up for the tine, gone almost at once (envelope 3). Harder keys are brighter.",
+      "oscillators": [ { "type": "sine" } ],
+      "fm": { "modulator1": { "transpose": 0, "level": 9 }, "modulator2": { "transpose": 43, "level": 8 } },
+      "envelope": { "attack": 0.002, "decay": 6, "sustain": 0, "release": 0.5 },
+      "pads": { "Env1 decay": 36, "Env2 attack": 0, "Env2 decay": 16, "Env2 sustain": 10, "Env2 release": 10,
+                "Env3 attack": 0, "Env3 decay": 4, "Env3 sustain": 0, "Env3 release": 4 },
+      "cables": [ ["ENV2", "FM mod1 level", 700], ["ENV3", "FM mod2 level", 1500], ["VELOCITY", "FM mod1 level", 500] ]
     }
   ]
 }
