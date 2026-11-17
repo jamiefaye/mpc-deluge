@@ -32,6 +32,13 @@ and the dated note nearest the topic win.
   **Velocity is the thing to match first**: `SYNT000` patches velocity to the cutoff, and a
   Deluge at 80 against a Force at 64 was a 6 dB difference at 1.25-2.5 kHz, heard as "similar
   but not identical". Notes must also be the same length (`SYNT015` brightens as it is held).
+  **Not settled: `BOD 1/01-Boards of deluge`.** Its phaser is near its slowest rate and a
+  slow LFO moves the filter, so over about 65 s the engine alone (native, one repeating C4 at
+  velocity 64) wanders 9 dB in level and from 260 Hz dominant to 520 Hz dominant. Two 20 s
+  passages caught different parts of that and looked 7 dB and a timbre apart; a comparison
+  needs a full cycle from each device, and getting the Force to play a clip longer than 8
+  bars was more trouble than it was worth that day (Jamie). `build/capture/abcycle.py` prints
+  a take's level and partial shares every 4 s for presets like this.
 
 - **The shortcut grid is on screen as parameters (2026-11-14; not yet on hardware).** 123 pads of
   the Deluge's 16 x 8 grid are plugin parameters on ten new screens; see "The shortcut grid as
