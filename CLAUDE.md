@@ -21,6 +21,17 @@ and the dated note nearest the topic win.
   image kept at `~/deluge/DelugeFirmware-1.3.0/build/Release/deluge.bin`; `SYNT008`, two-note
   chord, velocity 64, both through the Zoom L6): level within 1-2 dB with no trimming, energy
   per band within 1-2 dB below 16 kHz. One difference, at 22.05 kHz: see the first pending item.
+- **Against Jamie's OLED Deluge on the 1.3.0 release (2026-11-17)**, Force then Deluge through
+  the Zoom L6, the same pattern at velocity 64, compared as share of energy per band over the
+  passage (takes `build/capture/ab*.wav`, `abnotes.py` there lists a take's notes):
+  `SYNT000` (subtractive) within 1.7 dB, `SYNT015` (ring mod) within 0.6 dB, `SYNT004`
+  (chorus) within 1.2 dB with the same left/right swing and correlation, `SYNT011` (reverb and
+  ping-pong delay) within 0.7 dB with the tail falling the same way, the echo returning at the
+  same time (about 1 s) on the same side, and the same left/right correlation through the
+  tail. Channel gain differed by about 2 dB and balance by 1 dB throughout (cabling).
+  **Velocity is the thing to match first**: `SYNT000` patches velocity to the cutoff, and a
+  Deluge at 80 against a Force at 64 was a 6 dB difference at 1.25-2.5 kHz, heard as "similar
+  but not identical". Notes must also be the same length (`SYNT015` brightens as it is held).
 
 - **The shortcut grid is on screen as parameters (2026-11-14; not yet on hardware).** 123 pads of
   the Deluge's 16 x 8 grid are plugin parameters on ten new screens; see "The shortcut grid as
