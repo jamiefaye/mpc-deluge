@@ -39,6 +39,15 @@ and the dated note nearest the topic win.
   needs a full cycle from each device, and getting the Force to play a clip longer than 8
   bars was more trouble than it was worth that day (Jamie). `build/capture/abcycle.py` prints
   a take's level and partial shares every 4 s for presets like this.
+  **A real difference, and it is tempo: `BOD 1/08-Brand new error`** (a pluck with a synced
+  ping-pong delay), both devices set to 60 BPM. The pluck itself agrees (the first 0.2 s
+  falls identically, band shares in the first 0.15 s within 0.6 dB up to 5 kHz), but the echo
+  comes back on the right after 0.23 s on the Force and 0.45 s on the Deluge. The native
+  engine, which knows no tempo, gives 0.25 s: the plugin runs synced delays, LFOs and the
+  arpeggiator at the engine's default tempo whatever the Force's is. Following the host's
+  tempo is the one thing the comparison found missing. (`08` and `09-Brand new error bass`
+  are easily mistaken for each other: 08 has no sustain and plays as a short hit however long
+  the note, 09 holds.)
 
 - **The shortcut grid is on screen as parameters (2026-11-14; not yet on hardware).** 123 pads of
   the Deluge's 16 x 8 grid are plugin parameters on ten new screens; see "The shortcut grid as
