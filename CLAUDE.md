@@ -48,7 +48,7 @@ and the dated note nearest the topic win.
   tempo is the one thing the comparison found missing. (`08` and `09-Brand new error bass`
   are easily mistaken for each other: 08 has no sustain and plays as a short hit however long
   the note, 09 holds.)
-  **Fixed the same day, not yet heard on the Force:** `engineSetTempo()` (hosted/engine.h)
+  **Fixed the same day, and Jamie confirmed it on the Force against the Deluge at 60 BPM:** `engineSetTempo()` (hosted/engine.h)
   sets the instance's song's tempo the way `Song::setBPM` does, without the tempo automation;
   the plugin passes `ctx.transport.bpm` every block, and a preset load (which rebuilds the
   song) keeps it. Natively the echo of `08` moves with it: 0.26 s at 120, 0.35 at 90, 0.18 at
