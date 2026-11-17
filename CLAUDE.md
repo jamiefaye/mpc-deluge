@@ -808,6 +808,21 @@ grid picture and pressing a source pad to patch (the editing design, below) are 
   judgement), and LJam's bass sub skips the filter. Nobody has listened to them yet.
 - `tools/organize_library.py` puts them in the library as the folder `Starter`.
 
+### Releasing (2026-11-17)
+
+- **`./release.sh`** makes `dist/deluge-synth-<version>-mpc.zip`, the only thing that is given
+  to other people: the built plugin with `Content/` holding the starter presets and nothing
+  else (it refuses to finish otherwise), `LICENSE`, a `NOTICE.txt` naming the commit and the
+  versions of what is built in, and `plugins/deluge-synth/release/README.md` as the user's
+  README. It wants a committed tree. `./deploy.sh ... --content build/library` remains the way
+  Jamie's own device gets its library; never package from `Content/` or `build/library`.
+- The SDK says inMusic does not review, sign or distribute third-party plugins: a release is
+  the zip on a GitHub release or posted in the community, not a submission to Akai.
+- Jamie wrote to Ian at Synthstrom on 2026-11-16 about the name and about bundling factory
+  presets. Plan as of 2026-11-17: wait one more day, then release with our own presets only.
+  The version is 0.1.0, a preview: parameters are not frozen and the README says so.
+- A velocity control is not wanted (Jamie): a Deluge's velocity can be set, and is.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
