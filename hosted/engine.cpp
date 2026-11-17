@@ -77,6 +77,7 @@ InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
 std::vector<Cluster*> residentClusters; // sample data held in memory for the loaded preset
 int samplesLoaded = 0, samplesFailed = 0;
+float tempo = 0; // the host's, in beats a minute, for the instance's song and the songs that replace it; 0: none given
 
 // An instance that is not the current one, put away: its song, and the firmware globals that
 // hold a song's sound between renders. The firmware has one of each because a Deluge plays one
@@ -96,6 +97,7 @@ struct Instance {
 	SoundInstrument* synth = nullptr;
 	std::vector<Cluster*> residentClusters;
 	int samplesLoaded = 0, samplesFailed = 0;
+	float tempo = 0;
 
 	deluge::dsp::Reverb* reverb = nullptr;
 	SideChain reverbSidechain;
@@ -122,6 +124,7 @@ void putAway(Instance& to) {
 	to.residentClusters.swap(residentClusters);
 	to.samplesLoaded = samplesLoaded;
 	to.samplesFailed = samplesFailed;
+	to.tempo = tempo;
 	to.reverb = AudioEngine::reverb.current;
 	to.reverbSidechain = AudioEngine::reverbSidechain;
 	to.reverbSidechainVolume = AudioEngine::reverbSidechainVolume;
@@ -149,6 +152,7 @@ void bringBack(Instance& from) {
 	residentClusters.swap(from.residentClusters);
 	samplesLoaded = from.samplesLoaded;
 	samplesFailed = from.samplesFailed;
+	tempo = from.tempo;
 	currentSong = song;
 	AudioEngine::reverb.current = from.reverb;
 	AudioEngine::reverbSidechain = from.reverbSidechain;
@@ -182,6 +186,23 @@ struct InEngine {
 };
 } // namespace
 
+// Song::setBPM() without the tempo automation it also writes: how long the song's timer tick is.
+// Synced delays, LFOs, the arpeggiator and the sidechain's release read the tempo from it.
+static void applyTempo() {
+	if (tempo <= 0) {
+		return;
+	}
+	double bpm = tempo;
+	double samplesPerTick = 110250.0;
+	if (song->insideWorldTickMagnitude > 0) {
+		bpm *= (double)((uint32_t)1 << song->insideWorldTickMagnitude);
+	}
+	else if (song->insideWorldTickMagnitude < 0) {
+		samplesPerTick *= (double)((uint32_t)1 << (-song->insideWorldTickMagnitude));
+	}
+	song->setTempoFromNumSamples(samplesPerTick / bpm, false);
+}
+
 // setupBlankSong(), without the UI parts.
 static void makeBlankSong() {
 	void* songMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(Song));
@@ -190,6 +211,7 @@ static void makeBlankSong() {
 	GlobalEffectable::initParams(&song->paramManager);
 	song->setupDefault();
 	currentSong = song;
+	applyTempo();
 	AudioEngine::getReverbParamsFromSong(currentSong);
 	AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
 	clip = nullptr;
@@ -405,6 +427,19 @@ void engineSampleCounts(int* loaded, int* failed) {
 	InEngine inEngine;
 	*loaded = samplesLoaded;
 	*failed = samplesFailed;
+}
+
+void engineSetTempo(float beatsPerMinute) {
+	if (!(beatsPerMinute >= 20.0f && beatsPerMinute <= 999.0f) || beatsPerMinute == tempo || song == nullptr) {
+		return;
+	}
+	InEngine inEngine;
+	tempo = beatsPerMinute;
+	applyTempo();
+}
+
+float engineTempo() {
+	return song != nullptr ? song->calculateBPM() : 0.0f;
 }
 
 int engineLoadSynth(const char* presetPath) {

@@ -1098,6 +1098,15 @@ public:
             return;
         }
 
+        // The host's tempo, for synced delays, synced LFOs and the arpeggiator. Every block: it is
+        // one comparison when nothing has changed, and a preset load keeps it.
+        if (ctx.transport.valid && ctx.transport.tempoValid)
+        {
+            deluge_hosted::engineSetTempo((float)ctx.transport.bpm);
+            statTempoGiven_.store((float)ctx.transport.bpm, std::memory_order_relaxed);
+        }
+        statTempo_.store(deluge_hosted::engineTempo(), std::memory_order_relaxed);
+
         if (wantAllNotesOff_.exchange(false)) deluge_hosted::engineAllNotesOff();
         if ((missedNoteOff_[0] | missedNoteOff_[1]) != 0)
         {
@@ -1756,7 +1765,8 @@ private:
                       "sample files found in Content/SAMPLES: %d in %d folders; files chosen for an oscillator %u, last error %d\n"
                       "mod matrix: %d cable slots, %d cables beyond them (they play, unseen)\n"
                       "saved as a Deluge preset %u times, last as \"%s\", error %d\n"
-                      "firmware error stops (its own consistency checks; should be 0): %d%s%s\n",
+                      "firmware error stops (its own consistency checks; should be 0): %d%s%s\n"
+                      "tempo: the host last gave %.2f (0: never), the engine is at %.2f\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
                       "Deluge firmware, 64-bit ARM",
@@ -1781,7 +1791,8 @@ private:
                       (int)sampleFiles_.size(), (int)sampleFolders_.size(), sampleLoads_.load(), sampleError_.load(),
                       kCableSlots, cablesHidden_.load(),
                       saves_.load(), saveText_[saveTextNow_.load() & 1], saveError_.load(),
-                      firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_);
+                      firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_,
+                      (double)statTempoGiven_.load(), (double)statTempo_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
             std::fputs(text, f);
@@ -1876,6 +1887,7 @@ private:
     float   smoothedGain_ = 1.0f;
 
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
+    std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f};
     std::atomic<uint64_t> statNs_{0}, statFrames_{0};
     std::atomic<float>    statPeak_{0.0f};
     std::atomic<uint32_t> statClipped_{0}, statSaves_{0}, statRestores_{0}, statRestoresWithoutKnobs_{0}, statWaitTimeouts_{0};

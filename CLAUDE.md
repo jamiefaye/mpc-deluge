@@ -48,6 +48,13 @@ and the dated note nearest the topic win.
   tempo is the one thing the comparison found missing. (`08` and `09-Brand new error bass`
   are easily mistaken for each other: 08 has no sustain and plays as a short hit however long
   the note, 09 holds.)
+  **Fixed the same day, not yet heard on the Force:** `engineSetTempo()` (hosted/engine.h)
+  sets the instance's song's tempo the way `Song::setBPM` does, without the tempo automation;
+  the plugin passes `ctx.transport.bpm` every block, and a preset load (which rebuilds the
+  song) keeps it. Natively the echo of `08` moves with it: 0.26 s at 120, 0.35 at 90, 0.18 at
+  180, 0.51 at 60. Only the tempo is followed: the engine's clock does not run, so nothing
+  locks to the host's bar or beat position (a synced LFO or the arpeggiator has the right
+  speed but its own phase). `diagnostics.txt` has a tempo line.
 
 - **The shortcut grid is on screen as parameters (2026-11-14; not yet on hardware).** 123 pads of
   the Deluge's 16 x 8 grid are plugin parameters on ten new screens; see "The shortcut grid as

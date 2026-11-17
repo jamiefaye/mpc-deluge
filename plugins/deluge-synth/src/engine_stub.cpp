@@ -80,6 +80,11 @@ int engineCurrentInstance() {
 	return current;
 }
 
+void engineSetTempo(float) {}
+float engineTempo() {
+	return 120.0f;
+}
+
 int engineLoadSynth(const char*) {
 	sampleNames[current][0][0] = sampleNames[current][1][0] = 0;
 	stubCableCount[current] = 0;

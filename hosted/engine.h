@@ -38,6 +38,14 @@ void engineUse(int instance);
 void engineDeleteInstance(int instance);
 int engineCurrentInstance();
 
+// The tempo, in beats a minute, that the current instance's synced delays, synced LFOs,
+// arpeggiator and sidechain run at: the host's. It stays with the instance through preset loads.
+// Until it is given, the tempo is a new Deluge song's (120). Cheap: for the audio thread, every
+// block. Values outside 20..999 are ignored.
+void engineSetTempo(float beatsPerMinute);
+// The tempo in effect.
+float engineTempo();
+
 // Loads a SYNTH preset (path relative to the root, e.g. "SYNTHS/SYNT100.XML") into a new clip, the
 // way the firmware sets up a song's first clip. Returns 0, or the firmware's Error code.
 // May be called again to change preset: all sound stops and the song (with its reverb) is rebuilt.

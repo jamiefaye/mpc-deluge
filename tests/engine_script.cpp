@@ -7,6 +7,7 @@
 //   pad|Osc1 type|Saw                may be given by option name
 //   cable|ENV2|LPF frequency|2500  set a patch cable (source and destination by the firmware's names,
 //                                    see "names"; amount -5000..5000, 0 removes)
+//   tempo|60                       the host's tempo, beats a minute
 //   on|60|127    off|60            notes
 //   render|40|/tmp/a.raw           render 40 blocks of 128 frames, appending interleaved stereo
 //                                    int32 to the file (no file name: render and discard)
@@ -147,6 +148,11 @@ int main(int argc, char** argv) {
 			if (!found) {
 				fail("cable " + f[1] + " -> " + f[2] + " did not take the amount " + f[3]);
 			}
+		}
+		else if (c == "tempo") {
+			need(1);
+			engineSetTempo((float)std::atof(f[1].c_str()));
+			std::printf("TEMPO|%.2f\n", (double)engineTempo());
 		}
 		else if (c == "on") {
 			need(2);

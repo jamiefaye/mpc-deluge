@@ -53,7 +53,9 @@ preset needs the same sample files at the same paths on that card.
 - Up to sixteen instances per MPC project play at once, each with its own preset, reverb and
   master stage (since 2026-11-16; tested in the simulators, not yet on hardware). While one of
   them loads a preset the others are silent for the length of the load.
-- No tempo sync (synced LFOs, arpeggiator and delay have no clock) and no MPE. Pitch bend, mod
+- Synced delays, synced LFOs and the arpeggiator run at the MPC's tempo (since 2026-11-17), but
+  not locked to its bar or beat position: the speed is right, the phase is their own. No MPE.
+  Pitch bend, mod
   wheel and channel pressure work, as a Deluge treats them on a synth's input channel.
 - An oscillator that plays the Deluge's audio input is silent: the plugin has no input.
 - Gold knobs whose assignment is a switch or a momentary action (stutter) only move a value.
