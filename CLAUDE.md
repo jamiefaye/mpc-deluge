@@ -948,6 +948,22 @@ or damping (they belong to the song: a voice that set "Time" failed the read-bac
 "Oscillator sync" takes 1, not "On"; an envelope's seconds in `voices.json` are Tone.js's and
 come out far shorter than they read, so long tails are set as steps in "pads".
 
+### Memory on the Force (2026-11-18; a fix built, not yet confirmed on the device)
+
+Jamie saw a low-memory warning on the Force once, with Deluge Synth projects loaded; an empty
+project already shows 67% of memory used. The engine maps one 260 MB block when the first
+instance starts (`hosted/memory.c`; 256 MB of it for samples held in memory), shared by all
+instances and never given back while the MPC application runs: an instance closing frees its
+song, not the block. The SDK's host notes say the MPC locks its memory, in which case the
+whole block was real memory from the start. Now, on Linux, the 256 MB region is unlocked and
+handed back straight after mapping (`munlock`, `madvise(MADV_DONTNEED)`), so pages cost
+memory only once used. The largest preset in Jamie's library needs 38 MB of samples
+(`SYNT170`), the median sample preset 1.5 MB, most presets none. `diagnostics.txt` now has
+the block's memory in use, the whole application's, and how long start-up and preset loads
+take (a project of three instances took about ten seconds to open its first item on the
+Force; unexplained; a two-instance project opens at normal speed). In the emulators: 0 to 8 MB of the block in use after the simulator's run.
+**Whether the Force really locks memory, and whether this cures the warning, is not known.**
+
 ### ABOUT, and fixed text in a skin (2026-11-18)
 
 A credits page, last on the sixth key (`tabs.json` "about": the lines, with size and colour;

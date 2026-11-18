@@ -82,6 +82,10 @@ int engineCurrentInstance() {
 
 void engineSetTempo(float) {}
 void engineSideChainHit() {}
+int engineMemoryResidentMb(int* totalMb) {
+	if (totalMb != nullptr) *totalMb = 0;
+	return 0;
+}
 float engineTempo() {
 	return 120.0f;
 }

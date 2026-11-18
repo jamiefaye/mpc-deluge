@@ -1717,6 +1717,19 @@ private:
         noteFirmwareErrors();
     }
 
+    // Megabytes of real memory the process holds (on an MPC: the whole MPC application), from
+    // /proc; 0 where there is no /proc.
+    static int processResidentMb()
+    {
+        long pages = 0, resident = 0;
+        if (FILE* f = std::fopen("/proc/self/statm", "r"))
+        {
+            if (std::fscanf(f, "%ld %ld", &pages, &resident) != 2) resident = 0;
+            std::fclose(f);
+        }
+        return (int)(resident * 4096 / (1024 * 1024));
+    }
+
     // --- edits kept for the session (see loadRequestedPreset) -------------------------------------
     // Any thread: the user or the host changed the sound.
     void noteEdit()
@@ -2012,7 +2025,9 @@ private:
         const std::string folder = mpc::pluginFolder();
         if (folder.empty()) return;
         std::lock_guard<std::mutex> lock(diagnosticsLock_);   // the MPC's thread and the worker both write it
-        char text[2800];
+        int blockTotal = 0;
+        const int blockResident = deluge_hosted::engineMemoryResidentMb(&blockTotal);
+        char text[3000];
         const uint64_t frames = statFrames_.load(), ns = statNs_.load();
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
@@ -2037,6 +2052,7 @@ private:
                       "edits kept on leaving a preset: %u this session\n"
                       "start-up, in ms: listing %d presets %d, listing sample files %d, starting the engine and this instance %d;\n"
                       "  loading a preset: the first %d, the last %d, the slowest %d\n"
+                      "memory: %d MB of the engine's %d MB block are in use (all instances share it); the whole application holds %d MB\n"
                       "this preset's sample files: %d found by name in another folder, %d found nowhere (see missing-samples.txt)\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -2068,6 +2084,7 @@ private:
                       editsKept_.load(),
                       (int)presets_.size(), statPresetScanMs_.load(), statSampleScanMs_.load(), statEngineStartMs_.load(),
                       statFirstLoadMs_.load(), statLastLoadMs_.load(), statSlowestLoadMs_.load(),
+                      blockResident, blockTotal, processResidentMb(),
                       samplesElsewhere_.load(), samplesMissing_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {

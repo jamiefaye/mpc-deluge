@@ -615,6 +615,11 @@ float engineTempo() {
 	return song != nullptr ? song->calculateBPM() : 0.0f;
 }
 
+extern "C" int deluge_hosted_memory_resident_mb(int* totalMb);
+int engineMemoryResidentMb(int* totalMb) {
+	return deluge_hosted_memory_resident_mb(totalMb);
+}
+
 void engineSideChainHit() {
 	// Full strength, which is what a drum loaded from the sample browser sends
 	// (SampleBrowser: sideChainSendLevel = 2147483647). engineRender() clears it after one cycle.

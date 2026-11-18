@@ -45,6 +45,9 @@ int engineCurrentInstance();
 void engineSetTempo(float beatsPerMinute);
 // The tempo in effect.
 float engineTempo();
+// For diagnostics: megabytes of the engine's one memory block (which every instance shares) that
+// are in real memory now, and the block's size. -1 if it cannot be told. Not for the audio thread.
+int engineMemoryResidentMb(int* totalMb);
 // A hit on the sidechain, as a kit row with "send to sidechain" gives on a Deluge when it plays:
 // from the next render on, the current instance's sound ducks by its own sidechain settings
 // (attack, release, shape, sync, and the volume-ducking amount). There is no kit here to send
