@@ -7,6 +7,11 @@
 //
 // One line per pad per preset, tab-separated:
 //   CELL layer x y kind min max type name title value=text value=text ...
+// followed by the value the preset holds there:
+//   VALUE layer x y value
+// With MATRIX_FM set in the environment, each preset is then switched to FM mode and the pads
+// that apply only there are printed too (FMVALUE ...): gen_grid.py reads an empty sound's values
+// this way, as the standard that the GRID page marks departures from.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "crash_report.h"
 #include "engine.h"
@@ -14,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <string>
@@ -66,8 +72,23 @@ int main(int argc, char** argv) {
 						std::printf("\t%d=%s", (int)v, text);
 					}
 					std::printf("\n");
+					std::printf("VALUE\t%d\t%d\t%d\t%d\n", layer, x, y, (int)info.value);
 				}
 			}
+		}
+		if (std::getenv("MATRIX_FM") != nullptr) {
+			engineCellSet(0, 6, 4, 1); // Synth Mode: FM
+			for (int layer = 0; layer < kGridLayers; layer++) {
+				for (int x = 0; x < kGridColumns; x++) {
+					for (int y = 0; y < kGridRows; y++) {
+						CellInfo info;
+						if (engineCellInfo(layer, x, y, &info) && info.kind != CellKind::None && info.relevant) {
+							std::printf("FMVALUE\t%d\t%d\t%d\t%d\n", layer, x, y, (int)info.value);
+						}
+					}
+				}
+			}
+
 		}
 	}
 	return 0;

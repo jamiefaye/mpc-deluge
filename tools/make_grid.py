@@ -102,18 +102,35 @@ def main():
             x0, y0 = cell_origin(x, y)
             if (x, y) in named:
                 colour = COLUMN_COLOURS[x]
-                box(x0, y0, mix(colour, 0.16), mix(colour, 0.55))
-                label(x0, y0 + 3, named[(x, y)][0], (0xf2, 0xf2, 0xf2), BAR[1] - 5)
+                box(x0, y0, mix(colour, 0.08), mix(colour, 0.32))
+                label(x0, y0 + 3, named[(x, y)][0], mix((0xf2, 0xf2, 0xf2), 0.6), BAR[1] - 5)
             elif (x, y) in PLAIN:
                 box(x0, y0, BACKGROUND, mix(GREY, 0.35))
                 label(x0, y0, PLAIN[(x, y)], mix(GREY, 0.8), CELL_H)
+    # Each parameter cell's three looks as a film strip, top to bottom: standard (nothing: the
+    # background shows), set to something else (the column's colour, solid), does not apply to
+    # the sound (dark, the name barely there). The plugin's "<name> *" parameter picks the frame.
+    folder = os.path.dirname(OUT)
+    for (x, y), (name, _) in named.items():
+        colour = COLUMN_COLOURS[x]
+        strip = Image.new("RGBA", (CELL_W * scale, 3 * CELL_H * scale), (0, 0, 0, 0))
+        pen = ImageDraw.Draw(strip)
+        for frame, fill, outline, ink in ((1, mix(colour, 0.62), colour, (255, 255, 255)),
+                                          (2, BACKGROUND, mix(GREY, 0.12), mix(GREY, 0.3))):
+            top = frame * CELL_H
+            pen.rounded_rectangle([2 * scale, (top + 2) * scale, (CELL_W - 2) * scale - 1, (top + CELL_H - 2) * scale - 1],
+                                  radius=6 * scale, fill=fill + (255,), outline=outline + (255,), width=scale)
+            saved = draw
+            draw = pen
+            label(0, top + 3, name, ink + (255,), BAR[1] - 5)
+            draw = saved
+        strip.resize((CELL_W, 3 * CELL_H), Image.LANCZOS).save(os.path.join(folder, "grid_cell_%d_%d.png" % (x, y)), optimize=True)
     # The gold strip: a faint line between the eight pairs of knobs.
     for pair in range(1, 8):
         draw.line([pair * 160 * scale, 8 * scale, pair * 160 * scale, (STRIP - 8) * scale], fill=mix(GREY, 0.25), width=scale)
     image.resize((WIDTH, HEIGHT), Image.LANCZOS).save(OUT, optimize=True)
     # The ring that marks the selected cell (and nothing, for the others), and the button that
     # closes the selected cell's editor.
-    folder = os.path.dirname(OUT)
     Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0)).save(os.path.join(folder, "grid_sel_off.png"))
     ring = Image.new("RGBA", (CELL_W * scale, CELL_H * scale), (0, 0, 0, 0))
     ImageDraw.Draw(ring).rounded_rectangle([scale, scale, (CELL_W - 1) * scale - 1, (CELL_H - 1) * scale - 1], radius=7 * scale,

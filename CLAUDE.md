@@ -884,12 +884,26 @@ the room at the top; labels on the cells. Built so far, with no change to the pl
   double tap; both are set); whether the component over a bar keeps a touch from dragging it;
   whether the names are legible at this size and an 80 x 64 px cell (about 9 x 7.5 mm on a Force) is comfortable to hit;
   the gold strip's text; whether 105 focus stops make the cursor keys useless on this page.
-- **Not built:** telling a parameter at its default from one the patch has set (Jamie's first
-  point; wants a display parameter per cell kept by the plugin, lit / unlit / does not apply,
-  the kit's `Indicator`, with defaults from the firmware's init sound baked into
-  `grid_table.h`); mod-source cells lit when the source has a cable; second-press pads; the
+- **On the Force the same day (Jamie):** a touch opened the kit's full-screen overlay, which
+  often showed little more than the name; wanted a control on the page instead. So a cell is
+  now a `Button` of one radio group on a page-local value (`Local/106/gridsel`, 0 = none),
+  lit as a ring, and the selected cell's editor (name, value, a wide bar to drag, a close
+  button) takes the strip's place through `IndexedEnabling`. A double tap on the editor's text
+  still opens the overlay. Radio buttons on a `Local` value are from the SDK docs, unproven.
+- **Marking what a patch has set** (same day): `gen_grid.py` adds `standard` to each cell of
+  `grid_table.h`: the value an empty sound holds (`starter/INIT.XML`, i.e. the firmware's
+  `Sound::initParams`, read in subtractive and then FM mode by `matrix_table` with
+  `MATRIX_FM`), and for the sample pads, which an empty sound has none of, the value most
+  presets on the card hold. The plugin has a display parameter per pad, `"<name> *"`
+  (`kCellState`, 123 of them: standard / set / does not apply), kept by the worker
+  (`showCellStates`). On the page each cell is a three-frame film strip on that parameter,
+  drawn per cell by `make_grid.py`: nothing, the column's colour solid, or greyed out.
+  **"Standard" is the firmware's default, not a musical one**: unset parameters sit mid-way
+  (LPF Freq 25, every envelope stage 25), so most presets light those. The alternative,
+  one line in `gen_grid.py`, is the commonest value across the card. Jamie has not chosen.
+- **Not built:** mod-source cells lit when the source has a cable; second-press pads; the
   envelope overlay (`EnvelopeOverlay`) for the four cells of an envelope. A skin has no "go
-  to tab" action and a plugin cannot change tab: an overlay is the only way to edit in place.
+  to tab" action and a plugin cannot change tab.
 
 ### Sidechain steps (2026-11-18; in the simulators, not yet heard on a device)
 

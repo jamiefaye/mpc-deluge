@@ -518,7 +518,16 @@ def apply_grid(project, out_dir, params_json):
             raise sdk_build.BuildError("tabs.json grid: no parameter called \"%s\"" % param)
         x0, y0 = g.cell_origin(x, y)
         bx, by, bw, bh = g.BAR
-        children.append(entry(param + " bar", "Slider", bar(g.COLUMN_COLOURS[x], minimum < 0), bounds(x0 + bx, y0 + by, bw, bh), param))
+        # Under the bar, the cell's look: standard, set, or not for this sound (make_grid.py).
+        strip = "grid_cell_%d_%d.png" % (x, y)
+        with open(os.path.join(project, "skin-images", strip), "rb") as f, open(os.path.join(out_dir, "Plugin Skins", strip), "wb") as out:
+            out.write(f.read())
+        if param + " *" not in index:
+            raise sdk_build.BuildError("tabs.json grid: no parameter called \"%s *\"" % param)
+        children.append(entry(param + " state", "Image", {"version": 2, "imageType": "FilmStrip", "colour": "0", "image": strip,
+                                                          "numFrames": 3, "handleName": "Data"},
+                              bounds(x0, y0, g.CELL_W, g.CELL_H), param + " *"))
+        children.append(entry(param + " bar", "Slider", bar((0xf2, 0xf2, 0xf2), minimum < 0), bounds(x0 + bx, y0 + by, bw, bh), param))
         children.append(entry(param + " cell", "Button", radio("grid_sel", number), bounds(x0, y0, g.CELL_W, g.CELL_H, focus="Yes")))
         overlay = overlay_of(param)
         kind = "grid editor %s%s" % (overlay, " signed" if minimum < 0 else "")

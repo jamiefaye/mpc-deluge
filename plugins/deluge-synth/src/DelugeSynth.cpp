@@ -93,7 +93,11 @@ enum ParamIndex
     // Sidechain steps: one bar of sixteenths, each on or off. While the MPC plays, a step that
     // is on gives the engine a sidechain hit as the bar reaches it (see process()).
     kScStep,
-    kNumParams = kScStep + 16
+    // For the GRID page, one per grid pad, in grid_table.h's order: whether the pad stands at its
+    // standard value (0), has been set to something else (1), or does not apply to the sound
+    // (2). Display only: the worker keeps them (showCellStates) and nothing reads them back.
+    kCellState = kScStep + 16,
+    kNumParams = kCellState + grid::kNumCells
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
@@ -296,6 +300,9 @@ public:
             std::snprintf(name, sizeof name, "SC Step %d", step + 1);
             addParam(mpc::boolParam(id, name, false));
         }
+        for (int c = 0; c < grid::kNumCells; ++c)
+            addParam(mpc::choiceParam((std::string(grid::kCells[c].id) + "s").c_str(), (std::string(grid::kCells[c].name) + " *").c_str(),
+                                      std::vector<std::string>{"standard", "set", "-"}, 0));
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -1406,6 +1413,7 @@ private:
             applySave();
             drainForWaiter();
             showSnapshot();
+            showCellStates();
             tellHostNow();
             // Keep the diagnostics file a few seconds fresh while audio runs, so that it says
             // something useful after a crash or a reset too.
@@ -1507,6 +1515,20 @@ private:
         }
         showSamples(true);   // a pad can take an oscillator's file away (its type changed from Sample)
         showCables(changes);
+    }
+
+    // Worker thread: the GRID page's marks. From what the pads' parameters show, so a value on
+    // its way to the engine is marked at once; cheap enough to do on every turn of the worker.
+    void showCellStates()
+    {
+        for (int c = 0; c < grid::kNumCells; ++c)
+        {
+            const int state = !cellRelevant_[c].load(std::memory_order_relaxed) ? 2
+                              : shownValue(kFirstCell + c) != grid::kCells[c].standard ? 1 : 0;
+            if (getInt(kCellState + c) == state) continue;
+            set(kCellState + c, (float)state);
+            tellHostLater(kCellState + c);
+        }
     }
 
     // Worker thread: parameter m shows `value`, which is what the engine holds, unless the MPC
