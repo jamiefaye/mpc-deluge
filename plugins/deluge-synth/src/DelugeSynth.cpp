@@ -192,7 +192,11 @@ class DelugeSynth : public mpc::Plugin
 public:
     DelugeSynth() : mpc::Plugin(makeInfo())
     {
+        // How long starting up takes is timed, piece by piece, for diagnostics.txt: on a Force
+        // the first instance took about ten seconds to appear (Jamie, 2026-11-18).
+        const int64_t scanStart = nowMs();
         scanPresets();
+        statPresetScanMs_.store((int)(nowMs() - scanStart));
         addParam(mpc::floatParam("volume", "Volume", -40.0f, 12.0f, 0.0f, "dB", 1));
         // Preset is the position within the folder that Folder selects, not in the whole list
         // (Jamie, 2026-11-16): an MPC moves these a hundredth of their range per click of a
@@ -263,7 +267,9 @@ public:
         }
         // The sample file of each oscillator, chosen from Content/SAMPLES as a preset is from
         // Content/SYNTHS. File 0 is "none of these"; file n is sampleFiles_[n - 1].
+        const int64_t sampleScanStart = nowMs();
         scanSamples();
+        statSampleScanMs_.store((int)(nowMs() - sampleScanStart));
         for (int s = 0; s < 2; ++s)
         {
             const std::string id = "s" + std::to_string(s + 1), name = "S" + std::to_string(s + 1);
@@ -340,9 +346,11 @@ public:
         if (engineInstance_.load() < 0 && !triedForInstance_)
         {
             triedForInstance_ = true;
+            const int64_t engineStart = nowMs();
             EngineHold engine(-1);
             deluge_hosted::engineInit(mpc::contentFolder().c_str());   // only the first call starts it
             engineInstance_.store(deluge_hosted::engineNewInstance());
+            statEngineStartMs_.store((int)(nowMs() - engineStart));
         }
         if (engineInstance_.load() >= 0 && !worker_.joinable())
         {
@@ -1677,7 +1685,12 @@ private:
         std::string path = "SYNTHS/" + presets_[(size_t)wanted];
         const bool kept = !restoring && keptEdit_[(size_t)wanted].load() != 0;
         resync_.store(false);
+        const int64_t loadStart = nowMs();
         int error = deluge_hosted::engineLoadSynth(kept ? editPath(wanted).c_str() : path.c_str());
+        const int loadMs = (int)(nowMs() - loadStart);
+        if (loads_.load() == 0) statFirstLoadMs_.store(loadMs);
+        statLastLoadMs_.store(loadMs);
+        if (loadMs > statSlowestLoadMs_.load()) statSlowestLoadMs_.store(loadMs);
         if (error != 0 && kept)
         {
             keptEdit_[(size_t)wanted].store(0);
@@ -1999,7 +2012,7 @@ private:
         const std::string folder = mpc::pluginFolder();
         if (folder.empty()) return;
         std::lock_guard<std::mutex> lock(diagnosticsLock_);   // the MPC's thread and the worker both write it
-        char text[2400];
+        char text[2800];
         const uint64_t frames = statFrames_.load(), ns = statNs_.load();
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
@@ -2022,6 +2035,8 @@ private:
                       "tempo: the host last gave %.2f (0: never), the engine is at %.2f\n"
                       "sidechain steps: %u hits given; the host's position was last %.2f quarter notes (-1: it gives none)\n"
                       "edits kept on leaving a preset: %u this session\n"
+                      "start-up, in ms: listing %d presets %d, listing sample files %d, starting the engine and this instance %d;\n"
+                      "  loading a preset: the first %d, the last %d, the slowest %d\n"
                       "this preset's sample files: %d found by name in another folder, %d found nowhere (see missing-samples.txt)\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -2051,6 +2066,8 @@ private:
                       (double)statTempoGiven_.load(), (double)statTempo_.load(),
                       statScHits_.load(), (double)statPpq_.load(),
                       editsKept_.load(),
+                      (int)presets_.size(), statPresetScanMs_.load(), statSampleScanMs_.load(), statEngineStartMs_.load(),
+                      statFirstLoadMs_.load(), statLastLoadMs_.load(), statSlowestLoadMs_.load(),
                       samplesElsewhere_.load(), samplesMissing_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
@@ -2153,6 +2170,7 @@ private:
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
     std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f}, statPpq_{-1.0f};
     std::atomic<uint32_t> statScHits_{0};
+    std::atomic<int> statPresetScanMs_{0}, statSampleScanMs_{0}, statEngineStartMs_{0}, statFirstLoadMs_{0}, statLastLoadMs_{0}, statSlowestLoadMs_{0};
     // Edits kept for the session: which presets have an edit file, whether the loaded sound has
     // been changed since it was loaded, and (worker only) whether it came from a project.
     std::unique_ptr<std::atomic<uint8_t>[]> keptEdit_;
