@@ -1735,12 +1735,15 @@ private:
     }
 
     // --- where is the project? (a probe, 2026-11-18) ----------------------------------------------
-    // A project converted from a Deluge song would keep a synth's samples in the project's own
-    // data folder, and nothing tells a plugin where that is. Three things are looked at, when
+    // It would be useful to read a sound's samples from the project's own data folder, and
+    // nothing tells a plugin where that is. Three things are looked at, when
     // the plugin starts and again when a project's state arrives, and written to
     // diagnostics.txt: what the host answers to the VST question "which directory?", the
     // process's working directory, and any file the MPC application has open whose name says
     // project (".xpj", "ProjectData"). Not the audio thread.
+    // What a Force said (2026-11-18, a project loaded from a USB stick): the host's directory
+    // is the plugin's own VST folder, the working directory is "/", and no project file is open
+    // by the time the state arrives. So none of the three finds the project.
     void probeProjectFolder(char* out, size_t outSize)
     {
         out[0] = 0;

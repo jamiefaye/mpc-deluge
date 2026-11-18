@@ -969,6 +969,19 @@ block's size, so the MPC does lock what a plugin maps; after it 819 MB with noth
 Force's "unlimited plugin tracks" and "unlimited plugin instances" settings, which brought the
 empty figure down from 67%.) Memory once used by samples is still not given back.
 
+### What the Force tells a plugin about the project: nothing (2026-11-18)
+
+A probe in `diagnostics.txt` (`probeProjectFolder`), read back from the Force with
+`mpc_remote.py export` after a project on a USB stick was loaded: the VST "which directory?"
+query (`audioMasterGetDirectory`) answers with the plugin's own `VST` folder; the working
+directory is `/`; the MPC application has no `.xpj` or `ProjectData` file open when the state
+arrives. So a plugin cannot learn where its project is, and anything it should read has to be
+under its own folder or found by searching. The same file showed, from the device: listing
+835 presets takes 165 ms and the sample files 108 ms for the first instance (15 and 4 for the
+second), a preset load 2 ms, 4 MB of the engine's block in use with two instances, the whole
+MPC application at 646 MB; and **the Force does give a song position** (0.00 while stopped,
+not "none"), which the sidechain steps need.
+
 ### ABOUT, and fixed text in a skin (2026-11-18)
 
 A credits page, last on the sixth key (`tabs.json` "about": the lines, with size and colour;
