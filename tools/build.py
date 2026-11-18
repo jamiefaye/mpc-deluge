@@ -635,6 +635,65 @@ def apply_grid(project, out_dir, params_json):
     sdk_build.log("  tabs.json: the %s page, %d cells and 16 gold knobs" % (grid["name"], len(named)))
 
 
+def apply_about(project, out_dir):
+    """tabs.json "about": {"name": "ABOUT", "after": "<the last page on a key>", "lines": [...]}: a
+    page of fixed text, centred, one label per line: the credits. A line is a string, or
+    [string, font height] or [string, font height, "AARRGGBB"]; "" leaves a gap; {version}
+    stands for plugin.json's version. Lines do not wrap: keep them under about 90 characters."""
+    spec_path = os.path.join(project, "tabs.json")
+    tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
+    if not (os.path.isfile(spec_path) and os.path.isfile(tui_path)):
+        return
+    spec = json.load(open(spec_path))
+    about = spec.get("about")
+    if not about:
+        return
+    place = [(k, names.index(about["after"])) for k, names in enumerate(spec["keys"]) if about["after"] in names]
+    if not place or place[0][1] != len(spec["keys"][place[0][0]]) - 1:
+        raise sdk_build.BuildError("tabs.json about: \"%s\" must be the last page on a function key" % about.get("after"))
+    key, sub = place[0]
+    version = json.load(open(os.path.join(project, "plugin.json")))["version"]
+    tui = open(tui_path, encoding="utf-8").read()
+    children, y = [], 40
+    for line in about["lines"]:
+        text, height, colour = (line if isinstance(line, list) else [line]) + [None, None][:3 - len(line if isinstance(line, list) else [line])]
+        height = height or 24
+        if text:
+            style = {"version": 1, "font": {"version": 1, "name": "Titillium Web", "style": "SemiBold" if height >= 30 else "Regular", "height": float(height)},
+                     "colour": colour or "fff2f2f2", "justification": "horizontallyCentred verticallyCentred", "case": "Original"}
+            children.append({"version": 2,
+                             "componentData": {"version": 1, "name": "line %d" % len(children), "type": "Label",
+                                               "data": {"version": 1, "textStyle": style, "type": "Text", "handleName": "Invalid",
+                                                        "text": text.replace("{version}", version)}},
+                             "handle remapping": {"version": 1, "map": []},
+                             "bounds": {"version": 1, "acceptsHWFocus": "No", "showWhenDataModelInvalid": "Show", "whenVisible": "Always",
+                                        "boundsType": "Absolute", "bounds": "20 %d 1240 %d" % (y, int(height * 1.5))}})
+        y += int(height * 1.5)
+    if y > 620:
+        raise sdk_build.BuildError("tabs.json about: the lines need %d px of the page's 628" % y)
+    background = {"version": 1, "focussed": {"version": 1, "colour": "ff1e1d1e", "image": ""},
+                  "unfocussed": {"version": 1, "colour": "ff1e1d1e", "image": ""}}
+    tab = {"version": 1, "tabName": about["name"], "fnKeyIndex": key, "fnKeySubIndex": sub + 1,
+           "componentDefinition": {"version": 2, "actions": [], "backgroundData": background, "ignoreMousePresses": False,
+                                   "disableCoarseDataWheel": False, "componentsData": children},
+           "qlinkBoundsData": []}
+    after = re.search(r'"tabName"\s*:\s*"%s"' % re.escape(about["after"]), tui)
+    start = tui.rfind("{", 0, after.start())
+    end = matching(tui, start)
+    open(tui_path, "w", encoding="utf-8").write(tui[:end] + ",\n" + json.dumps(tab) + tui[end:])
+    # An entry in Q-Links.json like every other page's, with no knob assigned.
+    q_path = os.path.join(out_dir, "Plugin Skins", "Q-Links.json")
+    q = open(q_path, encoding="utf-8").read()
+    m = re.search(r'\{\s*"Tab"\s*:\s*%d\s*,\s*"SubTab"\s*:\s*%d\s*,' % (key + 1, sub + 1), q)
+    if not m:
+        raise sdk_build.BuildError("tabs.json about: Q-Links.json has no entry for \"%s\"" % about["after"])
+    end = matching(q, m.start())
+    copy = re.sub(r'("SubTab"\s*:\s*)\d+', lambda n: n.group(1) + str(sub + 2), q[m.start():end], count=1)
+    copy = re.sub(r'("Q-Link \d+"\s*:\s*)-?\d+', lambda n: n.group(1) + "-1", copy)
+    open(q_path, "w", encoding="utf-8").write(q[:end] + ",\n" + copy + q[end:])
+    sdk_build.log("  tabs.json: the %s page, %d lines" % (about["name"], len(children)))
+
+
 _make_skins = sdk_build.make_skins
 
 
@@ -644,6 +703,7 @@ def make_skins(project, out_dir, params_json, no_ui):
         apply_tabs(project, out_dir, params_json)
         apply_buttons(project, out_dir, params_json)
         apply_grid(project, out_dir, params_json)
+        apply_about(project, out_dir)
     return made
 
 
