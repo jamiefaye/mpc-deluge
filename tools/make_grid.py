@@ -111,6 +111,21 @@ def main():
     for pair in range(1, 8):
         draw.line([pair * 160 * scale, 8 * scale, pair * 160 * scale, (STRIP - 8) * scale], fill=mix(GREY, 0.25), width=scale)
     image.resize((WIDTH, HEIGHT), Image.LANCZOS).save(OUT, optimize=True)
+    # The ring that marks the selected cell (and nothing, for the others), and the button that
+    # closes the selected cell's editor.
+    folder = os.path.dirname(OUT)
+    Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0)).save(os.path.join(folder, "grid_sel_off.png"))
+    ring = Image.new("RGBA", (CELL_W * scale, CELL_H * scale), (0, 0, 0, 0))
+    ImageDraw.Draw(ring).rounded_rectangle([scale, scale, (CELL_W - 1) * scale - 1, (CELL_H - 1) * scale - 1], radius=7 * scale,
+                                           outline=(255, 255, 255, 255), width=3 * scale)
+    ring.resize((CELL_W, CELL_H), Image.LANCZOS).save(os.path.join(folder, "grid_sel_on.png"))
+    for state, fill in (("off", (0x45, 0x44, 0x46, 255)), ("on", (0x45, 0x44, 0x46, 255))):
+        close = Image.new("RGBA", (80 * scale, 80 * scale), (0, 0, 0, 0))
+        d = ImageDraw.Draw(close)
+        d.rounded_rectangle([0, 0, 80 * scale - 1, 80 * scale - 1], radius=12 * scale, fill=fill)
+        for a0, b0, a1, b1 in ((26, 26, 54, 54), (26, 54, 54, 26)):
+            d.line([a0 * scale, b0 * scale, a1 * scale, b1 * scale], fill=(255, 255, 255, 255), width=5 * scale)
+        close.resize((80, 80), Image.LANCZOS).save(os.path.join(folder, "grid_close_%s.png" % state))
     print("wrote", os.path.relpath(OUT, HERE), "(%d cells with a parameter)" % len(named))
 
 

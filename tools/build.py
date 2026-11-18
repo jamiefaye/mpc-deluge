@@ -390,12 +390,10 @@ def apply_grid(project, out_dir, params_json):
     geometry), and over it
       - in the strip at the top, the sixteen gold knobs as eight pairs, upper knob over lower:
         the knob's text and a bar, which the Q-Links control on this page as on the other;
-      - in each cell that is a parameter, a bar showing its value, and over the whole cell an
-        invisible component that takes the touch and opens the overlay the parameter's control
-        on its own page opens (a knob or a list). The bar is the parameter's own slider, which
-        a touch would drag; the component above it is there so that it never gets one.
-    Not seen on a device yet: whether a single touch opens an overlay (the kit only ever uses a
-    double tap; both are set), and whether the component above really keeps touches from the bar."""
+      - in each cell that is a parameter, a bar showing its value, and over it a button that
+        selects the cell; the selected cell's editor takes the strip's place (see the code).
+    Seen on a Force 2026-11-18 in its first form, where a touch opened the kit's full-screen
+    overlay: Jamie wanted the control on the page instead, hence the editor in the strip."""
     spec_path = os.path.join(project, "tabs.json")
     tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
     q_path = os.path.join(out_dir, "Plugin Skins", "Q-Links.json")
@@ -493,22 +491,51 @@ def apply_grid(project, out_dir, params_json):
             raise sdk_build.BuildError("tabs.json grid: no parameter called \"%s\"" % param)
         children.append(entry(param, "grid gold", {"version": 1, "handleName": "Data"},
                               bounds((knob // 2) * gold_w, 4 + (knob % 2) * gold_h, gold_w, gold_h, focus="Yes", show="Hide"), param))
-    # The cells. A bar first, then what takes the touch, so the second is on top.
-    for (x, y), (param, minimum) in sorted(named.items(), key=lambda item: (-item[0][1], item[0][0])):
+    # The cells. Touching one selects it: every cell is a button of one radio group on a value
+    # that lives in the page only ("Local"; 0 is no cell), lit as a ring round the cell. The
+    # selected cell's editor (name, value, a wide bar to drag) then shows in the strip, over the
+    # gold knobs, until its close button sets the value back to 0. A double tap on the editor's
+    # text opens the full-screen overlay the parameter's own page uses (the list, for a choice).
+    # In a cell the bar comes first and the button after, so the button is on top and takes
+    # the touch that would otherwise drag the bar.
+    for name in ("grid_sel_on.png", "grid_sel_off.png", "grid_close_on.png", "grid_close_off.png"):
+        with open(os.path.join(project, "skin-images", name), "rb") as f, open(os.path.join(out_dir, "Plugin Skins", name), "wb") as out:
+            out.write(f.read())
+    ordered = sorted(named.items(), key=lambda item: (-item[0][1], item[0][0]))
+    steps = len(ordered) + 1
+    selected = "Local/%d/gridsel" % steps
+
+    def radio(image, number):
+        return {"version": 2, "onImage": image + "_on.png", "offImage": image + "_off.png", "buttonId": number,
+                "numButtonsInGroup": steps, "handleName": selected, "gestureBehaviour": "Instant"}
+
+    big = dict(text, font={"version": 1, "name": "Titillium Web", "style": "SemiBold", "height": 34.0},
+               justification="left verticallyCentred", case="Upper Case")
+    value = dict(big, font={"version": 1, "name": "Titillium Web", "style": "Regular", "height": 40.0}, colour="ff" + accent[2:], case="Original")
+    editors = []
+    for number, ((x, y), (param, minimum)) in enumerate(ordered, 1):
         if param not in index:
             raise sdk_build.BuildError("tabs.json grid: no parameter called \"%s\"" % param)
         x0, y0 = g.cell_origin(x, y)
         bx, by, bw, bh = g.BAR
         children.append(entry(param + " bar", "Slider", bar(g.COLUMN_COLOURS[x], minimum < 0), bounds(x0 + bx, y0 + by, bw, bh), param))
+        children.append(entry(param + " cell", "Button", radio("grid_sel", number), bounds(x0, y0, g.CELL_W, g.CELL_H, focus="Yes")))
         overlay = overlay_of(param)
-        kind = "grid cell " + overlay
+        kind = "grid editor %s%s" % (overlay, " signed" if minimum < 0 else "")
         if kind not in definitions:
             definitions[kind] = component(
-                actions(("Mouse Down", "Show Overlay", overlay), ("Double Click", "Show Overlay", overlay),
-                        ("Enter Pressed", "Show Overlay", overlay)),
-                [focus_ring(g.CELL_W, g.CELL_H)])
-        children.append(entry(param, kind, {"version": 1, "handleName": "Data"},
-                              bounds(x0, y0, g.CELL_W, g.CELL_H, focus="Yes", show="Hide"), param))
+                actions(("Double Click", "Show Overlay", overlay), ("Enter Pressed", "Show Overlay", overlay)),
+                [entry("name", "Label", {"version": 1, "textStyle": big, "type": "Name", "handleName": "Data"}, bounds(24, 10, 420, 44)),
+                 entry("value", "Label", {"version": 1, "textStyle": value, "type": "Value", "handleName": "Data"}, bounds(24, 54, 420, 52)),
+                 entry("bar", "Slider", bar((0xf2, 0xf2, 0xf2), minimum < 0), bounds(460, 26, 700, 64, focus="Yes")),
+                 entry("close", "Button", radio("grid_close", 0), bounds(1184, 18, 80, 80, focus="Yes"))])
+            definitions[kind]["backgroundData"] = {"version": 1, "focussed": {"version": 1, "colour": "ff2c2b2c", "image": ""},
+                                                   "unfocussed": {"version": 1, "colour": "ff2c2b2c", "image": ""}}
+        where = bounds(0, 0, g.WIDTH, g.STRIP, focus="Children")
+        where["version"] = 2
+        where["additionalInvalidatingHandles"] = ["IndexedEnabling/%d/%d/%s" % (number, steps, selected)]
+        editors.append(entry(param, kind, {"version": 1, "handleName": "Data"}, where, param))
+    children += editors
     page = component([], children)
     page["backgroundData"] = {"version": 1, "focussed": {"version": 1, "colour": "ff1e1d1e", "image": ""},
                               "unfocussed": {"version": 1, "colour": "ff1e1d1e", "image": ""}}
