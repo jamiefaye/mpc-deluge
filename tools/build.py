@@ -565,7 +565,7 @@ def apply_grid(project, out_dir, params_json):
            "componentDefinition": page, "qlinkBoundsData": []}
 
     # "mini": {"page": "MAIN", "at": "x y"}: a small copy of the grid on another page, cells
-    # without names, showing each pad's state (the same "<name> *" parameters) and nothing else:
+    # without names, showing each pad's state (the same "<name> *" parameters) and its value:
     # the shape of the patch, redrawn as presets are stepped through. Not a control.
     small = grid.get("mini")
     if small:
@@ -576,6 +576,20 @@ def apply_grid(project, out_dir, params_json):
             parts.append(entry(param + " mini", "Image", {"version": 2, "imageType": "FilmStrip", "colour": "0", "image": "grid_mini_%d.png" % x,
                                                           "numFrames": 3, "handleName": "Data"},
                                bounds(left + x * g.MINI_W, top + (7 - y) * g.MINI_H, g.MINI_W, g.MINI_H), param + " *"))
+            # The value, roughly: a thin bar along the cell's foot, hidden while the pad does not
+            # apply to the sound (state 2 of 3).
+            where = bounds(left + x * g.MINI_W + 7, top + (7 - y) * g.MINI_H + 21, g.MINI_W - 14, 6)
+            where["version"] = 2
+            where["additionalInvalidatingHandles"] = ["RangedEnabling/0/1/3/Parameter %d" % index[param + " *"]]
+            thin = bar((0xf2, 0xf2, 0xf2), named[(x, y)][1] < 0)
+            thin["backgroundColour"] = "59000000"
+            parts.append(entry(param + " mini bar", "Slider", thin, where, param))
+        # The bars are the parameters' own sliders, which a touch would drag. This is a picture,
+        # not a control surface (that is the GRID page), so an empty component lies over it all
+        # and takes the touches.
+        definitions["grid mini cover"] = component([], [])
+        parts.append(entry("mini cover", "grid mini cover", {"version": 1, "handleName": "Data"},
+                           bounds(left, top, 16 * g.MINI_W, 8 * g.MINI_H)))
         for name in ["grid_mini_bg.png"] + ["grid_mini_%d.png" % x for x in range(16)]:
             with open(os.path.join(project, "skin-images", name), "rb") as f, open(os.path.join(out_dir, "Plugin Skins", name), "wb") as out:
                 out.write(f.read())
