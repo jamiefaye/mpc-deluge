@@ -1371,6 +1371,75 @@
           "widget": "knob"
         }
       ]
+    },
+    {
+      "name": "SC STEPS",
+      "controls": [
+        {
+          "param": "SC Step 1",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 2",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 3",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 4",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 5",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 6",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 7",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 8",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 9",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 10",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 11",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 12",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 13",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 14",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 15",
+          "widget": "switch"
+        },
+        {
+          "param": "SC Step 16",
+          "widget": "switch"
+        }
+      ]
     }
   ],
   "style": {

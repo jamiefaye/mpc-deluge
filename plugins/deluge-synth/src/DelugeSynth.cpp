@@ -90,7 +90,10 @@ enum ParamIndex
     kPresetBack10 = kCable + 24 * 4,
     kPresetOn10,
     kSampleState,           // shows whether the preset's sample files were found
-    kNumParams
+    // Sidechain steps: one bar of sixteenths, each on or off. While the MPC plays, a step that
+    // is on gives the engine a sidechain hit as the bar reaches it (see process()).
+    kScStep,
+    kNumParams = kScStep + 16
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
@@ -286,6 +289,13 @@ public:
         addParam(mpc::boolParam("presetback10", "Preset -10", false));
         addParam(mpc::boolParam("preseton10", "Preset +10", false));
         addParam(mpc::intParam("samplestate", "Samples", 0, 999, 0));
+        for (int step = 0; step < 16; ++step)
+        {
+            char id[16], name[16];
+            std::snprintf(id, sizeof id, "scstep%d", step + 1);
+            std::snprintf(name, sizeof name, "SC Step %d", step + 1);
+            addParam(mpc::boolParam(id, name, false));
+        }
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -1147,10 +1157,47 @@ public:
         }
         const float targetGain = dbToGain(get(kVolume));
 
+        // Sidechain steps. A Deluge's sidechain is hit by a kit row playing in the same song;
+        // here each instance is a song with one synth in it, so the hits come from a pattern of
+        // sixteen steps laid over the MPC's bar. Where in this block does a sixteenth begin?
+        // The position the MPC gives is the block's first frame, in quarter notes.
+        int hitFrames[8];
+        int numHits = 0;
+        statPpq_.store(ctx.transport.valid && ctx.transport.ppqValid ? (float)ctx.transport.ppqPos : -1.0f, std::memory_order_relaxed);
+        if (ctx.transport.valid && ctx.transport.ppqValid && ctx.transport.playing && ctx.transport.bpm > 0.0)
+        {
+            const double sixteenth = (ctx.transport.ppqPos - ctx.transport.barStartPpq) * 4.0;   // since the bar began
+            const double framesPerSixteenth = ctx.sampleRate * 60.0 / ctx.transport.bpm / 4.0;
+            double next = std::ceil(sixteenth - 1e-9);
+            // A position that has not moved on from the last block's (some hosts repeat it while
+            // looping back) must not hit the same step twice.
+            if (ctx.transport.ppqPos == lastHitPpq_) next += 1.0;
+            for (; numHits < 8; next += 1.0)
+            {
+                // Rounded down, so that a step a fraction of a frame before the block ends falls in
+                // this block: the next block starts past it and would not see it.
+                const int at = (int)std::floor((next - sixteenth) * framesPerSixteenth);
+                if (at >= numFrames) break;
+                const int step = (int)((long long)next % 16 + 16) % 16;
+                if (get(kScStep + step) > 0.5f)
+                {
+                    hitFrames[numHits++] = std::max(0, at);
+                    if (at <= 0) lastHitPpq_ = ctx.transport.ppqPos;
+                }
+            }
+        }
+        if (numHits != 0) statScHits_.fetch_add((uint32_t)numHits, std::memory_order_relaxed);
+
         int frame = 0;
         int midiIndex = 0;
+        int hitIndex = 0;
         while (frame < numFrames)
         {
+            while (hitIndex < numHits && hitFrames[hitIndex] <= frame)
+            {
+                deluge_hosted::engineSideChainHit();
+                ++hitIndex;
+            }
             while (midiIndex < ctx.numMidiEvents && ctx.midi[midiIndex].sampleOffset <= frame)
             {
                 handleMidi(ctx.midi[midiIndex]);
@@ -1159,6 +1206,7 @@ public:
             int segmentEnd = numFrames;
             if (midiIndex < ctx.numMidiEvents)
                 segmentEnd = mpc::clamp(ctx.midi[midiIndex].sampleOffset, frame + 1, numFrames);
+            if (hitIndex < numHits) segmentEnd = std::min(segmentEnd, std::max(hitFrames[hitIndex], frame + 1));
 
             while (frame < segmentEnd)
             {
@@ -1814,7 +1862,7 @@ private:
         const std::string folder = mpc::pluginFolder();
         if (folder.empty()) return;
         std::lock_guard<std::mutex> lock(diagnosticsLock_);   // the MPC's thread and the worker both write it
-        char text[2100];
+        char text[2400];
         const uint64_t frames = statFrames_.load(), ns = statNs_.load();
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
@@ -1835,6 +1883,7 @@ private:
                       "saved as a Deluge preset %u times, last as \"%s\", error %d\n"
                       "firmware error stops (its own consistency checks; should be 0): %d%s%s\n"
                       "tempo: the host last gave %.2f (0: never), the engine is at %.2f\n"
+                      "sidechain steps: %u hits given; the host's position was last %.2f quarter notes (-1: it gives none)\n"
                       "this preset's sample files: %d found by name in another folder, %d found nowhere (see missing-samples.txt)\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -1862,6 +1911,7 @@ private:
                       saves_.load(), saveText_[saveTextNow_.load() & 1], saveError_.load(),
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_,
                       (double)statTempoGiven_.load(), (double)statTempo_.load(),
+                      statScHits_.load(), (double)statPpq_.load(),
                       samplesElsewhere_.load(), samplesMissing_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
@@ -1962,7 +2012,9 @@ private:
     float   smoothedGain_ = 1.0f;
 
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
-    std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f};
+    std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f}, statPpq_{-1.0f};
+    std::atomic<uint32_t> statScHits_{0};
+    double lastHitPpq_ = -1.0;   // process() only
     std::atomic<uint64_t> statNs_{0}, statFrames_{0};
     std::atomic<float>    statPeak_{0.0f};
     std::atomic<uint32_t> statClipped_{0}, statSaves_{0}, statRestores_{0}, statRestoresWithoutKnobs_{0}, statWaitTimeouts_{0};

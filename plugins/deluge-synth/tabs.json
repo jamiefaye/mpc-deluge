@@ -1,5 +1,5 @@
 {
-  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset. grid: one more page after the named one on its key, the Deluge's shortcut grid as a picture with a bar in every cell and a touch that opens the cell's parameter, under the gold knobs (tools/make_grid.py draws it, apply_grid in tools/build.py builds it). ownText: parameters whose list of choices is found when the plugin starts (folders, presets, sample files), which the skin must not carry a copy of.",
+  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here Volume, down out of their way. programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset. SC STEPS: the sidechain pattern, sixteen steps in one row (tools/make_steps.py draws them). grid: one more page after the named one on its key, the Deluge's shortcut grid as a picture with a bar in every cell and a touch that opens the cell's parameter, under the gold knobs (tools/make_grid.py draws it, apply_grid in tools/build.py builds it). ownText: parameters whose list of choices is found when the plugin starts (folders, presets, sample files), which the skin must not carry a copy of.",
   "keys": [
     [
       "MAIN",
@@ -30,7 +30,8 @@
     ],
     [
       "MOD FX",
-      "REVERB"
+      "REVERB",
+      "SC STEPS"
     ]
   ],
   "grid": {
@@ -93,6 +94,70 @@
     "Preset +10": {
       "image": "arrow_down2",
       "bounds": "1099 125 105 80"
+    },
+    "SC Step 1": {
+      "image": "step_1",
+      "bounds": "0 60 80 160"
+    },
+    "SC Step 2": {
+      "image": "step_2",
+      "bounds": "80 60 80 160"
+    },
+    "SC Step 3": {
+      "image": "step_3",
+      "bounds": "160 60 80 160"
+    },
+    "SC Step 4": {
+      "image": "step_4",
+      "bounds": "240 60 80 160"
+    },
+    "SC Step 5": {
+      "image": "step_5",
+      "bounds": "320 60 80 160"
+    },
+    "SC Step 6": {
+      "image": "step_6",
+      "bounds": "400 60 80 160"
+    },
+    "SC Step 7": {
+      "image": "step_7",
+      "bounds": "480 60 80 160"
+    },
+    "SC Step 8": {
+      "image": "step_8",
+      "bounds": "560 60 80 160"
+    },
+    "SC Step 9": {
+      "image": "step_9",
+      "bounds": "640 60 80 160"
+    },
+    "SC Step 10": {
+      "image": "step_10",
+      "bounds": "720 60 80 160"
+    },
+    "SC Step 11": {
+      "image": "step_11",
+      "bounds": "800 60 80 160"
+    },
+    "SC Step 12": {
+      "image": "step_12",
+      "bounds": "880 60 80 160"
+    },
+    "SC Step 13": {
+      "image": "step_13",
+      "bounds": "960 60 80 160"
+    },
+    "SC Step 14": {
+      "image": "step_14",
+      "bounds": "1040 60 80 160"
+    },
+    "SC Step 15": {
+      "image": "step_15",
+      "bounds": "1120 60 80 160"
+    },
+    "SC Step 16": {
+      "image": "step_16",
+      "bounds": "1200 60 80 160"
     }
   },
   "big": {

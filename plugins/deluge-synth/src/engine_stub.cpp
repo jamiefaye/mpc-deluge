@@ -81,6 +81,7 @@ int engineCurrentInstance() {
 }
 
 void engineSetTempo(float) {}
+void engineSideChainHit() {}
 float engineTempo() {
 	return 120.0f;
 }

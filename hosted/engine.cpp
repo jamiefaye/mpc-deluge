@@ -615,6 +615,12 @@ float engineTempo() {
 	return song != nullptr ? song->calculateBPM() : 0.0f;
 }
 
+void engineSideChainHit() {
+	// Full strength, which is what a drum loaded from the sample browser sends
+	// (SampleBrowser: sideChainSendLevel = 2147483647). engineRender() clears it after one cycle.
+	AudioEngine::registerSideChainHit(2147483647);
+}
+
 int engineLoadSynth(const char* presetPath) {
 	InEngine inEngine;
 	FilePointer filePointer;

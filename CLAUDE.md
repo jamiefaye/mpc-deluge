@@ -891,6 +891,30 @@ the room at the top; labels on the cells. Built so far, with no change to the pl
   envelope overlay (`EnvelopeOverlay`) for the four cells of an envelope. A skin has no "go
   to tab" action and a plugin cannot change tab: an overlay is the only way to edit in place.
 
+### Sidechain steps (2026-11-18; in the simulators, not yet heard on a device)
+
+Jamie: "faking sidechain": a Deluge's sidechain is hit by a kit row in the same song, and an
+instance here is a song with one synth and no kit.
+
+- **`engineSideChainHit()`** is `AudioEngine::registerSideChainHit` at full strength (what a
+  drum from the sample browser sends). Everything after that is the firmware's: the sound's
+  own sidechain envelope (the SC Attack, Release, Shape and Sync pads) and how far it ducks
+  (**SC Ducking**, on REVERB: positive ducks, negative swells). **Most factory presets have no
+  ducking amount**, so the steps do nothing audible until SC Ducking is turned up.
+- **Sixteen parameters `SC Step 1..16`** (page SC STEPS, last on the sixth key, one row of
+  picture buttons from `tools/make_steps.py`): one bar of sixteenths. While the MPC plays,
+  `process()` finds where sixteenths begin in the block from `ctx.transport` (`ppqPos`,
+  `barStartPpq`, tempo) and gives a hit at that frame for a step that is on. Step = sixteenths
+  since the bar began, modulo 16, so a bar that is not 4/4 repeats or cuts the row.
+- **Unknown until it runs on the Force:** whether the MPC fills in the position at all
+  (`diagnostics.txt`: "sidechain steps: N hits given; the host's position was last ...", -1
+  when it gives none), and how it behaves when a sequence loops. The SDK's simulator has no
+  moving transport, so the plugin's timing code has only been read, not run.
+- `tests/sidechain_hit.cpp <root> <presets>` holds a note, gives one hit and compares levels;
+  `DUCK=3000` sets SC Ducking first. With it four factory presets drop 4 to 13 dB and recover.
+- Ideas kept for later (Jamie): hits from a kit, if kits are ever added; a reserved MIDI note
+  as a second way to trigger, for patterns longer than a bar.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

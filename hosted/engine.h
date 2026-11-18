@@ -45,6 +45,11 @@ int engineCurrentInstance();
 void engineSetTempo(float beatsPerMinute);
 // The tempo in effect.
 float engineTempo();
+// A hit on the sidechain, as a kit row with "send to sidechain" gives on a Deluge when it plays:
+// from the next render on, the current instance's sound ducks by its own sidechain settings
+// (attack, release, shape, sync, and the volume-ducking amount). There is no kit here to send
+// one, so the plugin does, from the host's bar position. For the audio thread.
+void engineSideChainHit();
 
 // Loads a SYNTH preset (path relative to the root, e.g. "SYNTHS/SYNT100.XML") into a new clip, the
 // way the firmware sets up a song's first clip. Returns 0, or the firmware's Error code.
