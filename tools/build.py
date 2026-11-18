@@ -527,20 +527,30 @@ def apply_grid(project, out_dir, params_json):
         children.append(entry(param + " state", "Image", {"version": 2, "imageType": "FilmStrip", "colour": "0", "image": strip,
                                                           "numFrames": 3, "handleName": "Data"},
                               bounds(x0, y0, g.CELL_W, g.CELL_H), param + " *"))
-        children.append(entry(param + " bar", "Slider", bar((0xf2, 0xf2, 0xf2), minimum < 0), bounds(x0 + bx, y0 + by, bw, bh), param))
-        children.append(entry(param + " cell", "Button", radio("grid_sel", number), bounds(x0, y0, g.CELL_W, g.CELL_H, focus="Yes")))
+        # The cell proper is a component of its own, as the kit's controls are: it is what takes
+        # the hardware focus when touched (a bare button did not: on a Force the focus stayed on
+        # the MPC's plugin selector, and a push of the data wheel opened that, 2026-11-18), so
+        # the data wheel then turns this parameter and a push opens its full-screen editor.
         overlay = overlay_of(param)
+        definitions["grid cell %d" % number] = component(
+            actions(("Enter Pressed", "Show Overlay", overlay)),
+            [focus_ring(g.CELL_W, g.CELL_H),
+             entry("bar", "Slider", bar((0xf2, 0xf2, 0xf2), minimum < 0), bounds(bx, by, bw, bh)),
+             entry("select", "Button", radio("grid_sel", number), bounds(0, 0, g.CELL_W, g.CELL_H))])
+        children.append(entry(param, "grid cell %d" % number, {"version": 1, "handleName": "Data"},
+                              bounds(x0, y0, g.CELL_W, g.CELL_H, focus="Yes"), param))
         kind = "grid editor %s%s" % (overlay, " signed" if minimum < 0 else "")
         if kind not in definitions:
             definitions[kind] = component(
                 actions(("Double Click", "Show Overlay", overlay), ("Enter Pressed", "Show Overlay", overlay)),
-                [entry("name", "Label", {"version": 1, "textStyle": big, "type": "Name", "handleName": "Data"}, bounds(24, 10, 420, 44)),
+                [focus_ring(g.WIDTH, g.STRIP),
+                 entry("name", "Label", {"version": 1, "textStyle": big, "type": "Name", "handleName": "Data"}, bounds(24, 10, 420, 44)),
                  entry("value", "Label", {"version": 1, "textStyle": value, "type": "Value", "handleName": "Data"}, bounds(24, 54, 420, 52)),
-                 entry("bar", "Slider", bar((0xf2, 0xf2, 0xf2), minimum < 0), bounds(460, 26, 700, 64, focus="Yes")),
-                 entry("close", "Button", radio("grid_close", 0), bounds(1184, 18, 80, 80, focus="Yes"))])
+                 entry("bar", "Slider", bar((0xf2, 0xf2, 0xf2), minimum < 0), bounds(460, 26, 700, 64)),
+                 entry("close", "Button", radio("grid_close", 0), bounds(1184, 18, 80, 80))])
             definitions[kind]["backgroundData"] = {"version": 1, "focussed": {"version": 1, "colour": "ff2c2b2c", "image": ""},
                                                    "unfocussed": {"version": 1, "colour": "ff2c2b2c", "image": ""}}
-        where = bounds(0, 0, g.WIDTH, g.STRIP, focus="Children")
+        where = bounds(0, 0, g.WIDTH, g.STRIP, focus="Yes")
         where["version"] = 2
         where["additionalInvalidatingHandles"] = ["IndexedEnabling/%d/%d/%s" % (number, steps, selected)]
         editors.append(entry(param, kind, {"version": 1, "handleName": "Data"}, where, param))
