@@ -948,7 +948,7 @@ or damping (they belong to the song: a voice that set "Time" failed the read-bac
 "Oscillator sync" takes 1, not "On"; an envelope's seconds in `voices.json` are Tone.js's and
 come out far shorter than they read, so long tails are set as steps in "pads".
 
-### Memory on the Force (2026-11-18; a fix built, not yet confirmed on the device)
+### Memory on the Force (2026-11-18; fixed, confirmed on the device)
 
 Jamie saw a low-memory warning on the Force once, with Deluge Synth projects loaded; an empty
 project already shows 67% of memory used. The engine maps one 260 MB block when the first
@@ -962,7 +962,12 @@ memory only once used. The largest preset in Jamie's library needs 38 MB of samp
 the block's memory in use, the whole application's, and how long start-up and preset loads
 take (a project of three instances took about ten seconds to open its first item on the
 Force; unexplained; a two-instance project opens at normal speed). In the emulators: 0 to 8 MB of the block in use after the simulator's run.
-**Whether the Force really locks memory, and whether this cures the warning, is not known.**
+**Confirmed on the Force the same day (Jamie's readings of memory used, of 2.0 GB):** before
+the fix 830 MB with nothing loaded and 1.1 GB with a three-instance project, a rise of the
+block's size, so the MPC does lock what a plugin maps; after it 819 MB with nothing loaded,
+809 with a two-instance project and 831 with the three-instance one. (Jamie had also switched off the
+Force's "unlimited plugin tracks" and "unlimited plugin instances" settings, which brought the
+empty figure down from 67%.) Memory once used by samples is still not given back.
 
 ### ABOUT, and fixed text in a skin (2026-11-18)
 
