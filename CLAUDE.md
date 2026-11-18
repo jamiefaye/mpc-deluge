@@ -934,6 +934,16 @@ instance here is a song with one synth and no kit.
 - Ideas kept for later (Jamie): hits from a kit, if kits are ever added; a reserved MIDI note
   as a second way to trigger, for patterns longer than a bar.
 
+### ABOUT, and fixed text in a skin (2026-11-18)
+
+A credits page, last on the sixth key (`tabs.json` "about": the lines, with size and colour;
+Jamie asked for Rohan Hill to be named). **A `Label` of type `Text` shows nothing on a Force**:
+the page was first built from them and came up empty, as the segment buttons' captions did.
+`Name` and `Value` labels do show (the GRID page's editor). So fixed text is drawn into a
+picture: `tools/make_about.py` writes `skin-images/about.png`, and `apply_about` in
+`tools/build.py` runs it at each build when Pillow is installed. Jamie confirmed on the Force
+the same day that an edit kept between presets comes back (next section).
+
 ### Edits kept between presets (2026-11-18; in the tests, not yet tried on a device)
 
 Jamie: adjust a synth, go to another, come back: the adjustments should be there, as on a

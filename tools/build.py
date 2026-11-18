@@ -637,7 +637,7 @@ def apply_grid(project, out_dir, params_json):
 
 def apply_about(project, out_dir):
     """tabs.json "about": {"name": "ABOUT", "after": "<the last page on a key>", "lines": [...]}: a
-    page of fixed text, centred, one label per line: the credits. A line is a string, or
+    page of fixed text, centred: the credits, drawn as one picture. A line is a string, or
     [string, font height] or [string, font height, "AARRGGBB"]; "" leaves a gap; {version}
     stands for plugin.json's version. Lines do not wrap: keep them under about 90 characters."""
     spec_path = os.path.join(project, "tabs.json")
@@ -652,25 +652,24 @@ def apply_about(project, out_dir):
     if not place or place[0][1] != len(spec["keys"][place[0][0]]) - 1:
         raise sdk_build.BuildError("tabs.json about: \"%s\" must be the last page on a function key" % about.get("after"))
     key, sub = place[0]
-    version = json.load(open(os.path.join(project, "plugin.json")))["version"]
     tui = open(tui_path, encoding="utf-8").read()
-    children, y = [], 20
-    for line in about["lines"]:
-        text, height, colour = (line if isinstance(line, list) else [line]) + [None, None][:3 - len(line if isinstance(line, list) else [line])]
-        height = height or 24
-        if text:
-            style = {"version": 1, "font": {"version": 1, "name": "Titillium Web", "style": "SemiBold" if height >= 30 else "Regular", "height": float(height)},
-                     "colour": colour or "fff2f2f2", "justification": "horizontallyCentred verticallyCentred", "case": "Original"}
-            children.append({"version": 2,
-                             "componentData": {"version": 1, "name": "line %d" % len(children), "type": "Label",
-                                               "data": {"version": 1, "textStyle": style, "type": "Text", "handleName": "Invalid",
-                                                        "text": text.replace("{version}", version)}},
-                             "handle remapping": {"version": 1, "map": []},
-                             "bounds": {"version": 1, "acceptsHWFocus": "No", "showWhenDataModelInvalid": "Show", "whenVisible": "Always",
-                                        "boundsType": "Absolute", "bounds": "20 %d 1240 %d" % (y, int(height * 1.5))}})
-        y += int(height * 1.5)
-    if y > 620:
-        raise sdk_build.BuildError("tabs.json about: the lines need %d px of the page's 628" % y)
+    # The text is a picture (tools/make_about.py says why), redrawn here when Pillow is there.
+    try:
+        import make_about
+        make_about.render(project)
+    except ImportError:
+        pass
+    source = os.path.join(project, "skin-images", "about.png")
+    if not os.path.isfile(source):
+        raise sdk_build.BuildError("tabs.json about: no %s (run tools/make_about.py)" % source)
+    with open(source, "rb") as f, open(os.path.join(out_dir, "Plugin Skins", "about.png"), "wb") as out:
+        out.write(f.read())
+    children = [{"version": 2,
+                 "componentData": {"version": 1, "name": "credits", "type": "Image",
+                                   "data": {"version": 2, "imageType": "Regular", "colour": "0", "image": "about.png"}},
+                 "handle remapping": {"version": 1, "map": []},
+                 "bounds": {"version": 1, "acceptsHWFocus": "No", "showWhenDataModelInvalid": "Show", "whenVisible": "Always",
+                            "boundsType": "Absolute", "bounds": "0 0 1280 628"}}]
     background = {"version": 1, "focussed": {"version": 1, "colour": "ff1e1d1e", "image": ""},
                   "unfocussed": {"version": 1, "colour": "ff1e1d1e", "image": ""}}
     tab = {"version": 1, "tabName": about["name"], "fnKeyIndex": key, "fnKeySubIndex": sub + 1,
@@ -691,7 +690,7 @@ def apply_about(project, out_dir):
     copy = re.sub(r'("SubTab"\s*:\s*)\d+', lambda n: n.group(1) + str(sub + 2), q[m.start():end], count=1)
     copy = re.sub(r'("Q-Link \d+"\s*:\s*)-?\d+', lambda n: n.group(1) + "-1", copy)
     open(q_path, "w", encoding="utf-8").write(q[:end] + ",\n" + copy + q[end:])
-    sdk_build.log("  tabs.json: the %s page, %d lines" % (about["name"], len(children)))
+    sdk_build.log("  tabs.json: the %s page, %d lines" % (about["name"], len([l for l in about["lines"] if l])))
 
 
 _make_skins = sdk_build.make_skins
