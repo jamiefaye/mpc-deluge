@@ -383,6 +383,160 @@ def apply_buttons(project, out_dir, params_json):
     sdk_build.log("  tabs.json: %d picture buttons, %d controls moved, %d made big" % (len(buttons), len(moved), len(big)))
 
 
+def apply_grid(project, out_dir, params_json):
+    """tabs.json "grid": {"name": "GRID", "after": "GOLD"}: one more page, after the named one on
+    its function key, that the SDK's generator cannot describe: the Deluge's 16 x 8 shortcut grid
+    as a picture (skin-images/grid_bg.png, drawn by tools/make_grid.py, which also holds the
+    geometry), and over it
+      - in the strip at the top, the sixteen gold knobs as eight pairs, upper knob over lower:
+        the knob's text and a bar, which the Q-Links control on this page as on the other;
+      - in each cell that is a parameter, a bar showing its value, and over the whole cell an
+        invisible component that takes the touch and opens the overlay the parameter's control
+        on its own page opens (a knob or a list). The bar is the parameter's own slider, which
+        a touch would drag; the component above it is there so that it never gets one.
+    Not seen on a device yet: whether a single touch opens an overlay (the kit only ever uses a
+    double tap; both are set), and whether the component above really keeps touches from the bar."""
+    spec_path = os.path.join(project, "tabs.json")
+    tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
+    q_path = os.path.join(out_dir, "Plugin Skins", "Q-Links.json")
+    if not (os.path.isfile(spec_path) and os.path.isfile(tui_path) and os.path.isfile(q_path)):
+        return
+    spec = json.load(open(spec_path))
+    grid = spec.get("grid")
+    if not grid:
+        return
+    import make_grid as g
+    index = {p["name"]: p["index"] for p in json.load(open(params_json))["params"]}
+    tui = open(tui_path, encoding="utf-8").read()
+
+    key = sub = None
+    for k, names in enumerate(spec["keys"]):
+        if grid["after"] in names:
+            key, sub = k, names.index(grid["after"])
+            if sub != len(names) - 1:
+                raise sdk_build.BuildError("tabs.json grid: \"%s\" must be the last page on its key" % grid["after"])
+            if len(names) >= 8:
+                raise sdk_build.BuildError("tabs.json grid: no room on that function key")
+    if key is None:
+        raise sdk_build.BuildError("tabs.json grid: no page called \"%s\"" % grid["after"])
+
+    source = os.path.join(project, "skin-images", "grid_bg.png")
+    if not os.path.isfile(source):
+        raise sdk_build.BuildError("tabs.json grid: no %s (run tools/make_grid.py)" % source)
+    with open(source, "rb") as f, open(os.path.join(out_dir, "Plugin Skins", "grid_bg.png"), "wb") as out:
+        out.write(f.read())
+
+    tabs_at = tui.index('"tabs"')
+
+    def overlay_of(param):
+        """The overlay the parameter's control on its own page opens, from that control's type."""
+        at = tui.find('"value": "Parameter %d"' % index[param], tabs_at)
+        if at < 0:
+            raise sdk_build.BuildError("tabs.json grid: \"%s\" is on no page" % param)
+        kind = re.findall(r'"type"\s*:\s*"([^"]*)"', tui[tui.rfind('"componentData"', 0, at):at])[0]
+        definition = tui.find('"key": "%s"' % kind)
+        if definition < 0:
+            raise sdk_build.BuildError("tabs.json grid: \"%s\" is drawn by \"%s\", which is not a kit component" % (param, kind))
+        start = tui.rfind("{", 0, definition)
+        m = re.search(r'"handler"\s*:\s*"Show Overlay"[^}]*"additionalData"\s*:\s*"([^"]+)"', tui[start:matching(tui, start)])
+        if not m:
+            raise sdk_build.BuildError("tabs.json grid: \"%s\" opens no overlay" % kind)
+        return m.group(1)
+
+    accent = re.search(r'"outlineColour"\s*:\s*"([0-9a-fA-F]{8})"', tui).group(1)
+    clear = {"version": 1, "focussed": {"version": 1, "colour": "00000000", "image": ""},
+             "unfocussed": {"version": 1, "colour": "00000000", "image": ""}}
+
+    def bounds(x, y, w, h, focus="No", show="Show", when="Always"):
+        return {"version": 1, "acceptsHWFocus": focus, "showWhenDataModelInvalid": show, "whenVisible": when,
+                "boundsType": "Absolute", "bounds": "%d %d %d %d" % (x, y, w, h)}
+
+    def entry(name, kind, data, where, param=None):
+        remap = [{"key": "Data", "value": "Parameter %d" % index[param]}] if param else []
+        return {"version": 2, "componentData": {"version": 1, "name": name, "type": kind, "data": data},
+                "handle remapping": {"version": 1, "map": remap}, "bounds": where}
+
+    def focus_ring(w, h):
+        return entry("focus", "Focus", {"version": 1, "backgroundColour": "19ffffff", "outlineColour": accent,
+                                        "backgroundInset": 2.0, "outlineThickness": 1.0}, bounds(0, 0, w, h, when="WhenFocussed"))
+
+    def bar(colour, bipolar):
+        return {"version": 2, "sliderType": "ColourBar", "direction": "Horizontal", "backgroundColour": "ff141314",
+                "outlineColour": "00000000", "valueColour": "ff%02x%02x%02x" % colour, "isBipolar": bipolar, "handleName": "Data"}
+
+    def actions(*pairs):
+        return [{"version": 1, "onAction": on, "handler": handler, "handleName": "Data", "additionalData": extra}
+                for on, handler, extra in pairs]
+
+    def component(acts, children):
+        return {"version": 2, "actions": acts, "backgroundData": clear, "ignoreMousePresses": False,
+                "disableCoarseDataWheel": False, "componentsData": children}
+
+    named = g.cells()
+    definitions = {}
+    children = [entry("grid", "Image", {"version": 2, "imageType": "Regular", "colour": "0", "image": "grid_bg.png"},
+                      bounds(0, 0, g.WIDTH, g.HEIGHT))]
+    # The gold knobs: pair p (0..7) is Gold 2p+1 over Gold 2p+2, as on the Deluge's panel.
+    gold_w, gold_h = 160, (g.STRIP - 8) // 2
+    text = {"version": 1, "font": {"version": 1, "name": "Titillium Web", "style": "SemiBold", "height": 17.0},
+            "colour": "fff2f2f2", "justification": "horizontallyCentred verticallyCentred", "case": "Original"}
+    definitions["grid gold"] = component(
+        actions(("Mouse Down", "Q-Link", ""), ("Double Click", "Show Overlay", overlay_of("Gold 1")),
+                ("Enter Pressed", "Show Overlay", overlay_of("Gold 1"))),
+        [focus_ring(gold_w, gold_h),
+         entry("value", "Label", {"version": 1, "textStyle": text, "type": "Value", "handleName": "Data"},
+               bounds(4, 4, gold_w - 8, gold_h - 22)),
+         entry("bar", "Slider", bar((0xe0, 0xb0, 0x40), False), bounds(8, gold_h - 15, gold_w - 16, 9))])
+    for knob in range(16):
+        param = "Gold %d" % (knob + 1)
+        if param not in index:
+            raise sdk_build.BuildError("tabs.json grid: no parameter called \"%s\"" % param)
+        children.append(entry(param, "grid gold", {"version": 1, "handleName": "Data"},
+                              bounds((knob // 2) * gold_w, 4 + (knob % 2) * gold_h, gold_w, gold_h, focus="Yes", show="Hide"), param))
+    # The cells. A bar first, then what takes the touch, so the second is on top.
+    for (x, y), (param, minimum) in sorted(named.items(), key=lambda item: (-item[0][1], item[0][0])):
+        if param not in index:
+            raise sdk_build.BuildError("tabs.json grid: no parameter called \"%s\"" % param)
+        x0, y0 = g.cell_origin(x, y)
+        bx, by, bw, bh = g.BAR
+        children.append(entry(param + " bar", "Slider", bar(g.COLUMN_COLOURS[x], minimum < 0), bounds(x0 + bx, y0 + by, bw, bh), param))
+        overlay = overlay_of(param)
+        kind = "grid cell " + overlay
+        if kind not in definitions:
+            definitions[kind] = component(
+                actions(("Mouse Down", "Show Overlay", overlay), ("Double Click", "Show Overlay", overlay),
+                        ("Enter Pressed", "Show Overlay", overlay)),
+                [focus_ring(g.CELL_W, g.CELL_H)])
+        children.append(entry(param, kind, {"version": 1, "handleName": "Data"},
+                              bounds(x0, y0, g.CELL_W, g.CELL_H, focus="Yes", show="Hide"), param))
+    page = component([], children)
+    page["backgroundData"] = {"version": 1, "focussed": {"version": 1, "colour": "ff1e1d1e", "image": ""},
+                              "unfocussed": {"version": 1, "colour": "ff1e1d1e", "image": ""}}
+    tab = {"version": 1, "tabName": grid["name"], "fnKeyIndex": key, "fnKeySubIndex": sub + 1,
+           "componentDefinition": page, "qlinkBoundsData": []}
+
+    # The new components go before the first of the kit's; the tab after the page it follows.
+    first = tui.rfind("{", 0, tui.index('"key": "sliderWithFocus"'))
+    blocks = "".join(json.dumps({"key": name, "value": value}) + ",\n" for name, value in definitions.items())
+    tui = tui[:first] + blocks + tui[first:]
+    after = re.search(r'"tabName"\s*:\s*"%s"' % re.escape(grid["after"]), tui)
+    start = tui.rfind("{", 0, after.start())
+    end = matching(tui, start)
+    tui = tui[:end] + ",\n" + json.dumps(tab) + tui[end:]
+    open(tui_path, "w", encoding="utf-8").write(tui)
+
+    # Its Q-Links are those of the page it follows (the gold knobs).
+    q = open(q_path, encoding="utf-8").read()
+    m = re.search(r'\{\s*"Tab"\s*:\s*%d\s*,\s*"SubTab"\s*:\s*%d\s*,' % (key + 1, sub + 1), q)
+    if not m:
+        raise sdk_build.BuildError("tabs.json grid: Q-Links.json has no entry for \"%s\"" % grid["after"])
+    end = matching(q, m.start())
+    copy = re.sub(r'("SubTab"\s*:\s*)\d+', lambda s: s.group(1) + str(sub + 2), q[m.start():end], count=1)
+    q = q[:end] + ",\n" + copy + q[end:]
+    open(q_path, "w", encoding="utf-8").write(q)
+    sdk_build.log("  tabs.json: the %s page, %d cells and 16 gold knobs" % (grid["name"], len(named)))
+
+
 _make_skins = sdk_build.make_skins
 
 
@@ -391,6 +545,7 @@ def make_skins(project, out_dir, params_json, no_ui):
     if made:
         apply_tabs(project, out_dir, params_json)
         apply_buttons(project, out_dir, params_json)
+        apply_grid(project, out_dir, params_json)
     return made
 
 

@@ -864,6 +864,33 @@ picture buttons (arrows, Save) are still `switch`. Use `switch` for nothing else
   The version is 0.1.0, a preview: parameters are not frozen and the README says so.
 - A velocity control is not wanted (Jamie): a Deluge's velocity can be set, and is.
 
+### The GRID page (2026-11-18; skin only, not yet on a device)
+
+Jamie (2026-11-17/18): a page after GOLD on the first function key showing the Deluge's face,
+which parameters a patch has set, a touch on a cell to edit just that parameter, gold knobs in
+the room at the top; labels on the cells. Built so far, with no change to the plugin's code:
+
+- **`tools/make_grid.py`** draws `skin-images/grid_bg.png` (checked in): 16 x 8 cells of
+  80 x 64 px under a 116 px strip, each parameter cell in its column's colour with the
+  parameter's name on it (the names of `gen_grid.py`), mod sources and the pads that are not
+  parameters in grey. It also holds the geometry, which `tools/build.py` imports.
+- **`apply_grid` in `tools/build.py`** (`tabs.json` "grid") adds the tab and its Q-Link entry
+  (a copy of GOLD's) as text after the generator has run. In the strip, the gold knobs as
+  eight pairs, each the knob's text over a bar. In each of the 105 first-press parameter cells
+  a `ColourBar` slider bound to the parameter itself (bipolar where the range goes below
+  zero), and over the cell an invisible component whose touch opens the overlay the
+  parameter's own page uses (knob, bipolar knob or list).
+- **To look at on the Force:** whether a single touch opens an overlay (the kit only uses a
+  double tap; both are set); whether the component over a bar keeps a touch from dragging it;
+  whether the names are legible at this size and an 80 x 64 px cell (about 9 x 7.5 mm on a Force) is comfortable to hit;
+  the gold strip's text; whether 105 focus stops make the cursor keys useless on this page.
+- **Not built:** telling a parameter at its default from one the patch has set (Jamie's first
+  point; wants a display parameter per cell kept by the plugin, lit / unlit / does not apply,
+  the kit's `Indicator`, with defaults from the firmware's init sound baked into
+  `grid_table.h`); mod-source cells lit when the source has a cable; second-press pads; the
+  envelope overlay (`EnvelopeOverlay`) for the four cells of an envelope. A skin has no "go
+  to tab" action and a plugin cannot change tab: an overlay is the only way to edit in place.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

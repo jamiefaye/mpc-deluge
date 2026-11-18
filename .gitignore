@@ -8,3 +8,4 @@ third_party/etl/
 diagnostics.txt
 diagnostics-*.txt
 missing-samples.txt
+__pycache__/
