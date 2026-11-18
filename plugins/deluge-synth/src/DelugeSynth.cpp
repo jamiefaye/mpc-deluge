@@ -1784,37 +1784,6 @@ private:
             closedir(d);
             if (found == 0) add("; no project file open");
         }
-        // Can the drives be searched instead? Every folder whose name ends "_[ProjectData]", down
-        // to three levels below each drive in /media, and how long looking took.
-        const int64_t searchStart = nowMs();
-        int folders = 0, looked = 0;
-        std::string firstFew;
-        searchForProjectData("/media", 0, folders, looked, firstFew);
-        std::snprintf(buffer, sizeof buffer, "; a search of /media looked in %d folders in %d ms and found %d project data folders%s%s",
-                      looked, (int)(nowMs() - searchStart), folders, folders != 0 ? ": " : "", firstFew.c_str());
-        add(buffer);
-    }
-    static void searchForProjectData(const std::string& folder, int depth, int& found, int& looked, std::string& firstFew)
-    {
-        DIR* d = opendir(folder.c_str());
-        if (d == nullptr) return;
-        ++looked;
-        std::vector<std::string> inside;
-        while (dirent* e = readdir(d))
-        {
-            if (e->d_name[0] == '.') continue;
-            const std::string path = folder + "/" + e->d_name;
-            struct stat st;
-            if (stat(path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
-            const size_t n = std::strlen(e->d_name);
-            if (n > 14 && std::strcmp(e->d_name + n - 14, "_[ProjectData]") == 0)
-            {
-                if (found++ < 3) firstFew += (firstFew.empty() ? "" : ", ") + path;
-            }
-            else if (depth < 3 && looked + inside.size() < 4000) inside.push_back(path);
-        }
-        closedir(d);
-        for (const std::string& path : inside) searchForProjectData(path, depth + 1, found, looked, firstFew);
     }
 
     // --- edits kept for the session (see loadRequestedPreset) -------------------------------------
@@ -2114,7 +2083,7 @@ private:
         std::lock_guard<std::mutex> lock(diagnosticsLock_);   // the MPC's thread and the worker both write it
         int blockTotal = 0;
         const int blockResident = deluge_hosted::engineMemoryResidentMb(&blockTotal);
-        char text[6400];
+        char text[5200];
         const uint64_t frames = statFrames_.load(), ns = statNs_.load();
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
@@ -2276,7 +2245,7 @@ private:
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
     std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f}, statPpq_{-1.0f};
     std::atomic<uint32_t> statScHits_{0};
-    char projectProbe_[2][1500] = {{0}, {0}};   // at start; when a project's state last arrived
+    char projectProbe_[2][900] = {{0}, {0}};   // at start; when a project's state last arrived
     std::atomic<int> statPresetScanMs_{0}, statSampleScanMs_{0}, statEngineStartMs_{0}, statFirstLoadMs_{0}, statLastLoadMs_{0}, statSlowestLoadMs_{0};
     // Edits kept for the session: which presets have an edit file, whether the loaded sound has
     // been changed since it was loaded, and (worker only) whether it came from a project.
