@@ -26,8 +26,12 @@ See INSTALL.txt. In short: copy the folder `Fentonia - VST - Deluge Synth` into 
 
 ## Sounds
 
-The package comes with five presets of its own, in the folder **Starter**: LJam Bass, LJam Lead,
-LJam Pad, LJam Arp (which uses the arpeggiator) and FM Keys.
+The package comes with twelve presets of its own, in the folder **Starter**. Four are everyday
+sounds (Sub Bass, Saw Lead, Soft Pad, Pluck Arp, which uses the arpeggiator); the others each
+show one thing the engine does: FM Keys (FM), Ring Bell (ring modulation), Sync Lead (oscillator
+sync), PWM Strings (pulse-width modulation), Fold Lead (the wavefolder), Wobble Bass (an LFO
+locked to the tempo), Dub Stab (the synced delay) and Pump Pad (sidechain ducking: light some
+steps on the SC STEPS page and press play).
 
 It does not come with the Deluge's factory presets or anyone's preset collections: those belong
 to their makers. If you own a Deluge, you can use the presets on your own SD card:

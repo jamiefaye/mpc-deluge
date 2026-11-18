@@ -45,6 +45,13 @@ int main(int argc, char** argv) {
 		const double before = level(17);  // 50 ms
 		deluge_hosted::engineSideChainHit();
 		const double after = level(17);
+		if (std::getenv("PROFILE") != nullptr) { // the level in each 50 ms that follows
+			std::printf("   %.1f", after - before);
+			for (int i = 0; i < 12; i++) {
+				std::printf(" %.1f", level(17) - before);
+			}
+			std::printf("\n");
+		}
 		level(344);
 		const double later = level(17);
 		deluge_hosted::engineNoteOff(60);

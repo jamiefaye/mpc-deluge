@@ -934,6 +934,20 @@ instance here is a song with one synth and no kit.
 - Ideas kept for later (Jamie): hits from a kit, if kits are ever added; a reserved MIDI note
   as a second way to trigger, for patterns longer than a bar.
 
+### Twelve starter presets (2026-11-18)
+
+Jamie: drop "LJam" from the names, and a few more examples. The four are now Sub Bass, Saw
+Lead, Soft Pad, Pluck Arp; seven were added to `voices.json`, one feature each: Ring Bell (ring
+mod), Sync Lead (oscillator sync, envelope 2 on the second oscillator's pitch), PWM Strings
+(LFO 2 on pulse width), Wobble Bass (LFO 1 synced to eighths on the cutoff), Dub Stab (dotted
+analog ping-pong delay), Fold Lead (the wavefolder, envelope 2 and velocity), Pump Pad (volume
+ducking at its most, for SC STEPS). All made by `tools/make_starter.py`, saved and read back
+the same. **Nobody has listened to the seven**: their settings are by reasoning and the
+tool's level matching, not by ear. Learnt making them: a preset cannot hold the reverb's time
+or damping (they belong to the song: a voice that set "Time" failed the read-back check);
+"Oscillator sync" takes 1, not "On"; an envelope's seconds in `voices.json` are Tone.js's and
+come out far shorter than they read, so long tails are set as steps in "pads".
+
 ### ABOUT, and fixed text in a skin (2026-11-18)
 
 A credits page, last on the sixth key (`tabs.json` "about": the lines, with size and colour;

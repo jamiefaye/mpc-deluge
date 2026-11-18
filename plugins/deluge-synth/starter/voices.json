@@ -1,56 +1,445 @@
 {
-  "about": "Starter sounds for Deluge Synth, written in Tone.js terms (seconds, Hz, Q, octaves) and turned into Deluge presets by tools/make_starter.py. The first four are the melodic voices of LJam (ljam/src/synths.js). Ours, GPL-3.0-or-later like the rest of the repository.",
+  "about": "Starter sounds for Deluge Synth, written in Tone.js terms (seconds, Hz, Q, octaves) and turned into Deluge presets by tools/make_starter.py. The first four began as the melodic voices of LJam (ljam/src/synths.js); the rest each show one thing the engine does. Ours, GPL-3.0-or-later like the rest of the repository.",
   "voices": [
     {
-      "name": "LJam Bass",
+      "name": "Sub Bass",
       "notes": "Resonant saw with a snappy filter envelope over a sine sub an octave down. In LJam the sub skips the filter and has its own envelope; here both oscillators share them.",
       "testNote": 36,
       "oscillators": [
-        { "type": "sawtooth" },
-        { "type": "sine", "transpose": -12, "db": -2 }
+        {
+          "type": "sawtooth"
+        },
+        {
+          "type": "sine",
+          "transpose": -12,
+          "db": -2
+        }
       ],
-      "filter": { "Q": 2, "rolloff": -24 },
-      "envelope": { "attack": 0.004, "decay": 0.22, "sustain": 0.55, "release": 0.18 },
-      "filterEnvelope": { "attack": 0.004, "decay": 0.2, "sustain": 0.2, "release": 0.2, "baseFrequency": 110, "octaves": 3.4, "exponent": 2 },
+      "filter": {
+        "Q": 2,
+        "rolloff": -24
+      },
+      "envelope": {
+        "attack": 0.004,
+        "decay": 0.22,
+        "sustain": 0.55,
+        "release": 0.18
+      },
+      "filterEnvelope": {
+        "attack": 0.004,
+        "decay": 0.2,
+        "sustain": 0.2,
+        "release": 0.2,
+        "baseFrequency": 110,
+        "octaves": 3.4,
+        "exponent": 2
+      },
       "mono": true,
       "portamento": 0.05
     },
     {
-      "name": "LJam Lead",
+      "name": "Saw Lead",
       "notes": "Three detuned saws through a filter envelope and a light chorus.",
-      "oscillators": [ { "type": "fatsawtooth", "count": 3, "spread": 18 } ],
-      "filter": { "Q": 1.2, "rolloff": -24 },
-      "envelope": { "attack": 0.01, "decay": 0.25, "sustain": 0.55, "release": 0.3 },
-      "filterEnvelope": { "attack": 0.01, "decay": 0.3, "sustain": 0.35, "release": 0.4, "baseFrequency": 350, "octaves": 3.2 },
-      "chorus": { "frequency": 1.2, "depth": 12 }
+      "oscillators": [
+        {
+          "type": "fatsawtooth",
+          "count": 3,
+          "spread": 18
+        }
+      ],
+      "filter": {
+        "Q": 1.2,
+        "rolloff": -24
+      },
+      "envelope": {
+        "attack": 0.01,
+        "decay": 0.25,
+        "sustain": 0.55,
+        "release": 0.3
+      },
+      "filterEnvelope": {
+        "attack": 0.01,
+        "decay": 0.3,
+        "sustain": 0.35,
+        "release": 0.4,
+        "baseFrequency": 350,
+        "octaves": 3.2
+      },
+      "chorus": {
+        "frequency": 1.2,
+        "depth": 12
+      }
     },
     {
-      "name": "LJam Pad",
+      "name": "Soft Pad",
       "notes": "Wide saws, slow amplitude and filter swell, deep chorus. Wants reverb.",
-      "oscillators": [ { "type": "fatsawtooth", "count": 3, "spread": 28 } ],
-      "filter": { "Q": 0.7, "rolloff": -12 },
-      "envelope": { "attack": 0.5, "decay": 1.0, "sustain": 0.8, "release": 1.8 },
-      "filterEnvelope": { "attack": 1.2, "decay": 1.5, "sustain": 0.45, "release": 1.8, "baseFrequency": 180, "octaves": 2.6 },
-      "chorus": { "frequency": 0.35, "depth": 22, "stereo": true }
+      "oscillators": [
+        {
+          "type": "fatsawtooth",
+          "count": 3,
+          "spread": 28
+        }
+      ],
+      "filter": {
+        "Q": 0.7,
+        "rolloff": -12
+      },
+      "envelope": {
+        "attack": 0.5,
+        "decay": 1.0,
+        "sustain": 0.8,
+        "release": 1.8
+      },
+      "filterEnvelope": {
+        "attack": 1.2,
+        "decay": 1.5,
+        "sustain": 0.45,
+        "release": 1.8,
+        "baseFrequency": 180,
+        "octaves": 2.6
+      },
+      "chorus": {
+        "frequency": 0.35,
+        "depth": 22,
+        "stereo": true
+      }
     },
     {
-      "name": "LJam Arp",
+      "name": "Pluck Arp",
       "notes": "A plucked square, resonant filter snapping shut. Wants a dotted delay.",
-      "oscillators": [ { "type": "square" } ],
-      "filter": { "Q": 2.5, "rolloff": -24 },
-      "envelope": { "attack": 0.002, "decay": 0.22, "sustain": 0.08, "release": 0.22 },
-      "filterEnvelope": { "attack": 0.002, "decay": 0.14, "sustain": 0.02, "release": 0.2, "baseFrequency": 420, "octaves": 3.2, "exponent": 2 },
-      "arp": { "preset": "Up", "octaves": 2, "sync": "16TH-notes", "gate": 25 }
+      "oscillators": [
+        {
+          "type": "square"
+        }
+      ],
+      "filter": {
+        "Q": 2.5,
+        "rolloff": -24
+      },
+      "envelope": {
+        "attack": 0.002,
+        "decay": 0.22,
+        "sustain": 0.08,
+        "release": 0.22
+      },
+      "filterEnvelope": {
+        "attack": 0.002,
+        "decay": 0.14,
+        "sustain": 0.02,
+        "release": 0.2,
+        "baseFrequency": 420,
+        "octaves": 3.2,
+        "exponent": 2
+      },
+      "arp": {
+        "preset": "Up",
+        "octaves": 2,
+        "sync": "16TH-notes",
+        "gate": 25
+      }
     },
     {
       "name": "FM Keys",
       "notes": "Not from LJam: an FM electric piano. One modulator at the carrier's pitch whose depth falls away after the strike (envelope 2), a second three octaves and a fifth up for the tine, gone almost at once (envelope 3). Harder keys are brighter.",
-      "oscillators": [ { "type": "sine" } ],
-      "fm": { "modulator1": { "transpose": 0, "level": 9 }, "modulator2": { "transpose": 43, "level": 8 } },
-      "envelope": { "attack": 0.002, "decay": 6, "sustain": 0, "release": 0.5 },
-      "pads": { "Env1 decay": 36, "Env2 attack": 0, "Env2 decay": 16, "Env2 sustain": 10, "Env2 release": 10,
-                "Env3 attack": 0, "Env3 decay": 4, "Env3 sustain": 0, "Env3 release": 4 },
-      "cables": [ ["ENV2", "FM mod1 level", 700], ["ENV3", "FM mod2 level", 1500], ["VELOCITY", "FM mod1 level", 500] ]
+      "oscillators": [
+        {
+          "type": "sine"
+        }
+      ],
+      "fm": {
+        "modulator1": {
+          "transpose": 0,
+          "level": 9
+        },
+        "modulator2": {
+          "transpose": 43,
+          "level": 8
+        }
+      },
+      "envelope": {
+        "attack": 0.002,
+        "decay": 6,
+        "sustain": 0,
+        "release": 0.5
+      },
+      "pads": {
+        "Env1 decay": 36,
+        "Env2 attack": 0,
+        "Env2 decay": 16,
+        "Env2 sustain": 10,
+        "Env2 release": 10,
+        "Env3 attack": 0,
+        "Env3 decay": 4,
+        "Env3 sustain": 0,
+        "Env3 release": 4
+      },
+      "cables": [
+        [
+          "ENV2",
+          "FM mod1 level",
+          700
+        ],
+        [
+          "ENV3",
+          "FM mod2 level",
+          1500
+        ],
+        [
+          "VELOCITY",
+          "FM mod1 level",
+          500
+        ]
+      ]
+    },
+    {
+      "name": "Pump Pad",
+      "notes": "For the SC STEPS page: a wide saw pad with volume ducking set, so it pumps as soon as steps are lit and the MPC plays. Without steps it is a plain pad.",
+      "oscillators": [
+        {
+          "type": "fatsawtooth",
+          "count": 3,
+          "spread": 22
+        }
+      ],
+      "filter": {
+        "Q": 0.7,
+        "rolloff": -12,
+        "frequency": 2500
+      },
+      "envelope": {
+        "attack": 0.05,
+        "decay": 1.0,
+        "sustain": 0.9,
+        "release": 0.6
+      },
+      "chorus": {
+        "frequency": 0.4,
+        "depth": 18,
+        "stereo": true
+      },
+      "pads": {
+        "Volume ducking": 5000,
+        "Sidech attack": 7,
+        "Sidech release": 30,
+        "Reverb amount": 12
+      }
+    },
+    {
+      "name": "Ring Bell",
+      "notes": "Ring modulation: two sines an octave and a fourth apart multiplied together, so the partials are not a harmonic series. A struck bell with a long fall, in reverb.",
+      "oscillators": [
+        {
+          "type": "sine"
+        },
+        {
+          "type": "sine",
+          "transpose": 17
+        }
+      ],
+      "envelope": {
+        "attack": 0.002,
+        "decay": 3.0,
+        "sustain": 0,
+        "release": 1.5
+      },
+      "pads": {
+        "Synth Mode": "Ringmod",
+        "Osc1 r. phase": 0,
+        "Osc2 r. phase": 0,
+        "Env1 decay": 28,
+        "Env1 release": 30,
+        "Reverb amount": 16
+      }
+    },
+    {
+      "name": "Sync Lead",
+      "notes": "Oscillator sync: the second saw restarts with the first, and envelope 2 sweeps its pitch down after each note, which is the tearing sound. One voice, with glide.",
+      "testNote": 48,
+      "oscillators": [
+        {
+          "type": "sawtooth",
+          "db": -18
+        },
+        {
+          "type": "sawtooth",
+          "transpose": 7
+        }
+      ],
+      "filter": {
+        "Q": 1,
+        "rolloff": -24,
+        "frequency": 7000
+      },
+      "envelope": {
+        "attack": 0.005,
+        "decay": 0.3,
+        "sustain": 0.8,
+        "release": 0.2
+      },
+      "mono": true,
+      "portamento": 0.06,
+      "pads": {
+        "Oscillator sync": 1,
+        "Env2 attack": 0,
+        "Env2 decay": 30,
+        "Env2 sustain": 12,
+        "Env2 release": 20
+      },
+      "cables": [
+        [
+          "ENV2",
+          "Osc2 pitch",
+          1500
+        ]
+      ]
+    },
+    {
+      "name": "PWM Strings",
+      "notes": "Pulse-width modulation: each voice's own LFO (LFO 2) moves the width of two slightly detuned pulse waves. Slow attack, stereo chorus, a little reverb.",
+      "oscillators": [
+        {
+          "type": "fatsquare",
+          "count": 2,
+          "spread": 12
+        }
+      ],
+      "filter": {
+        "Q": 0.7,
+        "rolloff": -12,
+        "frequency": 3500
+      },
+      "envelope": {
+        "attack": 0.35,
+        "decay": 1.0,
+        "sustain": 0.85,
+        "release": 1.2
+      },
+      "chorus": {
+        "frequency": 0.5,
+        "depth": 14,
+        "stereo": true
+      },
+      "pads": {
+        "Osc1 p. width": 18,
+        "LFO2 rate": 22,
+        "Reverb amount": 10,
+        "Env1 release": 24
+      },
+      "cables": [
+        [
+          "LFO2",
+          "Osc1 pulse width",
+          2500
+        ]
+      ]
+    },
+    {
+      "name": "Wobble Bass",
+      "notes": "An LFO locked to the tempo: LFO 1, at eighth notes, opens and closes a resonant low-pass over a saw and a square an octave down. Follows the MPC's tempo.",
+      "testNote": 36,
+      "oscillators": [
+        {
+          "type": "sawtooth"
+        },
+        {
+          "type": "square",
+          "transpose": -12,
+          "db": -3
+        }
+      ],
+      "filter": {
+        "Q": 3,
+        "rolloff": -24,
+        "frequency": 500
+      },
+      "envelope": {
+        "attack": 0.005,
+        "decay": 0.2,
+        "sustain": 0.9,
+        "release": 0.12
+      },
+      "mono": true,
+      "portamento": 0.04,
+      "pads": {
+        "LFO1 sync": "8TH-notes",
+        "LFO1 shape": "Sine"
+      },
+      "cables": [
+        [
+          "LFO1",
+          "LPF frequency",
+          2200
+        ]
+      ]
+    },
+    {
+      "name": "Dub Stab",
+      "notes": "The delay: a short filtered chord stab into a dotted-eighth analog delay that bounces left and right, in time with the MPC.",
+      "oscillators": [
+        {
+          "type": "fatsawtooth",
+          "count": 2,
+          "spread": 10
+        }
+      ],
+      "filter": {
+        "Q": 2,
+        "rolloff": -12
+      },
+      "envelope": {
+        "attack": 0.002,
+        "decay": 0.18,
+        "sustain": 0,
+        "release": 0.15
+      },
+      "filterEnvelope": {
+        "attack": 0.002,
+        "decay": 0.15,
+        "sustain": 0,
+        "release": 0.15,
+        "baseFrequency": 300,
+        "octaves": 3
+      },
+      "pads": {
+        "Delay sync": "8TH-dtted",
+        "Delay type": "Analog",
+        "Delay amount": 22,
+        "Reverb amount": 8
+      }
+    },
+    {
+      "name": "Fold Lead",
+      "notes": "The wavefolder: a sine pushed through it, folded harder at the start of each note (envelope 2) and by harder keys, so it goes from hollow to bright.",
+      "oscillators": [
+        {
+          "type": "sine"
+        }
+      ],
+      "envelope": {
+        "attack": 0.003,
+        "decay": 0.4,
+        "sustain": 0.6,
+        "release": 0.2
+      },
+      "pads": {
+        "Wavefold": 14,
+        "Env2 attack": 0,
+        "Env2 decay": 24,
+        "Env2 sustain": 8,
+        "Env2 release": 18
+      },
+      "cables": [
+        [
+          "ENV2",
+          "Wavefolder",
+          1500
+        ],
+        [
+          "VELOCITY",
+          "Wavefolder",
+          800
+        ]
+      ]
     }
   ]
 }
