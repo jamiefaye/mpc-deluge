@@ -982,6 +982,18 @@ second), a preset load 2 ms, 4 MB of the engine's block in use with two instance
 MPC application at 646 MB; and **the Force does give a song position** (0.00 while stopped,
 not "none"), which the sidechain steps need.
 
+### Searching the drives from a plugin: possible, not safe at load (2026-11-18)
+
+A second probe searched `/media` three levels deep for folders named `*_[ProjectData]`, at
+start-up and when a project's state arrived, for each instance. From the Force's
+`diagnostics.txt`: the plugin can read every drive; it looked in 176 folders and found 471
+project data folders (Jamie's drive holds many projects); three of the four searches took
+1.1 to 1.3 s, and **the one made while the project was loading took 141 s**, holding the
+project load up for minutes (Jamie: "conv1 test loading slow", "still searching"). The
+search was taken out again the same hour. If a plugin ever has to find a folder: never on
+the path of a project load or of start-up, never more than once, and narrowly (a named
+folder, stopping at the first match), on the worker thread.
+
 ### ABOUT, and fixed text in a skin (2026-11-18)
 
 A credits page, last on the sixth key (`tabs.json` "about": the lines, with size and colour;
