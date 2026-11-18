@@ -654,7 +654,7 @@ def apply_about(project, out_dir):
     key, sub = place[0]
     version = json.load(open(os.path.join(project, "plugin.json")))["version"]
     tui = open(tui_path, encoding="utf-8").read()
-    children, y = [], 40
+    children, y = [], 20
     for line in about["lines"]:
         text, height, colour = (line if isinstance(line, list) else [line]) + [None, None][:3 - len(line if isinstance(line, list) else [line])]
         height = height or 24
