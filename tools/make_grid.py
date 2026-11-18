@@ -20,7 +20,7 @@ CELL_W, CELL_H = 80, 64       # 16 columns, 8 rows
 BAR = (6, 50, 68, 8)          # a cell's value bar, within the cell: x y w h
 BACKGROUND = (0x1e, 0x1d, 0x1e)
 
-MINI_W, MINI_H = 48, 18       # a cell of the small grid on MAIN (no names: the pattern of a patch)
+MINI_W, MINI_H = 64, 32       # a cell of the small grid on MAIN (no names: the pattern of a patch)
 
 # One colour per column: the Deluge's modules, a pair of columns each.
 COLUMN_COLOURS = [
@@ -134,7 +134,7 @@ def main():
 
     def slot(pen, x0, y0, fill):
         pen.rounded_rectangle([(x0 + 2) * scale, (y0 + 2) * scale, (x0 + MINI_W - 2) * scale - 1, (y0 + MINI_H - 2) * scale - 1],
-                              radius=3 * scale, fill=fill + (255,))
+                              radius=5 * scale, fill=fill + (255,))
 
     for x in range(16):
         for y in range(8):

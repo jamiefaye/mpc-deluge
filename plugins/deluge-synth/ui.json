@@ -15,8 +15,7 @@
           "widget": "empty"
         },
         {
-          "param": "Volume",
-          "widget": "fader"
+          "widget": "empty"
         },
         {
           "param": "Folder -",

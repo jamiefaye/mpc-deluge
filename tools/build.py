@@ -411,12 +411,15 @@ def apply_grid(project, out_dir, params_json):
     for k, names in enumerate(spec["keys"]):
         if grid["after"] in names:
             key, sub = k, names.index(grid["after"])
-            if sub != len(names) - 1:
-                raise sdk_build.BuildError("tabs.json grid: \"%s\" must be the last page on its key" % grid["after"])
             if len(names) >= 8:
                 raise sdk_build.BuildError("tabs.json grid: no room on that function key")
     if key is None:
         raise sdk_build.BuildError("tabs.json grid: no page called \"%s\"" % grid["after"])
+    # "qlinks": the page whose Q-Link assignments this one copies (the gold knobs' page).
+    knobs_page = grid.get("qlinks", grid["after"])
+    knobs_at = [(k, names.index(knobs_page)) for k, names in enumerate(spec["keys"]) if knobs_page in names]
+    if not knobs_at:
+        raise sdk_build.BuildError("tabs.json grid: no page called \"%s\"" % knobs_page)
 
     source = os.path.join(project, "skin-images", "grid_bg.png")
     if not os.path.isfile(source):
@@ -589,19 +592,30 @@ def apply_grid(project, out_dir, params_json):
     first = tui.rfind("{", 0, tui.index('"key": "sliderWithFocus"'))
     blocks = "".join(json.dumps({"key": name, "value": value}) + ",\n" for name, value in definitions.items())
     tui = tui[:first] + blocks + tui[first:]
+    # Pages after it on the same key move along one.
+    tui = re.sub(r'("tabName"\s*:\s*"[^"]*"\s*,\s*"fnKeyIndex"\s*:\s*%d\s*,\s*"fnKeySubIndex"\s*:\s*)(\d+)' % key,
+                 lambda m: m.group(1) + str(int(m.group(2)) + (1 if int(m.group(2)) > sub else 0)), tui)
     after = re.search(r'"tabName"\s*:\s*"%s"' % re.escape(grid["after"]), tui)
     start = tui.rfind("{", 0, after.start())
     end = matching(tui, start)
     tui = tui[:end] + ",\n" + json.dumps(tab) + tui[end:]
     open(tui_path, "w", encoding="utf-8").write(tui)
 
-    # Its Q-Links are those of the page it follows (the gold knobs).
+    # Its Q-Links are a copy of the gold knobs' page's.
     q = open(q_path, encoding="utf-8").read()
-    m = re.search(r'\{\s*"Tab"\s*:\s*%d\s*,\s*"SubTab"\s*:\s*%d\s*,' % (key + 1, sub + 1), q)
-    if not m:
-        raise sdk_build.BuildError("tabs.json grid: Q-Links.json has no entry for \"%s\"" % grid["after"])
-    end = matching(q, m.start())
-    copy = re.sub(r'("SubTab"\s*:\s*)\d+', lambda s: s.group(1) + str(sub + 2), q[m.start():end], count=1)
+
+    def q_entry(text, tab_number, sub_number):
+        m = re.search(r'\{\s*"Tab"\s*:\s*%d\s*,\s*"SubTab"\s*:\s*%d\s*,' % (tab_number, sub_number), text)
+        if not m:
+            raise sdk_build.BuildError("tabs.json grid: Q-Links.json has no entry for tab %d.%d" % (tab_number, sub_number))
+        return m.start(), matching(text, m.start())
+
+    a0, a1 = q_entry(q, knobs_at[0][0] + 1, knobs_at[0][1] + 1)
+    copy = re.sub(r'("Tab"\s*:\s*)\d+(\s*,\s*"SubTab"\s*:\s*)\d+', lambda m: "%s%d%s%d" % (m.group(1), key + 1, m.group(2), sub + 2),
+                  q[a0:a1], count=1)
+    q = re.sub(r'("Tab"\s*:\s*%d\s*,\s*"SubTab"\s*:\s*)(\d+)' % (key + 1),
+               lambda m: m.group(1) + str(int(m.group(2)) + (1 if int(m.group(2)) > sub + 1 else 0)), q)
+    _, end = q_entry(q, key + 1, sub + 1)
     q = q[:end] + ",\n" + copy + q[end:]
     open(q_path, "w", encoding="utf-8").write(q)
     sdk_build.log("  tabs.json: the %s page, %d cells and 16 gold knobs" % (grid["name"], len(named)))
