@@ -15,7 +15,8 @@
           "widget": "empty"
         },
         {
-          "widget": "empty"
+          "param": "Revert",
+          "widget": "switch"
         },
         {
           "param": "Folder -",

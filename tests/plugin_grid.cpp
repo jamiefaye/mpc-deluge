@@ -103,7 +103,8 @@ static bool choosePreset(const char* name) {
 		fx->setParameter(fx, folder, (float)f / 40.0f);
 		for (int i = 0; i <= 400; i++) {
 			fx->setParameter(fx, preset, (float)i / 400.0f);
-			if (shown(preset) == name) {
+			// (a preset with an edit kept from earlier in the session shows a star after its name)
+			if (shown(preset) == name || shown(preset) == std::string(name) + " *") {
 				return true;
 			}
 		}
@@ -325,7 +326,7 @@ int main(int argc, char** argv) {
 		const std::string got = shown("Synth Mode") + ", mod1 " + shown("Mod1 Level") + ", feedback " + shown("Osc1 Feedbk")
 		                        + ", attack " + shown("Env1 Attack") + ", preset " + shown("Preset");
 		check(shown("Synth Mode") == "Fm" && valueOf("Mod1 Level") == 37 && valueOf("Osc1 Feedbk") == 21
-		          && valueOf("Env1 Attack") == 9 && shown("Preset") == presetName,
+		          && valueOf("Env1 Attack") == 9 && shown("Preset") == std::string(presetName) + " *", // starred: Pan was moved just above
 		      what, got);
 	};
 
@@ -413,6 +414,30 @@ int main(int argc, char** argv) {
 		check(shown("Saved As") == std::string(presetName) + " 2" && std::strstr(head, "<sound") != nullptr,
 		      "Save writes a Deluge preset under the next free name", shown("Saved As") + (f != nullptr ? ", file written" : ", NO FILE at " + file));
 		std::remove(file.c_str());
+	}
+
+	// Edits are kept while moving between presets, until Revert.
+	{
+		choosePreset("SYNT000");
+		fx->setParameter(fx, paramCalled("Revert"), 1.0f); // whatever the tests above left behind
+		run(900);
+		const int before = valueOf("LPF Reso");
+		const int edit = before == 10 ? 20 : 10;
+		check(shown("Preset") == "SYNT000", "a preset as its file has it shows no star", shown("Preset"));
+		setValue("LPF Reso", edit);
+		run(400);
+		check(shown("Preset") == "SYNT000 *", "changing a pad stars the preset", shown("Preset"));
+		choosePreset("SYNT008");
+		run(900);
+		check(shown("Preset") == "SYNT008", "another preset loads, unstarred", shown("Preset"));
+		choosePreset("SYNT000");
+		run(900);
+		check(valueOf("LPF Reso") == edit && shown("Preset") == "SYNT000 *", "coming back brings the edit back, starred",
+		      shown("LPF Reso") + ", " + shown("Preset"));
+		fx->setParameter(fx, paramCalled("Revert"), 1.0f);
+		run(900);
+		check(valueOf("LPF Reso") == before && shown("Preset") == "SYNT000", "Revert loads the file's sound again",
+		      shown("LPF Reso") + ", " + shown("Preset"));
 	}
 
 	disp(effStopProcess);

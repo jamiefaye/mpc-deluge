@@ -59,6 +59,7 @@
 #include <dirent.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
@@ -97,7 +98,8 @@ enum ParamIndex
     // standard value (0), has been set to something else (1), or does not apply to the sound
     // (2). Display only: the worker keeps them (showCellStates) and nothing reads them back.
     kCellState = kScStep + 16,
-    kNumParams = kCellState + grid::kNumCells
+    kRevert = kCellState + grid::kNumCells,   // a button: drop the kept edit of this preset and load its file
+    kNumParams
 };
 
 // "Engine parameters": the parameters that mirror a value held by the engine, which are the gold
@@ -303,6 +305,9 @@ public:
         for (int c = 0; c < grid::kNumCells; ++c)
             addParam(mpc::choiceParam((std::string(grid::kCells[c].id) + "s").c_str(), (std::string(grid::kCells[c].name) + " *").c_str(),
                                       std::vector<std::string>{"standard", "set", "-"}, 0));
+        addParam(mpc::boolParam("revert", "Revert", false));
+        keptEdit_.reset(new std::atomic<uint8_t>[presets_.size() + 1]);
+        for (size_t i = 0; i <= presets_.size(); ++i) keptEdit_[i].store(0);
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
         for (int m = 0; m < kNumEngineParams; ++m)
         {
@@ -386,16 +391,28 @@ public:
                 // mirroring the engine): remember it, and process() hands it to the engine.
                 if (index == kSave) { buttonSet(index, plainValue); if (pressed && !tReleasingButton) saveRequested_.store(true); break; }
                 if (index == kSaveResult || index == kSampleState) break;
+                if (index == kRevert)
+                {
+                    buttonSet(index, plainValue);
+                    if (pressed && !tReleasingButton) { revertRequested_.store(true); reloadPreset_.store(true); }
+                    break;
+                }
                 if (index >= kCable && index < kPresetBack10)
                 {
                     if (tMirroringKnobs) break;   // the worker showing what the engine holds
                     const int slot = (index - kCable) / 4;
+                    if (cableHost_[slot][(index - kCable) % 4].load() != (int)std::lround(plainValue)) noteEdit();
                     cableHost_[slot][(index - kCable) % 4].store((int)std::lround(plainValue));
                     cableStamp_[slot].store(changeCounter_.fetch_add(1) + 1);
                     cableDirty_.fetch_or(uint32_t(1) << slot);
                     break;
                 }
-                if (index >= kSample && index < kSave) { sampleParameterChanged(index, plainValue); break; }
+                if (index >= kSample && index < kSave)
+                {
+                    if ((index - kSample) % kSParams == kSFile && !tMirroringKnobs) noteEdit();
+                    sampleParameterChanged(index, plainValue);
+                    break;
+                }
                 if (index >= kGold && index < kSample && !tMirroringKnobs)
                 {
                     // A transpose's two halves make one engine value; the half that did not move
@@ -406,6 +423,7 @@ public:
                         value = mpc::clamp(semitonesOf(host_[m].load()) * 100 + (value - 50), -kSemitones * 100, kSemitones * 100);
                     else if (m >= kFirstCell && fineOfCell_[m - kFirstCell] >= 0)
                         value = mpc::clamp((value - kSemitones) * 100 + centsOf(host_[m].load()), -kSemitones * 100, kSemitones * 100);
+                    if (host_[m].load() != value) noteEdit();   // not the MPC giving back what it was shown
                     host_[m].store(value);
                     pending_[m].store(value);
                     // After the value is in place: a reader that sees the new stamp sees the value.
@@ -424,9 +442,10 @@ public:
         if (plainValue != 0.0f && !tReleasingButton) buttonOnSince_[buttonSlot(index)].store(nowMs());
     }
     // The buttons: four on MAIN, then four for each oscillator's sample.
-    static constexpr int kNumButtons = 15;
+    static constexpr int kNumButtons = 16;
     static int buttonSlot(int index)
     {
+        if (index == kRevert) return 15;
         if (index == kPresetBack10 || index == kPresetOn10) return 13 + (index - kPresetBack10);
         if (index == kSave) return 12;
         if (index < kSample) return index - kFolderPrev;
@@ -434,6 +453,7 @@ public:
     }
     static int buttonIndex(int slot)
     {
+        if (slot == 15) return kRevert;
         if (slot >= 13) return kPresetBack10 + (slot - 13);
         if (slot == 12) return kSave;
         if (slot < 4) return kFolderPrev + slot;
@@ -830,10 +850,13 @@ public:
         {
             if (presets_.empty()) { out = "(none)"; return true; }
             const int folder = mpc::clamp(getInt(kFolder), 0, (int)folders_.size() - 1);
-            const std::string& path = presets_[(size_t)(folderStart_[(size_t)folder] + mpc::clamp((int)std::lround(plainValue), 0, folderSize(folder) - 1))];
+            const int preset = folderStart_[(size_t)folder] + mpc::clamp((int)std::lround(plainValue), 0, folderSize(folder) - 1);
+            const std::string& path = presets_[(size_t)preset];
             const size_t slash = path.rfind('/');
             const size_t start = slash == std::string::npos ? 0 : slash + 1;
             out = path.substr(start, path.size() - start - 4);   // file name without folder or ".XML"
+            // A star: what plays is not the file's sound but this session's edit of it.
+            if (keptEdit_[(size_t)preset].load() != 0 || (preset == loadedPreset_.load() && edited_.load())) out += " *";
             return true;
         }
         if (index >= kGold && index < kGold + deluge_hosted::kNumKnobs)
@@ -986,6 +1009,24 @@ public:
     // Runs on the MPC's thread, straight after it has set every parameter from the project.
     void loadExtraState(const uint8_t* data, size_t size) override
     {
+        // The project's version of the sound stands (see loadRequestedPreset): while it comes
+        // in nothing is kept and no kept edit is loaded, and afterwards every kept edit is
+        // dropped and the sound counts as unchanged, whatever the MPC set on the way.
+        restoringNow_.store(true);
+        struct Done
+        {
+            DelugeSynth& self;
+            ~Done()
+            {
+                // The stars go at once (the MPC may ask for the Preset text straight away); the
+                // worker removes the files (dropEdits_).
+                for (size_t i = 0; i < self.presets_.size(); ++i) self.keptEdit_[i].store(0);
+                self.edited_.store(false);
+                self.dropEdits_.store(true);
+                self.restoringNow_.store(false);
+                self.tellHostLater(kPreset);
+            }
+        } done{*this};
         saveRequested_.store(false);   // a Save pressed just before belongs to the state being replaced
         const uint8_t* end = static_cast<const uint8_t*>(std::memchr(data, 0, size));
         const size_t pathSize = end != nullptr ? (size_t)(end - data) : size;
@@ -1601,6 +1642,7 @@ private:
         const int wanted = requestedPreset_.load();
         if (wanted < 0 || wanted >= (int)presets_.size()) return;
         const bool reload = reloadPreset_.exchange(false);
+        if (dropEdits_.exchange(false)) { forgetEdits(); restored_ = true; }
         if (wanted == loadedPreset_.load() && !reload)
         {
             // Nothing to load. But the engine parameters may still be another preset's (the user
@@ -1614,10 +1656,34 @@ private:
             }
             return;
         }
-        const std::string path = "SYNTHS/" + presets_[(size_t)wanted];
         EngineHold engine(engineInstance_.load());
+        // Edits are kept while the user moves between presets, as a Deluge keeps an edited sound
+        // in its song: on leaving a sound that was changed, it is written to a file of this
+        // instance's under Content/EDITS, and coming back to the preset loads that file. Only for
+        // the session: a project saves the sound that is loaded and nothing else (Jamie,
+        // 2026-11-18), and restoring one drops every kept edit. Revert drops this preset's.
+        const int previous = loadedPreset_.load();
+        const bool restoring = restoringNow_.load();
+        if (revertRequested_.exchange(false))
+        {
+            keptEdit_[(size_t)wanted].store(0);
+            if (!restoring) goldPreset_.store(-1);   // the file's values are to be taken, not the parameters' given back
+        }
+        else if (!restoring && previous >= 0 && previous != wanted && goldPreset_.load() == previous && (edited_.load() || restored_))
+            keepEdit(previous);
+        std::string path = "SYNTHS/" + presets_[(size_t)wanted];
+        const bool kept = !restoring && keptEdit_[(size_t)wanted].load() != 0;
         resync_.store(false);
-        loadError_.store(deluge_hosted::engineLoadSynth(path.c_str()));
+        int error = deluge_hosted::engineLoadSynth(kept ? editPath(wanted).c_str() : path.c_str());
+        if (error != 0 && kept)
+        {
+            keptEdit_[(size_t)wanted].store(0);
+            error = deluge_hosted::engineLoadSynth(path.c_str());
+        }
+        loadError_.store(error);
+        edited_.store(false);
+        restored_ = false;
+        tellHostLater(kPreset);   // its star
         // Which files are the preset's own, to go back to (giveSample).
         for (int s = 0; s < 2; ++s)
         {
@@ -1633,6 +1699,52 @@ private:
         loads_.fetch_add(1);
         syncKnobs();
         noteFirmwareErrors();
+    }
+
+    // --- edits kept for the session (see loadRequestedPreset) -------------------------------------
+    // Any thread: the user or the host changed the sound.
+    void noteEdit()
+    {
+        if (!edited_.exchange(true)) tellHostLater(kPreset);   // its star
+    }
+    std::string editPath(int preset) const
+    {
+        return "EDITS/i" + std::to_string(engineInstance_.load()) + "/" + std::to_string(preset) + ".XML";
+    }
+    // Worker thread, engine lock held: write the sound as it stands to this preset's edit file.
+    void keepEdit(int preset)
+    {
+        if (std::getenv("DELUGE_SYNTH_NO_SAVE") != nullptr) return;   // the build's simulator run leaves no files
+        const std::string folder = mpc::contentPath("EDITS") + "/i" + std::to_string(engineInstance_.load());
+        if (!editsFolderReady_)
+        {
+            editsFolderReady_ = true;
+            mkdir(mpc::contentPath("EDITS").c_str(), 0777);
+            mkdir(folder.c_str(), 0777);
+            forgetEdits();   // an earlier session's
+        }
+        for (int m = 0; m < kNumEngineParams; ++m)   // anything process() has not yet taken belongs in it too
+        {
+            const int value = pending_[m].exchange(kNoChange);
+            if (value != kNoChange) engineSet(m, value);
+        }
+        applyCableSlots();
+        std::remove((folder + "/" + std::to_string(preset) + ".XML").c_str());   // the engine will not overwrite
+        const bool ok = deluge_hosted::engineSaveSynth(editPath(preset).c_str()) == 0;
+        keptEdit_[(size_t)preset].store(ok ? 1 : 0);
+        if (ok) editsKept_.fetch_add(1);
+    }
+    // Worker thread: no preset has a kept edit any more, and the files go.
+    void forgetEdits()
+    {
+        for (size_t i = 0; i < presets_.size(); ++i) keptEdit_[i].store(0);
+        const std::string folder = mpc::contentPath("EDITS") + "/i" + std::to_string(engineInstance_.load());
+        if (DIR* d = opendir(folder.c_str()))
+        {
+            while (dirent* e = readdir(d))
+                if (std::strstr(e->d_name, ".XML") != nullptr) std::remove((folder + "/" + e->d_name).c_str());
+            closedir(d);
+        }
     }
 
     // Worker thread, engine lock held, after a preset or a sample file has been loaded: say on
@@ -1906,6 +2018,7 @@ private:
                       "firmware error stops (its own consistency checks; should be 0): %d%s%s\n"
                       "tempo: the host last gave %.2f (0: never), the engine is at %.2f\n"
                       "sidechain steps: %u hits given; the host's position was last %.2f quarter notes (-1: it gives none)\n"
+                      "edits kept on leaving a preset: %u this session\n"
                       "this preset's sample files: %d found by name in another folder, %d found nowhere (see missing-samples.txt)\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -1934,6 +2047,7 @@ private:
                       firmwareErrors_.load(), firmwareErrors_.load() != 0 ? ", latest " : "", latestFirmwareError_,
                       (double)statTempoGiven_.load(), (double)statTempo_.load(),
                       statScHits_.load(), (double)statPpq_.load(),
+                      editsKept_.load(),
                       samplesElsewhere_.load(), samplesMissing_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
@@ -2036,6 +2150,12 @@ private:
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
     std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f}, statPpq_{-1.0f};
     std::atomic<uint32_t> statScHits_{0};
+    // Edits kept for the session: which presets have an edit file, whether the loaded sound has
+    // been changed since it was loaded, and (worker only) whether it came from a project.
+    std::unique_ptr<std::atomic<uint8_t>[]> keptEdit_;
+    std::atomic<bool> edited_{false}, dropEdits_{false}, revertRequested_{false}, restoringNow_{false};
+    std::atomic<uint32_t> editsKept_{0};
+    bool restored_ = false, editsFolderReady_ = false;
     double lastHitPpq_ = -1.0;   // process() only
     std::atomic<uint64_t> statNs_{0}, statFrames_{0};
     std::atomic<float>    statPeak_{0.0f};

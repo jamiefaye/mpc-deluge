@@ -934,6 +934,30 @@ instance here is a song with one synth and no kit.
 - Ideas kept for later (Jamie): hits from a kit, if kits are ever added; a reserved MIDI note
   as a second way to trigger, for patterns longer than a bar.
 
+### Edits kept between presets (2026-11-18; in the tests, not yet tried on a device)
+
+Jamie: adjust a synth, go to another, come back: the adjustments should be there, as on a
+Deluge (which keeps an edited sound in its song, "hibernating"). And a project should save
+only the sound each instance has loaded, "so people are protected from making a mess".
+
+- **Leaving a changed sound** (`loadRequestedPreset`): the worker writes it with
+  `engineSaveSynth` to `Content/EDITS/i<instance>/<preset number>.XML` (`keepEdit`); loading
+  a preset that has such a file loads the file. "Changed" (`edited_`) is any gold knob, pad,
+  cable slot or sample file set from outside to a value other than the one shown.
+- **For the session only.** A project holds the loaded sound as before and nothing of the
+  others; a project restore drops every kept edit (`restoringNow_`, `dropEdits_`), and the
+  files of an earlier session are removed the first time one is written. A sound that came
+  from a project counts as changed when left (`restored_`), since its values are not the
+  file's.
+- **On MAIN:** a star after the preset's name while what plays is an edit, and a **Revert**
+  button (where Volume was) that drops the preset's edit and loads its file. Revert sets
+  `goldPreset_` to -1 first: a reload of the same preset otherwise gives the parameters'
+  values straight back to the engine, which is what a project restore wants.
+- The file is the firmware's own writer's, so the limits of Save apply (one in a hundred
+  sounds differs audibly after a save and load; see "Saving a sound as a Deluge preset").
+- `DELUGE_SYNTH_NO_SAVE` (the build's simulator run) keeps nothing.
+- `tools/plugintest.sh` checks the star, the edit coming back, and Revert.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
