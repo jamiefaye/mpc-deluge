@@ -962,6 +962,7 @@ public:
         // that follows): what is written below, and what the MPC looks at next, is then the
         // settled state.
         waitUntilSettled();
+        showCellStates();   // the GRID page's marks follow the settled values now, not a moment later
         const int i = presetIndex();
         const bool goldIsAnotherPresets = goldPreset_.load() != i;
         if (i >= 0)
@@ -1025,6 +1026,7 @@ public:
                 self.dropEdits_.store(true);
                 self.restoringNow_.store(false);
                 self.tellHostLater(kPreset);
+                self.showCellStates();   // by the time the MPC looks, the marks are the restored sound's
             }
         } done{*this};
         saveRequested_.store(false);   // a Save pressed just before belongs to the state being replaced
@@ -1558,8 +1560,9 @@ private:
         showCables(changes);
     }
 
-    // Worker thread: the GRID page's marks. From what the pads' parameters show, so a value on
-    // its way to the engine is marked at once; cheap enough to do on every turn of the worker.
+    // The GRID page's marks. From what the pads' parameters show, so a value on its way to the
+    // engine is marked at once; cheap enough to do on every turn of the worker. Also called on
+    // the MPC's thread at the end of a project save or restore, when the worker is idle.
     void showCellStates()
     {
         for (int c = 0; c < grid::kNumCells; ++c)
