@@ -36,7 +36,11 @@
   ],
   "grid": {
     "name": "GRID",
-    "after": "GOLD"
+    "after": "GOLD",
+    "mini": {
+      "page": "MAIN",
+      "at": "23 470"
+    }
   },
   "buttons": {
     "Folder -": {

@@ -561,6 +561,30 @@ def apply_grid(project, out_dir, params_json):
     tab = {"version": 1, "tabName": grid["name"], "fnKeyIndex": key, "fnKeySubIndex": sub + 1,
            "componentDefinition": page, "qlinkBoundsData": []}
 
+    # "mini": {"page": "MAIN", "at": "x y"}: a small copy of the grid on another page, cells
+    # without names, showing each pad's state (the same "<name> *" parameters) and nothing else:
+    # the shape of the patch, redrawn as presets are stepped through. Not a control.
+    small = grid.get("mini")
+    if small:
+        left, top = (int(v) for v in small["at"].split())
+        parts = [entry("mini grid", "Image", {"version": 2, "imageType": "Regular", "colour": "0", "image": "grid_mini_bg.png"},
+                       bounds(left, top, 16 * g.MINI_W, 8 * g.MINI_H))]
+        for (x, y), (param, _) in ordered:
+            parts.append(entry(param + " mini", "Image", {"version": 2, "imageType": "FilmStrip", "colour": "0", "image": "grid_mini_%d.png" % x,
+                                                          "numFrames": 3, "handleName": "Data"},
+                               bounds(left + x * g.MINI_W, top + (7 - y) * g.MINI_H, g.MINI_W, g.MINI_H), param + " *"))
+        for name in ["grid_mini_bg.png"] + ["grid_mini_%d.png" % x for x in range(16)]:
+            with open(os.path.join(project, "skin-images", name), "rb") as f, open(os.path.join(out_dir, "Plugin Skins", name), "wb") as out:
+                out.write(f.read())
+        at = re.search(r'"tabName"\s*:\s*"%s"' % re.escape(small["page"]), tui)
+        if not at:
+            raise sdk_build.BuildError("tabs.json grid mini: no page called \"%s\"" % small["page"])
+        tab_start = tui.rfind("{", 0, at.start())
+        tab_end = matching(tui, tab_start)
+        list_at = tui.index("[", tui.index('"componentsData"', tab_start, tab_end))
+        list_end = matching(tui, list_at)
+        tui = tui[:list_end - 1] + ",\n" + ",\n".join(json.dumps(part) for part in parts) + "\n" + tui[list_end - 1:]
+
     # The new components go before the first of the kit's; the tab after the page it follows.
     first = tui.rfind("{", 0, tui.index('"key": "sliderWithFocus"'))
     blocks = "".join(json.dumps({"key": name, "value": value}) + ",\n" for name, value in definitions.items())

@@ -20,6 +20,8 @@ CELL_W, CELL_H = 80, 64       # 16 columns, 8 rows
 BAR = (6, 50, 68, 8)          # a cell's value bar, within the cell: x y w h
 BACKGROUND = (0x1e, 0x1d, 0x1e)
 
+MINI_W, MINI_H = 48, 18       # a cell of the small grid on MAIN (no names: the pattern of a patch)
+
 # One colour per column: the Deluge's modules, a pair of columns each.
 COLUMN_COLOURS = [
     (0x4c, 0xc2, 0x6b), (0x4c, 0xc2, 0x6b),   # sample 1, 2
@@ -125,6 +127,28 @@ def main():
             label(0, top + 3, name, ink + (255,), BAR[1] - 5)
             draw = saved
         strip.resize((CELL_W, 3 * CELL_H), Image.LANCZOS).save(os.path.join(folder, "grid_cell_%d_%d.png" % (x, y)), optimize=True)
+    # The small grid for MAIN: a background with a faint slot for every pad, and one film strip
+    # per column for a parameter cell's three states (nothing, lit, dark), as above.
+    mini = Image.new("RGBA", (16 * MINI_W * scale, 8 * MINI_H * scale), (0, 0, 0, 0))
+    pen = ImageDraw.Draw(mini)
+
+    def slot(pen, x0, y0, fill):
+        pen.rounded_rectangle([(x0 + 2) * scale, (y0 + 2) * scale, (x0 + MINI_W - 2) * scale - 1, (y0 + MINI_H - 2) * scale - 1],
+                              radius=3 * scale, fill=fill + (255,))
+
+    for x in range(16):
+        for y in range(8):
+            if (x, y) in named:
+                slot(pen, x * MINI_W, (7 - y) * MINI_H, mix(COLUMN_COLOURS[x], 0.2))
+            elif (x, y) in PLAIN:
+                slot(pen, x * MINI_W, (7 - y) * MINI_H, mix(GREY, 0.1))
+    mini.resize((16 * MINI_W, 8 * MINI_H), Image.LANCZOS).save(os.path.join(folder, "grid_mini_bg.png"), optimize=True)
+    for x in range(16):
+        strip = Image.new("RGBA", (MINI_W * scale, 3 * MINI_H * scale), (0, 0, 0, 0))
+        pen = ImageDraw.Draw(strip)
+        slot(pen, 0, MINI_H, COLUMN_COLOURS[x])
+        slot(pen, 0, 2 * MINI_H, mix(GREY, 0.04))
+        strip.resize((MINI_W, 3 * MINI_H), Image.LANCZOS).save(os.path.join(folder, "grid_mini_%d.png" % x), optimize=True)
     # The gold strip: a faint line between the eight pairs of knobs.
     for pair in range(1, 8):
         draw.line([pair * 160 * scale, 8 * scale, pair * 160 * scale, (STRIP - 8) * scale], fill=mix(GREY, 0.25), width=scale)

@@ -901,6 +901,11 @@ the room at the top; labels on the cells. Built so far, with no change to the pl
   **"Standard" is the firmware's default, not a musical one**: unset parameters sit mid-way
   (LPF Freq 25, every envelope stage 25), so most presets light those. The alternative,
   one line in `gen_grid.py`, is the commonest value across the card. Jamie has not chosen.
+- **A small grid on MAIN** (Jamie, same day; `tabs.json` grid "mini"): 16 x 8 cells of
+  48 x 18 px along the bottom, no names, each a film strip on the same state parameter, so
+  the shape of a patch redraws as presets are stepped through. Not a control.
+- **Seen working on the Force (Jamie, 2026-11-18):** selecting a cell and its editor in the
+  strip, once the cell and the editor were components that take the focus.
 - **Not built:** mod-source cells lit when the source has a cable; second-press pads; the
   envelope overlay (`EnvelopeOverlay`) for the four cells of an envelope. A skin has no "go
   to tab" action and a plugin cannot change tab.
