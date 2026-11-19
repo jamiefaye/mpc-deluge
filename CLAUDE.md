@@ -61,6 +61,15 @@ and the dated note nearest the topic win.
   parameters". Built and tested in the simulators on all three targets. The build on the Force
   and on the card is still the 2026-11-13 one, without it.
 
+- **A crash on loading a project, once, not repeatable (2026-11-19).** A project converted from
+  a Deluge song by `../deluge-force-converter` (three Deluge Synth tracks, each naming a
+  library preset, beside two drum tracks) crashed the Force as it loaded; the same file
+  opened again loaded and played, and three near-copies of it had loaded before. So it is
+  not the file's contents. Unexplained. Three instances start and load their presets at
+  once in a project load, which is where the allocator's thread rules ("The plugin's
+  threads") would be tested hardest; nothing here proves that is it. `diagnostics.txt` was
+  overwritten by the next start, as always after a crash.
+
 - **The grid build ran on the Force on 2026-11-16** and crashed on sample presets until the
   allocator fix below; with it, Jamie's repeatable crash (Folder to Samples, second preset) is
   gone. **One crash is unexplained:** "twiddling the params in the ARP screen", once, on the
