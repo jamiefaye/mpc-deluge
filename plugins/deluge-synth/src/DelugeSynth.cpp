@@ -915,7 +915,9 @@ public:
             const char* name = knobNames_[index - kGold];
             if (name[0] == 0) { out = "-"; return true; }
             char text[48];
-            std::snprintf(text, sizeof text, "%.22s %d", name, ((int)std::lround(plainValue) + 64) * 50 / 128);
+            // Where the parameter itself carries the name (knobParameterName), the position alone.
+            if (knobNamesAsParameterNames_) std::snprintf(text, sizeof text, "%d", ((int)std::lround(plainValue) + 64) * 50 / 128);
+            else std::snprintf(text, sizeof text, "%.22s %d", name, ((int)std::lround(plainValue) + 64) * 50 / 128);
             out = text;
             return true;
         }

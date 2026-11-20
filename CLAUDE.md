@@ -67,17 +67,17 @@ and the dated note nearest the topic win.
   "Variations". **`Variation` is parameter 404 and the state has a new block: both are
   permanent once the plugin is released.**
 
-- **Gold knobs named for what they control (2026-11-20; installed on the Force, not yet
-  looked at there).** Jamie: the knobs "say Gold 1, Gold 2 and so on" when they first come
+- **Gold knobs named for what they control (2026-11-20; on the Force: "works").** Jamie: the knobs "say Gold 1, Gold 2 and so on" when they first come
   up; wanted the name and value straight away. On MPC builds the parameter's *name* is now
   the preset's name for the knob ("LPF frequency"): the plugin has its own entry point,
   which answers `effGetParamName` for the sixteen gold parameters (`knobParameterName`) and
   hands everything else to the SDK's dispatcher. Other builds keep "Gold N", which the SDK's
   tools and the tests look parameters up by; `DELUGE_SYNTH_KNOB_NAMES=1` switches it on
-  there. **Unknown: whether an MPC asks for names again after a preset change** (the plugin
-  reports the gold parameters changed and requests a display update). If it does not, the
-  names will be the first preset's, or still "Gold N", and the answer is in the skin
-  instead. The value text still carries the name too ("LPF frequency 25") until that is known.
+  there. The plugin reports the gold parameters changed and requests a display update after
+  a load, and the Force then shows the new names (Jamie, the same day). So on MPC builds the
+  value text is now the position alone ("25"), and the GRID page's gold strip shows each
+  knob as its name and its number side by side (a `Name` and a `Value` label; not yet seen
+  on the device in that form).
 - **The build's 32-bit emulator check fails about one run in ten (found 2026-11-20, also in
   the build before the naming change; not known how old).** The simulator's state round trip
   reports 47 of the GRID page's display-only mark parameters (`"<pad> *"`) reading "-"

@@ -485,8 +485,12 @@ def apply_grid(project, out_dir, params_json):
         actions(("Mouse Down", "Q-Link", ""), ("Double Click", "Show Overlay", overlay_of("Gold 1")),
                 ("Enter Pressed", "Show Overlay", overlay_of("Gold 1"))),
         [focus_ring(gold_w, gold_h),
-         entry("value", "Label", {"version": 1, "textStyle": text, "type": "Value", "handleName": "Data"},
-               bounds(4, 4, gold_w - 8, gold_h - 22)),
+         # The parameter's name is the preset's name for the knob on an MPC, and its text the
+         # position alone (knobParameterName in DelugeSynth.cpp): the name, then the number.
+         entry("name", "Label", {"version": 1, "textStyle": dict(text, justification="left verticallyCentred"), "type": "Name", "handleName": "Data"},
+               bounds(6, 4, gold_w - 44, gold_h - 22)),
+         entry("value", "Label", {"version": 1, "textStyle": dict(text, justification="right verticallyCentred"), "type": "Value", "handleName": "Data"},
+               bounds(gold_w - 40, 4, 34, gold_h - 22)),
          entry("bar", "Slider", bar((0xe0, 0xb0, 0x40), False), bounds(8, gold_h - 15, gold_w - 16, 9))])
     for knob in range(16):
         param = "Gold %d" % (knob + 1)
