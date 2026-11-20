@@ -1,0 +1,95 @@
+# Makes the zips the Open MPC catalog (https://open-mpc.github.io) installs from, out of the zip
+# ./release.sh makes, and attaches them to the same GitHub release.
+#
+# ./release.sh builds the plugin on Jamie's computer (the firmware is fetched and patched there)
+# and writes Downrush-<version>-mpc-sdk.zip, Akai's one-folder format. The catalog's installers
+# want one zip for each CPU, with an install script, checksums and a manifest, which the
+# catalog's own tool makes from that folder (tools/sdk_release.py in open-mpc/mpc-vst-plugins).
+# It runs here and not on Jamie's computer; the catalog's repository is used at one commit,
+# named below, and moving it on is a change to this file.
+#
+# How to use it (CLAUDE.md, "Releasing"): make a draft release on this repository with the
+# -mpc-sdk.zip attached, then run this with the release's tag. Leave "dry run" on to get the
+# zips and the checks' output as the run's artifacts only; off, the zips are attached to the
+# release as well.
+name: Package for Open MPC
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, e.g. v0.1.0 (the release may still be a draft)
+        required: true
+      dry_run:
+        description: Only make and check the zips; do not attach them to the release
+        type: boolean
+        default: true
+permissions:
+  contents: write
+env:
+  OPEN_MPC_COMMIT: 1af05b911e8580c8c2e473a1cc10119132e06eca   # open-mpc/mpc-vst-plugins, 2026-11-20
+  PLUGIN_ID: downrush
+  LICENSE_ID: GPL-3.0-or-later
+  # What an update must leave alone on the device: people's own presets and samples. The
+  # catalog's installer keeps this folder as it finds it, so the starter presets a later version
+  # ships do not replace or add to the ones already there.
+  USER_DATA: Content
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: The catalog's tools, at the commit named above
+        uses: actions/checkout@v4
+        with:
+          repository: open-mpc/mpc-vst-plugins
+          ref: ${{ env.OPEN_MPC_COMMIT }}
+          path: open-mpc
+      - name: The release's zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir in dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*-mpc-sdk.zip' --dir in
+          ls -l in
+          test "$(ls in | wc -l)" = 1
+          sha256sum in/*
+      - name: One zip for each CPU
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version=${TAG#v}
+          python3 open-mpc/tools/sdk_release.py in/*-mpc-sdk.zip --version "$version" --id "$PLUGIN_ID" \
+            --repo "$GITHUB_REPOSITORY" --license "$LICENSE_ID" -o dist -- --user-data "$USER_DATA"
+          ls -l dist
+      - name: The catalog's checks
+        run: |
+          {
+            echo "## Open MPC package"
+            echo "Catalog tools at \`$OPEN_MPC_COMMIT\`."
+            for z in dist/*.zip; do
+              echo "### $(basename "$z")"
+              echo "SHA-256: \`$(sha256sum "$z" | cut -d' ' -f1)\`"
+              echo '```'
+              python3 open-mpc/tools/catalog_check.py "$z" --catalog 2>&1 || echo "catalog_check.py FAILED"
+              echo '```'
+              echo '```'
+              python3 open-mpc/tools/install_smoke.py "$z" 2>&1 || echo "install_smoke.py FAILED"
+              echo '```'
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY" > checks.txt
+          cat checks.txt
+          ! grep -q "FAILED$" checks.txt
+      - name: Keep the zips and the checks with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-mpc-package
+          path: |
+            dist/*.zip
+            checks.txt
+      - name: Attach the zips to the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" dist/*-mpc-armv7.zip dist/*-mpc-aarch64.zip --repo "$GITHUB_REPOSITORY" --clobber

@@ -905,7 +905,43 @@ picture buttons (arrows, Save) are still `switch`. Use `switch` for nothing else
 
 ### Releasing (2026-11-17)
 
-- **`./release.sh`** makes `dist/deluge-synth-<version>-mpc.zip`, the only thing that is given
+- **The release process (agreed with Jamie 2026-11-20; steps 4 on not yet run).** A release
+  goes to this repository's GitHub releases and, from there, into the Open MPC catalog
+  (https://open-mpc.github.io, repository `open-mpc/mpc-vst-plugins`), whose nightly job
+  finds new releases by itself.
+  1. Version in `plugin.json` (X.Y.Z: Z a fix, Y new parameters or pages, X a change to
+     parameter positions, which breaks saved projects). Commit.
+  2. `./build.sh plugins/deluge-synth`, `tools/plugintest.sh`, `tools/corpus.sh`.
+  3. `./release.sh`: `dist/Downrush-<version>-mpc-sdk.zip` and its SHA-256.
+  4. A **draft** release tagged `v<version>` with that zip:
+     `gh release create v<version> dist/Downrush-<version>-mpc-sdk.zip --draft --title ... --notes-file ...`
+  5. The workflow **Package for Open MPC** (`.github/workflows/open-mpc-package.yml`) with
+     that tag: on GitHub it runs the catalog's own `sdk_release.py` (their repository at one
+     commit, named in the file) on the zip, giving `Downrush-<version>-mpc-armv7.zip` and
+     `-mpc-aarch64.zip` with their install scripts, checksums and manifest, then their
+     `catalog_check.py --catalog` and `install_smoke.py`. First with "dry run" on (the zips
+     and the checks' output are the run's artifacts), then off (they are attached to the
+     draft). Their tools are run there and not on Jamie's computer.
+  6. Try the draft's own zip on the Force, then publish the draft. The zip tried is the zip
+     people get.
+  7. `tested.json` at the root of this repository: `id` downrush, the version, the device,
+     its MPC OS version, the date. It is what makes the catalog show "Verified".
+  8. Once only: a pull request to `open-mpc/mpc-vst-plugins` adding
+     `catalog/plugins/downrush.json` (the draft is `release-notes/open-mpc-entry.json`; its
+     screenshot link is pinned to the tag), from a branch, with their template filled in:
+     the check output and each zip's SHA-256 from the workflow's summary.
+  What the catalog asks that shaped this: no other company's name or product in the
+  plugin's name, skin or screenshot (hence Downrush; a name or skin that "may carry a
+  brand" goes to their maintainers, and the GRID page and the ABOUT credits may be asked
+  about); public source with a licence file; the uid and the `.so` name fixed for ever;
+  a summary of at most 350 plain-ASCII characters that claims only the testing done.
+  **An update through their installer keeps `Content/` as it is on the device** (the
+  workflow's `USER_DATA`), so people's presets and samples survive and a later version's
+  starter presets do not arrive by themselves. Their CPU bench (`tools/bench.sh`, run on
+  a device) is optional and not done: it and step 6 with their `install.sh` mean running
+  their scripts on the Force, which this project has not done so far (see "Deploying").
+- **`./release.sh`** makes `dist/Downrush-<version>-mpc-sdk.zip` (until 2026-11-20
+  `deluge-synth-<version>-mpc.zip`), the only thing that is given
   to other people: the built plugin with `Content/` holding the starter presets and nothing
   else (it refuses to finish otherwise), `LICENSE`, a `NOTICE.txt` naming the commit and the
   versions of what is built in, and `plugins/deluge-synth/release/README.md` as the user's
