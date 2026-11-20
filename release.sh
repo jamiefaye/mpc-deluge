@@ -44,6 +44,9 @@ SD card. See README.md in the package.
 TXT
 rm -f "$folder"/diagnostics*.txt "$folder"/diagnostics-on "$folder"/missing-samples.txt
 cp LICENSE "$folder/LICENSE"
+# The user's README inside the plugin folder as well as beside it: the Open MPC catalog's zips
+# carry the folder and nothing beside it.
+cp "$project/release/README.md" "$folder/README.md"
 cat > "$folder/NOTICE.txt" <<TXT
 Downrush $version for Akai MPC and Force
 Copyright (C) the Downrush contributors and the authors of the code it is built from.

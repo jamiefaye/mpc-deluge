@@ -936,6 +936,13 @@ picture buttons (arrows, Save) are still `switch`. Use `switch` for nothing else
      `catalog/plugins/downrush.json` (the draft is `release-notes/open-mpc-entry.json`; its
      screenshot link is pinned to the tag), from a branch, with their template filled in:
      the check output and each zip's SHA-256 from the workflow's summary.
+  **The workflow's first run (2026-11-20, a dry run on the draft of 0.1.0):** their tool
+  made both zips from ours with our binaries unchanged; `catalog_check.py --catalog` said
+  OK with no warnings for each (glibc 2.29 at most, listed for MPC OS 3.x). Their
+  `install_smoke.py` passed install and upgrade and then failed on "uninstall: the folder
+  is still there": their uninstaller keeps user data, ours is `Content` and ships with
+  presets in it, and their test expects the folder gone. The workflow now reports that one
+  outcome as expected and fails on any other. Worth telling the catalog's maintainers.
   **Rehearsed on the Force, 2026-11-20:** the release zip's own folder (unzipped, starter
   presets only) installed over the network in place of the development copy, the MPC app
   restarted, and Jamie looked it over: "looks good". Then the library was put back with a
