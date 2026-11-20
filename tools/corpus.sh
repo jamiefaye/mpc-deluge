@@ -129,13 +129,19 @@ done
 # (tests/engine_save.cpp), and every cable of a preset can be removed and put back
 # (tests/cable_table.cpp), each on every seventh preset; and the plugin's table of cable sources
 # and destinations is the firmware's.
-echo "== pass: save and load, patch cables"
+echo "== pass: save and load, variations, patch cables"
 tools/build_firmware.py native --test tests/engine_save.cpp | tail -1
 tools/build_firmware.py native --test tests/cable_table.cpp | tail -1
 DELUGE_SCRUB=165 build/firmware/native/engine_save "$out/root" SYNTHS 7 > "$out/save-native.raw" 2>&1 || true
 printf 'native  %s\n' "$(grep '^SAVE' "$out/save-native.raw" || echo 'did not finish (see the .raw file)')"
 # One differs for a known reason (CLAUDE.md, "Saving a sound as a Deluge preset").
 grep -q '^SAVE.* [01] different, 0 failed' "$out/save-native.raw" || status=1
+# Variations (tests/engine_variations.cpp): a second set of values added to a sound plays as its
+# own file does, and leaves the first as it was.
+tools/build_firmware.py native --test tests/engine_variations.cpp | tail -1
+DELUGE_SCRUB=165 build/firmware/native/engine_variations "$out/root" SYNTHS 7 > "$out/variations-native.raw" 2>&1 || true
+printf 'native  %s\n' "$(grep '^VARIATIONS' "$out/variations-native.raw" || echo 'did not finish (see the .raw file)')"
+grep -q '^VARIATIONS.* 0 different, 0 failed.*firmware error stops 0' "$out/variations-native.raw" || status=1
 cables_bad=0
 cables_total=0
 while IFS= read -r preset; do

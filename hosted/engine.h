@@ -109,6 +109,30 @@ inline uint32_t engineSampleId(const char* path) {
 	return h != 0 ? h : 1;
 }
 
+// --- variations ----------------------------------------------------------------------------------------
+// On a Deluge every clip of a synth has its own values of the sound's parameters: its own knob
+// positions, patch cables and arpeggiator settings, with the oscillators and everything else that
+// is not a parameter shared between them, and the clip that is playing decides which the sound
+// uses. A variation is one such set. A loaded sound has one, number 0; more are added from other
+// preset files, of which only what a clip holds is taken. The gold knobs, the pads (matrix.h), the
+// cables (cables.h) and engineSaveSynth() all act on the variation in use.
+constexpr int kMaxVariations = 32;
+// Adds a variation holding the parameter values, cables and arpeggiator settings of a SYNTH
+// preset file (path as for engineLoadSynth), as a new clip of the loaded sound, and returns its
+// number; the variation in use does not change. Negative on failure: minus the firmware's Error
+// code, or -1000 with nothing loaded or kMaxVariations there already. Reads a file: not for the
+// audio thread. Loading a sound (engineLoadSynth) leaves it with variation 0 alone.
+int engineVariationAdd(const char* presetPath);
+int engineVariationCount(); // 0 with nothing loaded
+int engineVariationCurrent();
+// Makes variation `n` the one the sound plays with, as a Deluge does when another clip of the
+// synth becomes the active one: notes that are sounding carry on with the new values. Cheap, and
+// for the audio thread. Does nothing for a number there is no variation for.
+void engineVariationUse(int n);
+// engineSaveSynth() for variation `n` whichever is in use: the sound with that variation's
+// values, as a preset file that engineLoadSynth() or engineVariationAdd() reads back.
+int engineVariationSave(int n, const char* presetPath);
+
 void engineNoteOn(int note, int velocity); // velocity 1..127
 void engineNoteOff(int note);
 void engineAllNotesOff(); // releases every held note (they still ring out through their release)

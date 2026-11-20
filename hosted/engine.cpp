@@ -85,6 +85,8 @@ bool started = false;
 Song* song = nullptr;
 InstrumentClip* clip = nullptr;
 SoundInstrument* synth = nullptr;
+// The loaded sound's clips, one for each variation (engine.h); `clip` is the one in use.
+std::vector<InstrumentClip*> variations;
 std::vector<Cluster*> residentClusters; // sample data held in memory for the loaded preset
 int samplesLoaded = 0, samplesFailed = 0;
 // Files the loaded preset names that are not at the path it gives: how many were found
@@ -112,6 +114,7 @@ struct Instance {
 	Song* song = nullptr;
 	InstrumentClip* clip = nullptr;
 	SoundInstrument* synth = nullptr;
+	std::vector<InstrumentClip*> variations;
 	std::vector<Cluster*> residentClusters;
 	int samplesLoaded = 0, samplesFailed = 0;
 	int samplesElsewhere = 0;
@@ -140,6 +143,7 @@ void putAway(Instance& to) {
 	to.song = song;
 	to.clip = clip;
 	to.synth = synth;
+	to.variations.swap(variations);
 	to.residentClusters.swap(residentClusters);
 	to.samplesLoaded = samplesLoaded;
 	to.samplesFailed = samplesFailed;
@@ -170,6 +174,7 @@ void bringBack(Instance& from) {
 	song = from.song;
 	clip = from.clip;
 	synth = from.synth;
+	variations.swap(from.variations);
 	residentClusters.swap(from.residentClusters);
 	samplesLoaded = from.samplesLoaded;
 	samplesFailed = from.samplesFailed;
@@ -239,6 +244,7 @@ static void makeBlankSong() {
 	AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
 	clip = nullptr;
 	synth = nullptr;
+	variations.clear();
 }
 
 void engineInit(const char* root) {
@@ -266,6 +272,7 @@ void engineInit(const char* root) {
 	// Instance 0. What the globals hold now is what every later instance starts from.
 	putAway(fresh);
 	fresh.residentClusters.swap(residentClusters);
+	fresh.variations.swap(variations);
 	instances[0].inUse = true;
 	current = 0;
 	makeBlankSong();
@@ -685,7 +692,97 @@ int engineLoadSynth(const char* presetPath) {
 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
 	ModelStackWithTimelineCounter* modelStack = setupModelStackWithSong(modelStackMemory, song)->addTimelineCounter(clip);
 	instrument->setActiveClip(modelStack);
+	variations.assign(1, clip);
 	return 0;
+}
+
+// --- variations (engine.h) ------------------------------------------------------------------------------
+
+int engineVariationCount() {
+	return synth != nullptr ? (int)variations.size() : 0;
+}
+
+int engineVariationCurrent() {
+	for (size_t n = 0; n < variations.size(); n++) {
+		if (variations[n] == clip) {
+			return (int)n;
+		}
+	}
+	return 0;
+}
+
+int engineVariationAdd(const char* presetPath) {
+	InEngine inEngine;
+	if (synth == nullptr || clip == nullptr || variations.empty() || (int)variations.size() >= kMaxVariations) {
+		return -1000;
+	}
+	FilePointer filePointer;
+	if (!StorageManager::fileExists(presetPath, &filePointer)) {
+		return -(int)Error::FILE_NOT_FOUND;
+	}
+	// The file is read as engineLoadSynth() reads one, into a new clip and a sound of its own: the
+	// firmware's reader then does for these values everything it does for a preset's (formats of
+	// older firmware, the volume made up for resonance). The clip keeps the values, the cables
+	// and the arpeggiator settings and is given to the loaded sound, as a second clip of one synth
+	// is on a Deluge; the sound that came with them is deleted, never having been in the song.
+	void* clipMemory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(InstrumentClip));
+	if (clipMemory == nullptr) {
+		return -(int)Error::INSUFFICIENT_RAM;
+	}
+	// A new clip and a sound being read both draw on the noise generator (a clip's colour, for
+	// one), which the ladder filters, free-running oscillators and the output dither of the sound
+	// that is playing draw on too. It is put back, so that adding a variation changes nothing in
+	// what the variation in use plays.
+	const uint32_t noise = jcong, noiseZ = z, noiseW = w;
+	InstrumentClip* added = new (clipMemory) InstrumentClip(song);
+	added->loopLength = clip->loopLength;
+
+	ParamManager newParamManager; // deliberately not set up, as in the firmware
+	Instrument* instrument = nullptr;
+	String presetName;
+	presetName.set("PRESET");
+	String dirPath;
+	dirPath.set("SYNTHS");
+	Error error = StorageManager::loadInstrumentFromFile(song, added, OutputType::SYNTH, false, &instrument, &filePointer,
+	                                                     &presetName, &dirPath);
+	if (error == Error::NONE && instrument == nullptr) {
+		error = Error::BUG;
+	}
+	if (error == Error::NONE) {
+		error = added->setAudioInstrument(instrument, song, false, &newParamManager);
+	}
+	if (instrument != nullptr) {
+		added->output = synth;
+		instrument->deleteBackedUpParamManagers(song);
+		void* toDealloc = dynamic_cast<void*>(instrument);
+		instrument->~Instrument();
+		delugeDealloc(toDealloc);
+	}
+	jcong = noise;
+	z = noiseZ;
+	w = noiseW;
+	if (error != Error::NONE || !added->paramManager.containsAnyMainParamCollections()) {
+		added->output = nullptr;
+		added->~InstrumentClip();
+		delugeDealloc(clipMemory);
+		return error != Error::NONE ? -(int)error : -(int)Error::FILE_CORRUPTED;
+	}
+	song->sessionClips.insertClipAtIndex(added, song->sessionClips.getNumElements());
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	synth->setupPatching(setupModelStackWithSong(modelStackMemory, song)->addTimelineCounter(added));
+	variations.push_back(added);
+	return (int)variations.size() - 1;
+}
+
+void engineVariationUse(int n) {
+	InEngine inEngine;
+	if (synth == nullptr || n < 0 || n >= (int)variations.size() || variations[(size_t)n] == clip) {
+		return;
+	}
+	clip = variations[(size_t)n];
+	song->setCurrentClip(clip); // the pads' menu items work on the song's current clip (matrix.cpp)
+	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+	static_cast<Instrument*>(synth)->setActiveClip(setupModelStackWithSong(modelStackMemory, song)->addTimelineCounter(clip));
 }
 
 int engineSampleSet(int source, const char* path) {
@@ -772,10 +869,15 @@ uint32_t engineSampleIdOf(int source) {
 }
 
 int engineSaveSynth(const char* presetPath) {
+	return engineVariationSave(engineVariationCurrent(), presetPath);
+}
+
+int engineVariationSave(int n, const char* presetPath) {
 	InEngine inEngine;
-	if (synth == nullptr || clip == nullptr) {
+	if (synth == nullptr || n < 0 || n >= (int)variations.size()) {
 		return (int)Error::BUG;
 	}
+	InstrumentClip* const clip = variations[(size_t)n];
 	// SaveInstrumentPresetUI::performSave(), without the display and the slot bookkeeping.
 	Error error = StorageManager::createXMLFile(presetPath, smSerializer, false, false);
 	if (error != Error::NONE) {
