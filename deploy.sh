@@ -119,6 +119,9 @@ if [ -n "$content" ]; then
     mkdir -p "$stage/$name/Content/SYNTHS/User"
     cp -R -n "$project/Content/SYNTHS/User/." "$stage/$name/Content/SYNTHS/User/" 2>/dev/null || true
   fi
+  # Jamie's own device keeps diagnostics.txt fresh while it plays (CLAUDE.md, "Seeing inside the
+  # device"); a release does that only where this file has been put.
+  : > "$stage/$name/diagnostics-on"
   remote --drive "$MPC_DRIVE" --yes add "$stage/$name"
 else
   remote --drive "$MPC_DRIVE" --yes update "$project"

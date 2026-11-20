@@ -639,11 +639,13 @@ def apply_grid(project, out_dir, params_json):
     sdk_build.log("  tabs.json: the %s page, %d cells and 16 gold knobs" % (grid["name"], len(named)))
 
 
-def apply_about(project, out_dir):
+def apply_about(project, out_dir, params_json):
     """tabs.json "about": {"name": "ABOUT", "after": "<the last page on a key>", "lines": [...]}: a
     page of fixed text, centred: the credits, drawn as one picture. A line is a string, or
     [string, font height] or [string, font height, "AARRGGBB"]; "" leaves a gap; {version}
-    stands for plugin.json's version. Lines do not wrap: keep them under about 90 characters."""
+    stands for plugin.json's version. Lines do not wrap: keep them under about 90 characters.
+    "control": {"param": "<parameter name>", "bounds": "x y w h"} puts one of the kit's bars on the
+    page for that parameter and gives it the page's first Q-Link."""
     spec_path = os.path.join(project, "tabs.json")
     tui_path = os.path.join(out_dir, "Plugin Skins", "TUI.json")
     if not (os.path.isfile(spec_path) and os.path.isfile(tui_path)):
@@ -674,6 +676,19 @@ def apply_about(project, out_dir):
                  "handle remapping": {"version": 1, "map": []},
                  "bounds": {"version": 1, "acceptsHWFocus": "No", "showWhenDataModelInvalid": "Show", "whenVisible": "Always",
                             "boundsType": "Absolute", "bounds": "0 0 1280 628"}}]
+    control = about.get("control")
+    control_index = -1
+    if control:
+        index = {p["name"]: p["index"] for p in json.load(open(params_json))["params"]}
+        if control["param"] not in index:
+            raise sdk_build.BuildError("tabs.json about: no parameter called \"%s\"" % control["param"])
+        control_index = index[control["param"]]
+        children.append({"version": 2,
+                         "componentData": {"version": 1, "name": control["param"], "type": "sliderWithFocus",
+                                           "data": {"version": 1, "handleName": "Data"}},
+                         "handle remapping": {"version": 1, "map": [{"key": "Data", "value": "Parameter %d" % control_index}]},
+                         "bounds": {"version": 1, "acceptsHWFocus": "Yes", "showWhenDataModelInvalid": "Hide", "whenVisible": "Always",
+                                    "boundsType": "Absolute", "bounds": control["bounds"]}})
     background = {"version": 1, "focussed": {"version": 1, "colour": "ff1e1d1e", "image": ""},
                   "unfocussed": {"version": 1, "colour": "ff1e1d1e", "image": ""}}
     tab = {"version": 1, "tabName": about["name"], "fnKeyIndex": key, "fnKeySubIndex": sub + 1,
@@ -693,6 +708,8 @@ def apply_about(project, out_dir):
     end = matching(q, m.start())
     copy = re.sub(r'("SubTab"\s*:\s*)\d+', lambda n: n.group(1) + str(sub + 2), q[m.start():end], count=1)
     copy = re.sub(r'("Q-Link \d+"\s*:\s*)-?\d+', lambda n: n.group(1) + "-1", copy)
+    if control_index >= 0:
+        copy = re.sub(r'("Q-Link 1"\s*:\s*)-?\d+', lambda n: n.group(1) + str(control_index), copy, count=1)
     open(q_path, "w", encoding="utf-8").write(q[:end] + ",\n" + copy + q[end:])
     sdk_build.log("  tabs.json: the %s page, %d lines" % (about["name"], len([l for l in about["lines"] if l])))
 
@@ -706,7 +723,7 @@ def make_skins(project, out_dir, params_json, no_ui):
         apply_tabs(project, out_dir, params_json)
         apply_buttons(project, out_dir, params_json)
         apply_grid(project, out_dir, params_json)
-        apply_about(project, out_dir)
+        apply_about(project, out_dir, params_json)
     return made
 
 

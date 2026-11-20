@@ -138,7 +138,11 @@ after.
   preset and the project will not find it.
 
 If the plugin misbehaves, the file `diagnostics.txt` in the plugin folder says what it was
-doing; include it when reporting a problem.
+doing; include it when reporting a problem. It is written when the plugin starts and when a
+project is saved. To have it kept up to date every few seconds while the plugin plays, which
+is what helps after a crash, turn **Logging** on: it is on the ABOUT page (the last page on
+the sixth function key) and on that page's first Q-Link. It is off unless you turn it on, and
+is saved with the project.
 
 ## Source and licence
 

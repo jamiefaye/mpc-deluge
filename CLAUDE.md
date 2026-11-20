@@ -98,6 +98,12 @@ and the dated note nearest the topic win.
   card: the entry's `screenshot` must be a raw GitHub link to it pinned to the release's
   tag, never a branch. Retake it when the page or the name changes. The older captures in
   `~/deluge/pluginScreenShots/` show the old name in the Force's header.
+- **A restore no longer rounds a finely set cable amount (2026-11-20).** In a restore the
+  sixteen gold knobs were given to the engine whether or not it already stood there, and a
+  knob has 129 positions: a cable set to 7.00 through its slot, with a gold knob on the same
+  cable, came back as 6.64. Now a knob is set only where the engine's differs, as the pads
+  always were. Found when adding a parameter changed the simulator's random run (its default
+  seed then set that slot and that knob together).
 - **The build's 32-bit emulator check fails about one run in ten (found 2026-11-20, also in
   the build before the naming change; not known how old).** The simulator's state round trip
   reports 47 of the GRID page's display-only mark parameters (`"<pad> *"`) reading "-"
@@ -1064,7 +1070,12 @@ empty figure down from 67%.) Memory once used by samples is still not given back
 (The probe was taken out of the plugin on 2026-11-20, before the first release: it had
 answered its question, and a released plugin has no business listing the MPC application's
 open files. What a release still writes, all inside its own folder: `diagnostics.txt`, on
-start, on a project save and every 3 s while audio runs; `missing-samples.txt`; presets from
+start and on a project save, and every 3 s while audio runs only when asked (Jamie,
+  2026-11-20: "only write periodic if option chosen", by a control on the ABOUT page): the
+  parameter **`Logging`** (id `logging`, index 405, Off/On, saved with a project), a bar at
+  the top right of ABOUT and that page's first Q-Link (`tabs.json` about "control"); or
+  a file `diagnostics-on` in the plugin's folder, which `deploy.sh --content` puts on
+  Jamie's own device and `release.sh` leaves out; `missing-samples.txt`; presets from
 Save; the kept edits. It prints nothing. The firmware's debug text is compiled out, and the
 hosted layer's own goes to stderr only when `DELUGE_LOG` is set or a file `deluge-log` is in
 the working directory.)

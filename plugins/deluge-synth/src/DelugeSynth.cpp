@@ -115,6 +115,8 @@ enum ParamIndex
     // Which of the sound's variations plays: 0 is the first, and a number there is no variation
     // for changes nothing. Meant for the MPC's automation (see "Variations" above).
     kVariation,
+    // On the ABOUT page: keep diagnostics.txt up to date while the plugin plays (see prepare()).
+    kLogging,
     kNumParams
 };
 
@@ -337,6 +339,7 @@ public:
             for (int v = 1; v <= deluge_hosted::kMaxVariations; ++v) numbers.push_back(std::to_string(v));
             addParam(mpc::choiceParam("variation", "Variation", numbers, 0));
         }
+        addParam(mpc::choiceParam("logging", "Logging", std::vector<std::string>{"Off", "On"}, 0));
         keptEdit_.reset(new std::atomic<uint8_t>[presets_.size() + 1]);
         for (size_t i = 0; i <= presets_.size(); ++i) keptEdit_[i].store(0);
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
@@ -387,6 +390,17 @@ public:
             worker_ = std::thread([this] { workerLoop(); });
         }
         leftoverFrames_ = 0;
+        // diagnostics.txt is written here and at each project save. It is also rewritten every
+        // few seconds while audio runs only when asked: by the Logging parameter, which is on
+        // the ABOUT page (Jamie, 2026-11-20) and is saved with a project like any other, or, for
+        // a device used to develop on, by a file called "diagnostics-on" or "diagnostics-on.txt"
+        // in the plugin's folder (looked for now, once). A plugin on someone's drive or card
+        // should not write to it all the time unasked.
+        {
+            const std::string folder = mpc::pluginFolder();
+            struct stat st;
+            periodicDiagnostics_ = !folder.empty() && (stat((folder + "/diagnostics-on").c_str(), &st) == 0 || stat((folder + "/diagnostics-on.txt").c_str(), &st) == 0);
+        }
         writeDiagnostics();
     }
 
@@ -1613,10 +1627,11 @@ private:
             showSnapshot();
             showCellStates();
             tellHostNow();
-            // Keep the diagnostics file a few seconds fresh while audio runs, so that it says
-            // something useful after a crash or a reset too.
+            // Where it has been asked for (periodicDiagnostics_), keep the diagnostics file a few
+            // seconds fresh while audio runs, so that it says something useful after a crash or
+            // a reset too.
             const int64_t now = nowMs();
-            if (now - diagnosticsWrittenMs_ >= 3000 && statCalls_.load() != diagnosticsCalls_)
+            if ((periodicDiagnostics_ || get(kLogging) > 0.5f) && now - diagnosticsWrittenMs_ >= 3000 && statCalls_.load() != diagnosticsCalls_)
             {
                 noteFirmwareErrors();
                 diagnosticsWrittenMs_ = now;
@@ -2141,8 +2156,12 @@ private:
             int position = 0;
             if (keep)
             {
+                // Only where the engine's knob stands somewhere else, as for the pads below: a
+                // knob has 129 positions and what it controls may have been set more finely
+                // (a cable's amount, through its slot, just above), which setting the knob to
+                // the position it already reads would round off.
                 pending_[k].store(kNoChange);
-                deluge_hosted::engineKnobSet(k, getInt(kGold + k));
+                if (!deluge_hosted::engineKnobGet(k, &position) || position != getInt(kGold + k)) deluge_hosted::engineKnobSet(k, getInt(kGold + k));
             }
             else if (adopt && deluge_hosted::engineKnobGet(k, &position))
             {
@@ -2281,7 +2300,7 @@ private:
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
         std::snprintf(text, sizeof text,
-                      "Downrush diagnostics (written on prepare, on project/preset save, and every 3 s while audio runs)\n"
+                      "Downrush diagnostics (written when the plugin starts and on a project save; also every 3 s while audio runs while Logging, on the ABOUT page, is On)\n"
                       "engine: %s build; this is instance %d in it (-1: none, too many instances)\n"
                       "presets found in Content/SYNTHS: %d\n"
                       "loaded preset: %d (%s), load error %d, loads so far %d\n"
@@ -2475,6 +2494,7 @@ private:
     std::atomic<int>      engineInstance_{-1};          // this plugin instance's place in the engine (engine.h)
     bool                  triedForInstance_ = false;    // prepare() only
     std::mutex            diagnosticsLock_;
+    std::atomic<bool>     periodicDiagnostics_{false};   // the plugin's folder holds "diagnostics-on" (prepare() looks)
     int64_t               diagnosticsWrittenMs_ = 0;   // worker thread only
     uint32_t              diagnosticsCalls_ = 0;       // worker thread only
 };

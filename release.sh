@@ -42,7 +42,7 @@ cat > "$folder/Content/SAMPLES/README.txt" <<TXT
 Samples for your own Deluge presets go here, at the paths they have under SAMPLES on a Deluge
 SD card. See README.md in the package.
 TXT
-rm -f "$folder"/diagnostics*.txt "$folder"/missing-samples.txt
+rm -f "$folder"/diagnostics*.txt "$folder"/diagnostics-on "$folder"/missing-samples.txt
 cp LICENSE "$folder/LICENSE"
 cat > "$folder/NOTICE.txt" <<TXT
 Downrush $version for Akai MPC and Force

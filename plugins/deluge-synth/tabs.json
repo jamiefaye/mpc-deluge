@@ -46,6 +46,10 @@
   "about": {
     "name": "ABOUT",
     "after": "SC STEPS",
+    "control": {
+      "param": "Logging",
+      "bounds": "983 20 278 107"
+    },
     "lines": [
       [
         "Downrush",
@@ -245,6 +249,8 @@
     "Revert": "983 490 278 107"
   },
   "steps": {
+    "Variation": [1, 32],
+    "Logging": [0, 1, {"0": "Off", "1": "On"}],
     "Osc1 Transp": [
       -96,
       96
