@@ -169,6 +169,22 @@ int engineSaveSynth(const char*) {
 	return 1; // nothing to write: there is no sound
 }
 
+// One variation, the sound itself, and no more (engine.h).
+int engineVariationAdd(const char*) {
+	return -1000;
+}
+int engineVariationCount() {
+	return 1;
+}
+int engineVariationCurrent() {
+	return 0;
+}
+void engineVariationUse(int) {
+}
+int engineVariationSave(int, const char*) {
+	return 1;
+}
+
 int engineSamplesFoundElsewhere() {
 	return 0;
 }

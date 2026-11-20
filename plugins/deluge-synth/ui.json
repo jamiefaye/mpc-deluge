@@ -12,7 +12,8 @@
           "widget": "slider"
         },
         {
-          "widget": "empty"
+          "param": "Variation",
+          "widget": "slider"
         },
         {
           "param": "Revert",

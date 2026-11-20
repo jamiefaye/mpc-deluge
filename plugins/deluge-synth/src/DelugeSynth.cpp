@@ -27,6 +27,13 @@
 // Choosing a preset: the Preset parameter is the position in the sorted list of preset files, and
 // Folder is the folder it sits in. Four button parameters step through presets and folders.
 //
+// Variations: a sound can hold several sets of its parameter values, cables and arpeggiator
+// settings, as the clips of one synth do on a Deluge (engine.h). They arrive in a project's state,
+// each as the text of a preset file (the "X" block, see saveExtraState), which is how a song
+// converted from a Deluge brings a synth whose clips differ; the Variation parameter says which
+// plays, so one automation point at the start of an MPC clip chooses that clip's set. Gold knobs,
+// pads and cable slots show and edit the variation in use.
+//
 // Instances: the process has one engine (the firmware keeps its state in globals), and every
 // plugin instance has an instance of its own inside it (engine.h): its own song, so its own
 // reverb and master stage, sharing the voice pools, the sample files and the memory. Past
@@ -101,6 +108,9 @@ enum ParamIndex
     // (2). Display only: the worker keeps them (showCellStates) and nothing reads them back.
     kCellState = kScStep + 16,
     kRevert = kCellState + grid::kNumCells,   // a button: drop the kept edit of this preset and load its file
+    // Which of the sound's variations plays: 0 is the first, and a number there is no variation
+    // for changes nothing. Meant for the MPC's automation (see "Variations" above).
+    kVariation,
     kNumParams
 };
 
@@ -314,6 +324,12 @@ public:
             addParam(mpc::choiceParam((std::string(grid::kCells[c].id) + "s").c_str(), (std::string(grid::kCells[c].name) + " *").c_str(),
                                       std::vector<std::string>{"standard", "set", "-"}, 0));
         addParam(mpc::boolParam("revert", "Revert", false));
+        {
+            // Named choices, so that the MPC steps through them one at a time (see kSemitones).
+            std::vector<std::string> numbers;
+            for (int v = 1; v <= deluge_hosted::kMaxVariations; ++v) numbers.push_back(std::to_string(v));
+            addParam(mpc::choiceParam("variation", "Variation", numbers, 0));
+        }
         keptEdit_.reset(new std::atomic<uint8_t>[presets_.size() + 1]);
         for (size_t i = 0; i <= presets_.size(); ++i) keptEdit_[i].store(0);
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
@@ -402,6 +418,8 @@ public:
                 // mirroring the engine): remember it, and process() hands it to the engine.
                 if (index == kSave) { buttonSet(index, plainValue); if (pressed && !tReleasingButton) saveRequested_.store(true); break; }
                 if (index == kSaveResult || index == kSampleState) break;
+                // process() makes it the engine's at the start of the next block. Not an edit.
+                if (index == kVariation) { wantedVariation_.store(mpc::clamp((int)std::lround(plainValue), 0, deluge_hosted::kMaxVariations - 1)); break; }
                 if (index == kRevert)
                 {
                     buttonSet(index, plainValue);
@@ -866,6 +884,8 @@ public:
             const size_t slash = path.rfind('/');
             const size_t start = slash == std::string::npos ? 0 : slash + 1;
             out = path.substr(start, path.size() - start - 4);   // file name without folder or ".XML"
+            // A sound that came in a project's state plays in this preset's place under its own name.
+            if (preset == embeddedPreset_.load() && embeddedName_[embeddedNameNow_.load() & 1][0] != 0) out = embeddedName_[embeddedNameNow_.load() & 1];
             // A star: what plays is not the file's sound but this session's edit of it.
             if (keptEdit_[(size_t)preset].load() != 0 || (preset == loadedPreset_.load() && edited_.load())) out += " *";
             return true;
@@ -965,6 +985,21 @@ public:
     // gold values saved alongside do NOT belong to this preset: the save came after a change of
     // preset and before the new preset's knob positions had been taken, so they are still the
     // previous preset's. (A project from before the flag existed has the path alone.)
+    //
+    // After the flags and a zero byte comes one of two things. "V": the settled parameter values
+    // and the sample files' paths, for a sound that is a preset of the library with changes (see
+    // below). Or "X": the sound itself, for one that has more than one variation or that came
+    // in an "X" block to begin with, and then the preset path only says whose place it plays in:
+    //
+    //   'X', a version byte (1), how many variations (1 to kMaxVariations, one byte), the
+    //   sound's name and a zero byte (the name may be empty: the preset's is shown), then for
+    //   each variation a 32-bit length and that many bytes: the text of a Deluge SYNTH preset
+    //   file. The first is the sound. Of the others only what a clip holds on a Deluge is taken
+    //   (parameter values, cables, arpeggiator settings: engine.h).
+    //
+    // A program that makes projects (the Deluge song converter) writes the same: any path or
+    // none, two zero bytes, the "X" block. Restoring one takes every value from the files, and
+    // the Variation parameter says which of them plays.
     void saveExtraState(std::vector<uint8_t>& out) override
     {
         // The parameters have just been written into the project, before this was called.
@@ -972,7 +1007,7 @@ public:
         // First let whatever is on its way in arrive (a preset, a sample, the knob hand-over
         // that follows): what is written below, and what the MPC looks at next, is then the
         // settled state.
-        waitUntilSettled();
+        const bool settled = waitUntilSettled();
         showCellStates();   // the GRID page's marks follow the settled values now, not a moment later
         const int i = presetIndex();
         const bool goldIsAnotherPresets = goldPreset_.load() != i;
@@ -981,6 +1016,26 @@ public:
             out.assign(presets_[(size_t)i].begin(), presets_[(size_t)i].end());
             out.push_back(0);
             if (goldIsAnotherPresets) out.push_back('K');
+        }
+        // The sound itself, where the preset's path and a list of values would not hold it.
+        std::vector<std::string> sounds;
+        if (settled && i >= 0 && !goldIsAnotherPresets && loadedPreset_.load() == i && (variationCount_.load() > 1 || embeddedPreset_.load() == i)
+            && gatherSounds(sounds))
+        {
+            out.push_back(0);
+            out.push_back('X');
+            out.push_back(1);
+            out.push_back((uint8_t)sounds.size());
+            const char* name = embeddedPreset_.load() == i ? embeddedName_[embeddedNameNow_.load() & 1] : "";
+            out.insert(out.end(), name, name + std::strlen(name) + 1);
+            for (const std::string& sound : sounds)
+            {
+                const uint32_t length = (uint32_t)sound.size();
+                out.insert(out.end(), reinterpret_cast<const uint8_t*>(&length), reinterpret_cast<const uint8_t*>(&length) + sizeof length);
+                out.insert(out.end(), sound.begin(), sound.end());
+            }
+            writeDiagnostics();
+            return;
         }
         // The MPC wrote the parameters into the project before calling this, so before that
         // wait: a sample still loading, or pads the engine had not yet been read back for, are
@@ -1076,6 +1131,36 @@ public:
                 }
             }
         }
+        // Or the sound itself, each variation as a preset file's text (see saveExtraState). A
+        // block that is cut short or makes no sense is not used at all.
+        std::vector<std::string> sounds;
+        std::string soundName;
+        const bool soundsMeant = data + size - flagsEnd >= 2 && flagsEnd[1] == 'X';
+        if (data + size - flagsEnd >= 4 && flagsEnd[1] == 'X' && flagsEnd[2] == 1 && flagsEnd[3] >= 1 && flagsEnd[3] <= deluge_hosted::kMaxVariations)
+        {
+            const uint8_t* const stop = data + size;
+            const uint8_t* at = flagsEnd + 4;
+            const uint8_t* zero = static_cast<const uint8_t*>(std::memchr(at, 0, (size_t)(stop - at)));
+            bool whole = zero != nullptr;
+            if (whole)
+            {
+                soundName.assign(reinterpret_cast<const char*>(at), (size_t)(zero - at));
+                at = zero + 1;
+            }
+            for (int n = 0; n < flagsEnd[3] && whole; ++n)
+            {
+                uint32_t length = 0;
+                whole = (size_t)(stop - at) >= sizeof length;
+                if (whole) std::memcpy(&length, at, sizeof length);
+                whole = whole && length != 0 && (size_t)(stop - at) - sizeof length >= length;
+                if (whole)
+                {
+                    sounds.emplace_back(reinterpret_cast<const char*>(at + sizeof length), (size_t)length);
+                    at += sizeof length + length;
+                }
+            }
+            if (!whole) sounds.clear();
+        }
         const std::string wanted(reinterpret_cast<const char*>(data), pathSize);
         statRestores_.fetch_add(1);
         if (!goldIsThisPresets) statRestoresWithoutKnobs_.fetch_add(1);
@@ -1085,7 +1170,22 @@ public:
         }
         // (Not found: the file was removed or renamed. Keep whatever the Preset number selects.)
 
-        if (goldIsThisPresets && values != nullptr)
+        if (!sounds.empty())
+        {
+            // The worker loads these in the preset's place and every parameter then shows what
+            // they hold; nothing the MPC has just set is given to the engine but Variation.
+            {
+                std::lock_guard<std::mutex> lock(restoreLock_);
+                restoreSounds_.swap(sounds);
+                restoreSoundName_ = soundName;
+            }
+            restoreEmbedded_.store(true);
+            goldPreset_.store(-1);
+            reloadPreset_.store(true);
+            waitUntilSettled();
+            return;
+        }
+        if (goldIsThisPresets && values != nullptr && !soundsMeant)
         {
             // The settled values (saveExtraState) are the state to come back to, whatever the
             // MPC has just set and whatever the engine is in the middle of. The worker thread
@@ -1113,7 +1213,9 @@ public:
             waitUntilSettled();
             return;
         }
-        if (goldIsThisPresets)
+        // (A sound that was meant to come with the state and could not be read: the preset as
+        // its file has it, below, rather than the parameters of a sound that is not there.)
+        if (goldIsThisPresets && !soundsMeant)
         {
             // The gold values the MPC has just set are the user's settings for this preset: they
             // go to the engine, the preset's own do not replace them. The worker thread may be
@@ -1199,6 +1301,18 @@ public:
         // back (not more often than every kSnapshotSpacing frames), because one change can move
         // others: a gold knob and a pad on the same thing, a synth mode that brings pads to life.
         const int changesBefore = changeCounter_.load(std::memory_order_relaxed);
+        // The variation first, as on a Deluge the clip that starts brings its own values and
+        // what is set after that is set in it. The slots are filled afresh from its cables, and
+        // the read-back below makes every parameter show its values.
+        const int variation = wantedVariation_.load(std::memory_order_relaxed);
+        if (variation != deluge_hosted::engineVariationCurrent() && variation < deluge_hosted::engineVariationCount())
+        {
+            deluge_hosted::engineVariationUse(variation);
+            reconcileCables(true);
+            snapshotWanted_ = true;
+            framesSinceSnapshot_ = kSnapshotSpacing;
+            statVariationChanges_.fetch_add(1, std::memory_order_relaxed);
+        }
         if (anyPending_.exchange(false, std::memory_order_relaxed))
         {
             for (int m = 0; m < kNumEngineParams; ++m)
@@ -1631,9 +1745,10 @@ private:
     // finish a preset load and the knob hand-over that follows, so that what is saved, or what the
     // MPC reads back after a load, is the settled state and not a moment in between. Gives up
     // after three seconds (a very large sample preset on a slow card) and carries on.
-    void waitUntilSettled()
+    // Returns whether it did settle.
+    bool waitUntilSettled()
     {
-        if (!workerRunning_.load()) return;
+        if (!workerRunning_.load()) return false;
         settleAsked_.fetch_add(1);
         waiters_.fetch_add(1);
         bool done = false;
@@ -1644,19 +1759,20 @@ private:
                                  && !reloadPreset_.load() && !resync_.load() && !knobsBusy_.load()
                                  && wantedSample_[0].load() == kNoChange && wantedSample_[1].load() == kNoChange
                                  && !samplesBusy_.load() && settleDone_.load() == settleAsked_.load()
-                                 && !restorePending_.load();
+                                 && !restorePending_.load() && !restoreEmbedded_.load();
             if (settled || quit_.load()) { done = true; break; }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         if (!done) statWaitTimeouts_.fetch_add(1);
         waiters_.fetch_sub(1);
+        return done && !quit_.load();
     }
 
     void loadRequestedPreset()
     {
         const int wanted = requestedPreset_.load();
         if (wanted < 0 || wanted >= (int)presets_.size()) return;
-        const bool reload = reloadPreset_.exchange(false);
+        const bool reload = reloadPreset_.exchange(false) || restoreEmbedded_.load();
         if (dropEdits_.exchange(false)) { forgetEdits(); restored_ = true; }
         if (wanted == loadedPreset_.load() && !reload)
         {
@@ -1687,10 +1803,36 @@ private:
         else if (!restoring && previous >= 0 && previous != wanted && goldPreset_.load() == previous && (edited_.load() || restored_))
             keepEdit(previous);
         std::string path = "SYNTHS/" + presets_[(size_t)wanted];
-        const bool kept = !restoring && keptEdit_[(size_t)wanted].load() != 0;
+        // A sound that came in a project's state (loadExtraState) is loaded in the preset's place.
+        std::vector<std::string> sounds;
+        std::string soundName;
+        const bool fromState = restoreEmbedded_.load();
+        if (fromState)
+        {
+            std::lock_guard<std::mutex> lock(restoreLock_);
+            sounds.swap(restoreSounds_);
+            soundName = restoreSoundName_;
+        }
+        const bool kept = sounds.empty() && !restoring && keptEdit_[(size_t)wanted].load() != 0;
         resync_.store(false);
         const int64_t loadStart = nowMs();
-        int error = deluge_hosted::engineLoadSynth(kept ? editPath(wanted).c_str() : path.c_str());
+        int error = !sounds.empty() ? loadSounds(sounds) : deluge_hosted::engineLoadSynth(kept ? editPath(wanted).c_str() : path.c_str());
+        if (error != 0 && !sounds.empty())
+        {
+            sounds.clear();   // not a sound the engine will take: the preset itself, then
+            error = deluge_hosted::engineLoadSynth(path.c_str());
+        }
+        // Its name, shown in place of the preset's (formatValue): the buffer not showing is written, then shown.
+        {
+            const int next = (embeddedNameNow_.load() + 1) & 1;
+            std::snprintf(embeddedName_[next], sizeof embeddedName_[next], "%s", sounds.empty() ? "" : soundName.c_str());
+            embeddedNameNow_.store(next);
+            embeddedPreset_.store(sounds.empty() ? -1 : wanted);
+        }
+        // The variation the Variation parameter names, if the sound has it, before anything is
+        // read from the engine: the parameters are to show that one's values.
+        variationCount_.store(deluge_hosted::engineVariationCount());
+        if (wantedVariation_.load() < variationCount_.load()) deluge_hosted::engineVariationUse(wantedVariation_.load());
         const int loadMs = (int)(nowMs() - loadStart);
         if (loads_.load() == 0) statFirstLoadMs_.store(loadMs);
         statLastLoadMs_.store(loadMs);
@@ -1718,7 +1860,80 @@ private:
         loadedPreset_.store(wanted);
         loads_.fetch_add(1);
         syncKnobs();
+        if (fromState) restoreEmbedded_.store(false);   // waitUntilSettled() waits for this
         noteFirmwareErrors();
+    }
+
+    // --- a sound and its variations as preset files' text (the "X" block of saveExtraState) -----
+    // The engine reads and writes preset files, so each text passes through a file of this
+    // instance's in Content/EDITS that exists only for the length of the call.
+    std::string stateFolder() const
+    {
+        mkdir(mpc::contentPath("EDITS").c_str(), 0777);
+        const std::string folder = mpc::contentPath("EDITS") + "/i" + std::to_string(engineInstance_.load());
+        mkdir(folder.c_str(), 0777);
+        return folder;
+    }
+    std::string statePath(int n) const   // as the engine names it, under Content
+    {
+        return "EDITS/i" + std::to_string(engineInstance_.load()) + "/state-" + std::to_string(n) + ".XML";
+    }
+    // Worker thread, engine lock held. The first text is loaded as the sound and the others
+    // added as its variations. Returns the first's load error; one of the others that will not
+    // load has the first's values in its place, so that the ones after it keep their numbers.
+    int loadSounds(const std::vector<std::string>& sounds)
+    {
+        const std::string folder = stateFolder();
+        int error = 0;
+        for (size_t n = 0; n < sounds.size() && error == 0; ++n)
+        {
+            const std::string file = folder + "/state-" + std::to_string(n) + ".XML";
+            bool written = false;
+            if (FILE* f = std::fopen(file.c_str(), "wb"))
+            {
+                written = std::fwrite(sounds[n].data(), 1, sounds[n].size(), f) == sounds[n].size();
+                written = std::fclose(f) == 0 && written;
+            }
+            if (n == 0) error = written ? deluge_hosted::engineLoadSynth(statePath(0).c_str()) : -4;
+            else if (!written || deluge_hosted::engineVariationAdd(statePath((int)n).c_str()) < 0)
+            {
+                variationErrors_.fetch_add(1);
+                deluge_hosted::engineVariationAdd(statePath(0).c_str());
+            }
+            if (n != 0) std::remove(file.c_str());
+        }
+        std::remove((folder + "/state-0.XML").c_str());
+        return error;
+    }
+    // The MPC's thread, in saveExtraState() with the worker settled: every variation of the
+    // loaded sound as the text of a preset file, written by the firmware's own writer. Audio is
+    // silent for the moment this takes, as for a preset load. False, and nothing, if any fails.
+    bool gatherSounds(std::vector<std::string>& sounds)
+    {
+        const int instance = engineInstance_.load();
+        if (instance < 0) return false;
+        const std::string folder = stateFolder();
+        EngineHold engine(instance);
+        const int count = deluge_hosted::engineVariationCount();
+        for (int n = 0; n < count; ++n)
+        {
+            const std::string file = folder + "/state-" + std::to_string(n) + ".XML";
+            std::remove(file.c_str());   // the engine will not overwrite
+            std::string text;
+            if (deluge_hosted::engineVariationSave(n, statePath(n).c_str()) == 0)
+            {
+                if (FILE* f = std::fopen(file.c_str(), "rb"))
+                {
+                    char buffer[4096];
+                    for (size_t got; (got = std::fread(buffer, 1, sizeof buffer, f)) != 0;) text.append(buffer, got);
+                    std::fclose(f);
+                }
+            }
+            std::remove(file.c_str());
+            if (text.empty()) { sounds.clear(); return false; }
+            sounds.push_back(text);
+        }
+        return !sounds.empty();
     }
 
     // Megabytes of real memory the process holds (on an MPC: the whole MPC application), from
@@ -2147,6 +2362,10 @@ private:
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
             std::fputs(text, f);
+            std::fprintf(f, "variations: the sound has %d, the Variation parameter asks for number %d (from 0); changed %u times while playing; "
+                            "%u would not load from a project; the sound %s\n",
+                         variationCount_.load(), wantedVariation_.load(), statVariationChanges_.load(), variationErrors_.load(),
+                         embeddedPreset_.load() >= 0 ? "came in a project's state" : "is the preset's");
             std::fputs("gold knobs (name, position -64..64):", f);
             for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
                 std::fprintf(f, "%s %d=[%s] %d", k % 4 == 0 ? "\n " : ",", k + 1, knobNames_[k], getInt(kGold + k));
@@ -2213,6 +2432,18 @@ private:
     std::atomic<int>      saveTextNow_{0};
     std::atomic<uint32_t> saves_{0};
     std::atomic<int>      saveError_{0};
+    // Variations (see the top of the file). wantedVariation_ is the Variation parameter as last
+    // set; the engine's own count and choice are read under the engine lock.
+    std::atomic<int>      wantedVariation_{0}, variationCount_{1};
+    std::atomic<uint32_t> statVariationChanges_{0}, variationErrors_{0};
+    // A sound that came in a project's state: the preset whose place it plays in (-1: none
+    // does), its name (written like saveText_), and, on its way from loadExtraState to the
+    // worker under restoreLock_, the text of each variation.
+    std::atomic<int>      embeddedPreset_{-1}, embeddedNameNow_{0};
+    char                  embeddedName_[2][80] = {};
+    std::atomic<bool>     restoreEmbedded_{false};
+    std::vector<std::string> restoreSounds_;
+    std::string           restoreSoundName_;
     std::mutex            restoreLock_;           // loadExtraState and the worker; never the audio thread
     std::vector<float>    restoreValues_;         // a restored project's parameter values, from kGold on
     std::atomic<bool>     restorePending_{false}; // not yet taken by the worker

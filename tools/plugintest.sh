@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build tests/plugin_grid.cpp (a small VST2 host) and run it against the native build of Deluge
 # Synth: how the gold knobs and grid pads follow each other, and that a saved state comes back;
-# then tests/plugin_two.cpp, several instances of the plugin playing at once.
+# then tests/plugin_two.cpp, several instances of the plugin playing at once, and
+# tests/plugin_variations.cpp, a sound with more than one set of values.
 # Build the plugin first (./build.sh plugins/deluge-synth). The real engine is only in the native
 # build on a 64-bit ARM computer; on Intel this exercises the placeholder.
 #   tools/plugintest.sh [preset name]
@@ -19,3 +20,8 @@ c++ -std=c++17 -O1 -I"$sdk/framework" -I"$here/plugins/deluge-synth/src" \
 c++ -std=c++17 -O1 -I"$sdk/framework" -I"$here/tests" \
   -o "$here/build/plugintest/plugin_two" "$here/tests/plugin_two.cpp" -ldl -lpthread
 "$here/build/plugintest/plugin_two" "$lib"
+# Variations: a state holding a sound with two sets of values, and the Variation parameter
+# (tests/plugin_variations.cpp).
+c++ -std=c++17 -O1 -I"$sdk/framework" -I"$here/plugins/deluge-synth/src" \
+  -o "$here/build/plugintest/plugin_variations" "$here/tests/plugin_variations.cpp" -ldl -lpthread
+"$here/build/plugintest/plugin_variations" "$lib"
