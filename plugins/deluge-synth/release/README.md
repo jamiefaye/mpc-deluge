@@ -89,11 +89,11 @@ moment and takes room.
 **What comes over, and what does not.**
 
 - Synth presets from any Deluge firmware, official or community, up to community 1.3.0, which is
-  the engine inside Downrush. A preset that uses something added after 1.3.0 will load without it.
+  the engine inside Downrush. A preset saved by a later firmware that uses something added since
+  has not been tried and may not sound as it should.
 - A synth that exists only inside a song, never saved as a preset, has no file of its own: save
   it as a synth preset on the Deluge first (see the Deluge's manual), then copy that file.
-- Kits and songs do not load. A kit row that is a synth can be saved on the Deluge as a synth
-  preset and brought over like any other.
+- Kits and songs do not load.
 - A sound keeps its own gold-knob assignments: they are on the GOLD screen and on the Q-Links,
   under the names the preset gives them.
 
@@ -104,7 +104,7 @@ loads it.
 
 **Updating the plugin.** Your presets and samples live inside the plugin's folder. If you
 install a new version by replacing that folder, copy `Content` out first and put it back
-after. An installer from the Open MPC catalog keeps `Content` for you.
+after.
 
 ## Using it
 
