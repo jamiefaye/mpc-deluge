@@ -387,7 +387,6 @@ public:
             worker_ = std::thread([this] { workerLoop(); });
         }
         leftoverFrames_ = 0;
-        if (projectProbe_[0][0] == 0) probeProjectFolder(projectProbe_[0], sizeof projectProbe_[0]);
         writeDiagnostics();
     }
 
@@ -1110,7 +1109,6 @@ public:
         // in nothing is kept and no kept edit is loaded, and afterwards every kept edit is
         // dropped and the sound counts as unchanged, whatever the MPC set on the way.
         restoringNow_.store(true);
-        probeProjectFolder(projectProbe_[1], sizeof projectProbe_[1]);
         struct Done
         {
             DelugeSynth& self;
@@ -1980,58 +1978,6 @@ private:
         return (int)(resident * 4096 / (1024 * 1024));
     }
 
-    // --- where is the project? (a probe, 2026-11-18) ----------------------------------------------
-    // It would be useful to read a sound's samples from the project's own data folder, and
-    // nothing tells a plugin where that is. Three things are looked at, when
-    // the plugin starts and again when a project's state arrives, and written to
-    // diagnostics.txt: what the host answers to the VST question "which directory?", the
-    // process's working directory, and any file the MPC application has open whose name says
-    // project (".xpj", "ProjectData"). Not the audio thread.
-    // What a Force said (2026-11-18, a project loaded from a USB stick): the host's directory
-    // is the plugin's own VST folder, the working directory is "/", and no project file is open
-    // by the time the state arrives. So none of the three finds the project.
-    void probeProjectFolder(char* out, size_t outSize)
-    {
-        out[0] = 0;
-        size_t used = 0;
-        auto add = [&](const char* text) { used += (size_t)std::snprintf(out + used, used < outSize ? outSize - used : 0, "%s", text); if (used >= outSize) used = outSize - 1; };
-        char buffer[600];
-        // The answer is a pointer to text, if it is anything. It is read a byte at a time through
-        // write(), which fails cleanly on an address that is not ours to read.
-        // (mpc::Plugin::host_ is the host's callback; this class has a host_ of its own, the values the MPC set.)
-        const audioMasterCallback askHost = mpc::Plugin::host_;
-        const VstIntPtr answer = (askHost != nullptr && effect_ != nullptr) ? askHost(effect_, audioMasterGetDirectory, 0, 0, nullptr, 0.0f) : 0;
-        std::snprintf(buffer, sizeof buffer, "host's directory: %s", answer == 0 ? "(no answer)" : "");
-        add(buffer);
-        if (answer != 0)
-        {
-            const int sink = open("/dev/null", O_WRONLY);
-            size_t n = 0;
-            const char* text = reinterpret_cast<const char*>(answer);
-            while (sink >= 0 && n + 1 < sizeof buffer && write(sink, text + n, 1) == 1 && text[n] != 0 && (unsigned char)text[n] >= 32) { buffer[n] = text[n]; ++n; }
-            if (sink >= 0) close(sink);
-            buffer[n] = 0;
-            add(n != 0 ? buffer : "(an answer that is not text)");
-        }
-        if (getcwd(buffer, sizeof buffer) != nullptr) { add("; working directory: "); add(buffer); }
-        if (DIR* d = opendir("/proc/self/fd"))
-        {
-            int found = 0;
-            while (dirent* e = readdir(d))
-            {
-                char link[64], target[500];
-                std::snprintf(link, sizeof link, "/proc/self/fd/%s", e->d_name);
-                const ssize_t n = readlink(link, target, sizeof target - 1);
-                if (n <= 0) continue;
-                target[n] = 0;
-                if (std::strstr(target, ".xpj") == nullptr && std::strstr(target, "ProjectData") == nullptr) continue;
-                if (found++ < 4) { add("; open: "); add(target); }
-            }
-            closedir(d);
-            if (found == 0) add("; no project file open");
-        }
-    }
-
     // --- edits kept for the session (see loadRequestedPreset) -------------------------------------
     // Any thread: the user or the host changed the sound.
     void noteEdit()
@@ -2356,7 +2302,6 @@ private:
                       "start-up, in ms: listing %d presets %d, listing sample files %d, starting the engine and this instance %d;\n"
                       "  loading a preset: the first %d, the last %d, the slowest %d\n"
                       "memory: %d MB of the engine's %d MB block are in use (all instances share it); the whole application holds %d MB\n"
-                      "where is the project? at start: %s\n  when a project's state last arrived: %s\n"
                       "this preset's sample files: %d found by name in another folder, %d found nowhere (see missing-samples.txt)\n",
 #if defined(DELUGE_ENGINE_LINKED)
 #if defined(__aarch64__)
@@ -2389,7 +2334,6 @@ private:
                       (int)presets_.size(), statPresetScanMs_.load(), statSampleScanMs_.load(), statEngineStartMs_.load(),
                       statFirstLoadMs_.load(), statLastLoadMs_.load(), statSlowestLoadMs_.load(),
                       blockResident, blockTotal, processResidentMb(),
-                      projectProbe_[0], projectProbe_[1][0] != 0 ? projectProbe_[1] : "(none has)",
                       samplesElsewhere_.load(), samplesMissing_.load());
         if (FILE* f = std::fopen((folder + diagnosticsName()).c_str(), "w"))
         {
@@ -2513,7 +2457,6 @@ private:
     std::atomic<uint32_t> statCalls_{0}, statSilentCalls_{0}, statNoteOns_{0}, statWorstPermille_{0};
     std::atomic<float> statTempoGiven_{0.0f}, statTempo_{0.0f}, statPpq_{-1.0f};
     std::atomic<uint32_t> statScHits_{0};
-    char projectProbe_[2][900] = {{0}, {0}};   // at start; when a project's state last arrived
     std::atomic<int> statPresetScanMs_{0}, statSampleScanMs_{0}, statEngineStartMs_{0}, statFirstLoadMs_{0}, statLastLoadMs_{0}, statSlowestLoadMs_{0};
     // Edits kept for the session: which presets have an edit file, whether the loaded sound has
     // been changed since it was loaded, and (worker only) whether it came from a project.

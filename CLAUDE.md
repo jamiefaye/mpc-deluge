@@ -1061,6 +1061,14 @@ empty figure down from 67%.) Memory once used by samples is still not given back
 
 ### What the Force tells a plugin about the project: nothing (2026-11-18)
 
+(The probe was taken out of the plugin on 2026-11-20, before the first release: it had
+answered its question, and a released plugin has no business listing the MPC application's
+open files. What a release still writes, all inside its own folder: `diagnostics.txt`, on
+start, on a project save and every 3 s while audio runs; `missing-samples.txt`; presets from
+Save; the kept edits. It prints nothing. The firmware's debug text is compiled out, and the
+hosted layer's own goes to stderr only when `DELUGE_LOG` is set or a file `deluge-log` is in
+the working directory.)
+
 A probe in `diagnostics.txt` (`probeProjectFolder`), read back from the Force with
 `mpc_remote.py export` after a project on a USB stick was loaded: the VST "which directory?"
 query (`audioMasterGetDirectory`) answers with the plugin's own `VST` folder; the working
