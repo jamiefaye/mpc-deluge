@@ -61,6 +61,12 @@ and the dated note nearest the topic win.
   parameters". Built and tested in the simulators on all three targets. The build on the Force
   and on the card is still the 2026-11-13 one, without it.
 
+- **Variations (2026-11-20; built and tested in the simulators, not yet on hardware).** A sound
+  can hold a set of parameter values for each clip, as on a Deluge; a project's state carries
+  them and the `Variation` parameter picks one. For songs converted from a Deluge. See
+  "Variations". **`Variation` is parameter 404 and the state has a new block: both are
+  permanent once the plugin is released.**
+
 - **A crash on loading a project, once, not repeatable (2026-11-19).** A project converted from
   a Deluge song by `../deluge-force-converter` (three Deluge Synth tracks, each naming a
   library preset, beside two drum tracks) crashed the Force as it loaded; the same file
@@ -1037,6 +1043,63 @@ only the sound each instance has loaded, "so people are protected from making a 
 - `DELUGE_SYNTH_NO_SAVE` (the build's simulator run) keeps nothing.
 - `tools/plugintest.sh` checks the star, the edit coming back, and Revert.
 
+### Variations: one sound, a set of values for each clip (2026-11-20; in the tests, not yet on a device)
+
+Jamie: on a Deluge both synth clips and kit clips set a sound's parameters with no automation,
+so a converted song needs a way for the MPC to tell the plugin which clip's values to play.
+Chosen: the state carries every set, and one stepped parameter picks between them.
+
+- **What a Deluge does:** every clip of a synth has its own `ParamManager` (parameter values,
+  patch cables) and its own arpeggiator settings; the oscillators and whatever else is not a
+  parameter belong to the sound and are shared. The clip that plays is the instrument's
+  active clip (`SoundInstrument::setActiveClip`: the new clip's values are patched in, sounding
+  notes carry on).
+- **Engine** (`engine.h`, "variations"): `engineVariationAdd(path)` reads a preset file as
+  `engineLoadSynth` does, into a new clip and a throwaway sound, and gives the clip to the
+  loaded sound; `engineVariationUse(n)` is the firmware's `setActiveClip` and costs nothing
+  (audio thread); `engineVariationSave(n, path)` writes the sound with that clip's values. At
+  most 32. Knobs, pads, cables and Save all act on the one in use. A new clip and a file
+  being read draw on the noise generator the playing sound also draws on, so `Add` puts it
+  back: adding a variation changes not one sample of what plays.
+- **`tests/engine_variations.cpp`** (in `tools/corpus.sh`, sixth pass): 107 of 107 presets
+  sample-exact with a variation added, in use, left again, and saved and loaded; 50 of 50 on
+  emulated arm32. Ten of the 107 edited sounds do not play the same twice even alone in one
+  process (the uninitialised reads of the bug list); for those only variation 0 is judged.
+- **Plugin:** parameter **`Variation`** (id `variation`, the last one, index 404: 32 named
+  choices "1".."32" so the MPC steps exactly). `process()` makes it the engine's at the start
+  of a block, before any other parameter change, refills the cable slots from the new clip
+  and has everything read back, so the screens show the variation that plays. A number the
+  sound has no variation for changes nothing. Changing it is not an edit (no star). On MAIN,
+  right of the small grid.
+- **The state's "X" block** (the comment above `saveExtraState` has the bytes): after the
+  preset path and flags, the sound itself, each variation as the text of a Deluge SYNTH
+  preset file, with a name. Written instead of the "V" values when the sound has more than
+  one variation or itself came from an "X" block. Restoring one loads the texts in the
+  place of the preset the path names (or the one selected, if it names none), shows the
+  sound's name there, and takes every value from them (nothing the MPC set is given to the
+  engine but Variation). The texts pass through files `Content/EDITS/i<n>/state-<k>.XML`
+  that exist for the length of the call. A block cut short is refused whole and the preset
+  loads as its file has it.
+- **For the converter:** a track's state is the framework's block with no parameters and
+  ours as: no path (or a library preset's), two zero bytes, `X`, 1, the count, a name, a
+  zero byte, then each text with a 32-bit little-endian length. Each clip whose values
+  differ is one text: the song's `<sound>` with that clip's `<soundParams>` as its
+  `<defaultParams>` and the clip's arpeggiator. Each Force clip then gets one automation
+  event at its start: parameter 4096 + 404 = 4500, value n / 31. Every clip needs it, the
+  ones on variation 0 too, or the last one's values stay. `tests/plugin_variations.cpp`
+  builds such a state by hand.
+- **Limits.** A variation is only what a clip holds: a text whose oscillators differ from
+  the first's has that difference ignored. Leaving a sound that came in a state for another
+  preset keeps the variation in use as that preset's edit and drops the rest and the name.
+  A project save while playing is a short gap in every instance (the texts are written with
+  the engine held). No way yet to make a variation on the device.
+- **To find out on the Force:** whether an automation point at a clip's first tick reaches
+  the plugin before a note on the same tick (if not, the first note of a clip plays with the
+  last clip's values: the converter could then put the point a tick early, at the end of
+  the clip before); whether launching a clip part-way sends the point at all; whether the
+  Force records as automation the parameter changes the plugin reports when the variation
+  changes (a hundred or so at once), while automation is being written.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
@@ -1204,7 +1267,7 @@ tools/vendor.sh              # once, and after changing patches/: fill third_par
 ./build.sh plugins/<name>    # e.g. plugins/deluge-proto
 tools/mkpatch.sh             # after editing files under third_party/: rewrite patches/
 tools/corpus.sh              # every preset on the card, on arm32, arm64 and this computer; must match
-tools/plugintest.sh          # the built plugin's knobs, grid pads and state, driven as a host would; then several instances at once
+tools/plugintest.sh          # the built plugin's knobs, grid pads and state, driven as a host would; then several instances at once, and variations
 tools/gen_grid.py            # after moving the firmware pin: rewrite the table of grid pads
 python3 ../mpc-plugin-builder-sdk/tools/new_plugin.py "<Name>" --vendor "Fentonia" --kind instrument --dir plugins
 python3 ../mpc-plugin-builder-sdk/tools/package.py plugins/<name>     # zip for sharing
