@@ -61,7 +61,7 @@ and the dated note nearest the topic win.
   parameters". Built and tested in the simulators on all three targets. The build on the Force
   and on the card is still the 2026-11-13 one, without it.
 
-- **Variations (2026-11-20; built and tested in the simulators, not yet on hardware).** A sound
+- **Variations (2026-11-20; built, tested in the simulators, and heard working on the Force the same day).** A sound
   can hold a set of parameter values for each clip, as on a Deluge; a project's state carries
   them and the `Variation` parameter picks one. For songs converted from a Deluge. See
   "Variations". **`Variation` is parameter 404 and the state has a new block: both are
@@ -1043,7 +1043,7 @@ only the sound each instance has loaded, "so people are protected from making a 
 - `DELUGE_SYNTH_NO_SAVE` (the build's simulator run) keeps nothing.
 - `tools/plugintest.sh` checks the star, the edit coming back, and Revert.
 
-### Variations: one sound, a set of values for each clip (2026-11-20; in the tests, not yet on a device)
+### Variations: one sound, a set of values for each clip (2026-11-20; heard on the Force the same day)
 
 Jamie: on a Deluge both synth clips and kit clips set a sound's parameters with no automation,
 so a converted song needs a way for the MPC to tell the plugin which clip's values to play.
@@ -1099,6 +1099,12 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   preset keeps the variation in use as that preset's edit and drops the rest and the name.
   A project save while playing is a short gap in every instance (the texts are written with
   the engine held). No way yet to make a variation on the device.
+- **On the Force (Jamie, 2026-11-20, the build of that day, two projects written by
+  `../deluge-force-converter`):** `VarPan449` (one synth, two clips set hard left and hard
+  right): "hearing the pan". `Var454` (a real song, one synth with four clips of different
+  filter and delay settings): "hearing the variations". So a state with an "X" block loads
+  on the device, and the Force's clip automation of `Variation` switches the set. Not yet
+  reported: the three points below.
 - **To find out on the Force:** whether an automation point at a clip's first tick reaches
   the plugin before a note on the same tick (if not, the first note of a clip plays with the
   last clip's values: the converter could then put the point a tick early, at the end of
