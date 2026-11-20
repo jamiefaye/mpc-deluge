@@ -1,6 +1,6 @@
 # Downrush for Akai MPC and Force
 
-The synth engine of the Synthstrom Deluge, from the open-source community firmware (v1.3.0),
+The synth engine of the Synthstrom Audible Deluge, from the open-source community firmware (v1.3.0),
 as an instrument plugin for standalone Akai MPCs and the Force. It loads Deluge SYNTH presets,
 plays them with the firmware's own signal processing, puts the sound's parameters and its mod
 matrix on the touch screen and the knobs, and can save an edited sound as a preset file that a

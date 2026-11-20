@@ -1,10 +1,10 @@
 // Downrush - an MPC instrument plugin by Jamie Fenton
 //
 // (Called "Deluge Synth", by "Fentonia", until 2026-11-20; the uid is the same. The name
-// changed so that the plugin does not carry Synthstrom's name for their instrument; file and
+// changed so that the plugin does not carry Synthstrom Audible's name for their instrument; file and
 // class names here keep the old one.)
 //
-// The Synthstrom Deluge's synth engine, running the Deluge community firmware's own code: this
+// The Synthstrom Audible Deluge's synth engine, running the Deluge community firmware's own code: this
 // file is only the plugin shell. It picks a SYNTH preset file, hands MIDI notes to the engine and
 // copies the engine's output to the MPC. Everything that makes sound is in the engine
 // (hosted/engine.h, built from the firmware into libdeluge.a).

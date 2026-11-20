@@ -1,6 +1,6 @@
 // Deluge Proto - an MPC instrument plugin by Fentonia
 //
-// A proof that Synthstrom Deluge firmware DSP runs inside an MPC plugin. It is not the Deluge
+// A proof that Synthstrom Audible Deluge firmware DSP runs inside an MPC plugin. It is not the Deluge
 // synth engine: only the oscillators and the filter set are the firmware's code (see
 // deluge_engine.cpp). The voice handling, the envelope and the parameter scaling in this file
 // are simple stand-ins written for the prototype.

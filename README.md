@@ -1,10 +1,10 @@
 # mpc-deluge
 
 Plugins for Akai MPC standalone hardware (Force, MPC Live and the rest of the family) that run
-the Synthstrom Deluge community firmware's synth engine, built with inMusic's MPC Plugin SDK.
+the Synthstrom Audible Deluge community firmware's synth engine, built with inMusic's MPC Plugin SDK.
 
 **This is a work in progress.** It plays on one Akai Force. It is not an Akai, inMusic or
-Synthstrom product, and nobody from those companies is involved: it is a personal project by
+Synthstrom Audible product, and nobody from those companies is involved: it is a personal project by
 Jamie Fenton, written with Claude (Anthropic's AI model) doing much of the coding.
 
 ## What is here

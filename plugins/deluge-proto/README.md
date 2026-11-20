@@ -1,7 +1,7 @@
 # Deluge Proto
 
 An instrument plugin for Akai MPC standalone hardware, by Fentonia. A prototype: it proves that
-Synthstrom Deluge firmware DSP compiles for, and runs inside, an MPC plugin. It is not the Deluge
+Synthstrom Audible Deluge firmware DSP compiles for, and runs inside, an MPC plugin. It is not the Deluge
 synth engine.
 
 ## What is Deluge code and what is not
