@@ -1081,13 +1081,19 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   that exist for the length of the call. A block cut short is refused whole and the preset
   loads as its file has it.
 - **For the converter:** a track's state is the framework's block with no parameters and
-  ours as: no path (or a library preset's), two zero bytes, `X`, 1, the count, a name, a
-  zero byte, then each text with a 32-bit little-endian length. Each clip whose values
+  ours as: no path (or a library preset's), two zero bytes, `X`, 1 (version), 0 (kind: a
+  synth), the count, a name, a zero byte, then each text with a 32-bit little-endian length. Each clip whose values
   differ is one text: the song's `<sound>` with that clip's `<soundParams>` as its
   `<defaultParams>` and the clip's arpeggiator. Each Force clip then gets one automation
   event at its start: parameter 4096 + 404 = 4500, value n / 31. Every clip needs it, the
   ones on variation 0 too, or the last one's values stay. `tests/plugin_variations.cpp`
   builds such a state by hand.
+- **Room for kits (Jamie, 2026-11-20: someday a kit with synth rows embedded, played by the
+  firmware's own kit code and not the Force's drum program; not wanted now).** The block's
+  kind byte is for that: another kind would carry KIT files, and a variation would be a kit
+  clip's values (the kit's own and each row's), chosen by the same `Variation` parameter.
+  This build refuses a kind it does not know and loads the preset instead. Whatever
+  parameters a kit needs can be appended after `Variation`; nothing has to move.
 - **Limits.** A variation is only what a clip holds: a text whose oscillators differ from
   the first's has that difference ignored. Leaving a sound that came in a state for another
   preset keeps the variation in use as that preset's edit and drops the rest and the name.

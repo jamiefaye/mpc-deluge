@@ -197,6 +197,9 @@ inline bool engineForAudio(int instance)
 
 constexpr int kMaxPresets = 4096;
 
+// What the texts of a state's "X" block are (saveExtraState). Only a synth so far.
+constexpr uint8_t kSoundKindSynth = 0;
+
 } // namespace
 
 class DelugeSynth : public mpc::Plugin
@@ -991,11 +994,16 @@ public:
     // below). Or "X": the sound itself, for one that has more than one variation or that came
     // in an "X" block to begin with, and then the preset path only says whose place it plays in:
     //
-    //   'X', a version byte (1), how many variations (1 to kMaxVariations, one byte), the
-    //   sound's name and a zero byte (the name may be empty: the preset's is shown), then for
-    //   each variation a 32-bit length and that many bytes: the text of a Deluge SYNTH preset
-    //   file. The first is the sound. Of the others only what a clip holds on a Deluge is taken
-    //   (parameter values, cables, arpeggiator settings: engine.h).
+    //   'X', a version byte (1), a kind byte (0), how many variations (1 to kMaxVariations, one
+    //   byte), the sound's name and a zero byte (the name may be empty: the preset's is shown),
+    //   then for each variation a 32-bit length and that many bytes: the text of a Deluge SYNTH
+    //   preset file. The first is the sound. Of the others only what a clip holds on a Deluge is
+    //   taken (parameter values, cables, arpeggiator settings: engine.h).
+    //
+    //   The kind says what the texts are: 0, a synth. It is there so that a kit can come the
+    //   same way one day (Jamie, 2026-11-20: a kit with synth rows, played by the firmware's
+    //   own kit code; its texts would be KIT files, a variation a kit clip's values). A kind or
+    //   version this build does not know is refused like a block cut short.
     //
     // A program that makes projects (the Deluge song converter) writes the same: any path or
     // none, two zero bytes, the "X" block. Restoring one takes every value from the files, and
@@ -1025,6 +1033,7 @@ public:
             out.push_back(0);
             out.push_back('X');
             out.push_back(1);
+            out.push_back(kSoundKindSynth);
             out.push_back((uint8_t)sounds.size());
             const char* name = embeddedPreset_.load() == i ? embeddedName_[embeddedNameNow_.load() & 1] : "";
             out.insert(out.end(), name, name + std::strlen(name) + 1);
@@ -1136,10 +1145,11 @@ public:
         std::vector<std::string> sounds;
         std::string soundName;
         const bool soundsMeant = data + size - flagsEnd >= 2 && flagsEnd[1] == 'X';
-        if (data + size - flagsEnd >= 4 && flagsEnd[1] == 'X' && flagsEnd[2] == 1 && flagsEnd[3] >= 1 && flagsEnd[3] <= deluge_hosted::kMaxVariations)
+        if (data + size - flagsEnd >= 5 && flagsEnd[1] == 'X' && flagsEnd[2] == 1 && flagsEnd[3] == kSoundKindSynth && flagsEnd[4] >= 1
+            && flagsEnd[4] <= deluge_hosted::kMaxVariations)
         {
             const uint8_t* const stop = data + size;
-            const uint8_t* at = flagsEnd + 4;
+            const uint8_t* at = flagsEnd + 5;
             const uint8_t* zero = static_cast<const uint8_t*>(std::memchr(at, 0, (size_t)(stop - at)));
             bool whole = zero != nullptr;
             if (whole)
@@ -1147,7 +1157,7 @@ public:
                 soundName.assign(reinterpret_cast<const char*>(at), (size_t)(zero - at));
                 at = zero + 1;
             }
-            for (int n = 0; n < flagsEnd[3] && whole; ++n)
+            for (int n = 0; n < flagsEnd[4] && whole; ++n)
             {
                 uint32_t length = 0;
                 whole = (size_t)(stop - at) >= sizeof length;

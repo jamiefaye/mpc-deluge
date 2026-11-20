@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
 
 	// A state as the converter makes one: the SDK framework's block with no parameters in it,
 	// and ours with no preset path, no flags, and the "X" block.
-	std::vector<uint8_t> extra{0, 0, 'X', 1, 2};
+	std::vector<uint8_t> extra{0, 0, 'X', 1, 0, 2}; // version 1, kind 0 (a synth), two variations
 	const char* name = "Converted Lead";
 	extra.insert(extra.end(), name, name + std::strlen(name) + 1);
 	for (const std::string* text : {&first, &second}) {
@@ -281,6 +281,15 @@ int main(int argc, char** argv) {
 	disp(effSetChunk, 0, (VstIntPtr)cut.size(), cut.data());
 	run(300);
 	check(shown("Preset") == "SYNT008" && shown("Variation") == "1", "a state cut short is not loaded in part: the preset it would have replaced plays", values());
+
+	// So is a kind of sound this build does not know (the byte after the version).
+	disp(effSetChunk, 0, (VstIntPtr)saved.size(), const_cast<uint8_t*>(saved.data()));
+	run(300);
+	std::vector<uint8_t> otherKind = state;
+	otherKind[16 + 4] = 1;
+	disp(effSetChunk, 0, (VstIntPtr)otherKind.size(), otherKind.data());
+	run(300);
+	check(shown("Preset") == "SYNT008", "a state holding another kind of sound is refused, and the preset plays", values());
 
 	disp(effStopProcess);
 	disp(effMainsChanged, 0, 0);
