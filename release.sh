@@ -45,8 +45,8 @@ TXT
 rm -f "$folder"/diagnostics*.txt "$folder"/missing-samples.txt
 cp LICENSE "$folder/LICENSE"
 cat > "$folder/NOTICE.txt" <<TXT
-Deluge Synth $version for Akai MPC and Force
-Copyright (C) the Deluge Synth contributors and the authors of the code it is built from.
+Downrush $version for Akai MPC and Force
+Copyright (C) the Downrush contributors and the authors of the code it is built from.
 
 This program is free software: you can redistribute it and/or modify it under the terms of the
 GNU General Public License as published by the Free Software Foundation, either version 3 of the

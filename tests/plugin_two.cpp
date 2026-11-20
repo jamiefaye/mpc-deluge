@@ -1,4 +1,4 @@
-// A small VST2 host that runs several instances of the built Deluge Synth plugin in one process,
+// A small VST2 host that runs several instances of the built Downrush plugin in one process,
 // each on a thread of its own, as an MPC project with the plugin on several tracks does:
 //
 //   - each instance sounds, with its own preset

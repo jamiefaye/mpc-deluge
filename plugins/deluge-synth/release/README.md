@@ -1,4 +1,4 @@
-# Deluge Synth for Akai MPC and Force
+# Downrush for Akai MPC and Force
 
 The synth engine of the Synthstrom Deluge, from the open-source community firmware (v1.3.0),
 as an instrument plugin for standalone Akai MPCs and the Force. It loads Deluge SYNTH presets,
@@ -21,7 +21,7 @@ software and a fault in it can stop the MPC.
 
 ## Install
 
-See INSTALL.txt. In short: copy the folder `Fentonia - VST - Deluge Synth` into a folder named
+See INSTALL.txt. In short: copy the folder `Jamie Fenton - VST - Downrush` into a folder named
 `VST2 Plugins` at the top level of a drive the MPC can see, then restart the MPC.
 
 ## Sounds
@@ -90,6 +90,6 @@ doing; include it when reporting a problem.
 
 ## Source and licence
 
-Deluge Synth is free software under the GNU General Public License, version 3 or later: see
+Downrush is free software under the GNU General Public License, version 3 or later: see
 `LICENSE` and `NOTICE.txt` in the plugin folder. The source, with the exact version this
 package was built from, is at https://github.com/jamiefaye/mpc-deluge

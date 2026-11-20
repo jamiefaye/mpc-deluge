@@ -113,6 +113,12 @@ if [ -n "$content" ]; then
     fi
   fi
   rm -rf "$tmp"
+  # And the ones earlier deploys brought back into the project: after the plugin changes its
+  # name its old folder is not looked in, and they would otherwise stay behind.
+  if [ -d "$project/Content/SYNTHS/User" ]; then
+    mkdir -p "$stage/$name/Content/SYNTHS/User"
+    cp -R -n "$project/Content/SYNTHS/User/." "$stage/$name/Content/SYNTHS/User/" 2>/dev/null || true
+  fi
   remote --drive "$MPC_DRIVE" --yes add "$stage/$name"
 else
   remote --drive "$MPC_DRIVE" --yes update "$project"

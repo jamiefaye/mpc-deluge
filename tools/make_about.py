@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw Deluge Synth's ABOUT page (the credits) as a picture: skin-images/about.png, checked in,
+"""Draw Downrush's ABOUT page (the credits) as a picture: skin-images/about.png, checked in,
 from the "about" lines in the plugin's tabs.json and the version in its plugin.json.
 
 A picture because a skin's fixed-text labels do not show on a Force: the credits were first built

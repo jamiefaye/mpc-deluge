@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the background of Deluge Synth's GRID page: plugins/deluge-synth/skin-images/grid_bg.png,
+"""Draw the background of Downrush's GRID page: plugins/deluge-synth/skin-images/grid_bg.png,
 checked in. The Deluge's 16 x 8 shortcut grid with each pad's name on it, under a strip left
 plain for the gold knobs. tools/build.py ("grid" in tabs.json) puts the live parts over it: a bar
 in each cell and the touch that opens the cell's parameter.

@@ -1,6 +1,6 @@
 {
-  "name": "Deluge Synth",
-  "manufacturer": "Fentonia",
+  "name": "Downrush",
+  "manufacturer": "Jamie Fenton",
   "version": "0.1.0",
   "format": "vst2",
   "kind": "instrument",
@@ -8,10 +8,10 @@
   "numInputs": 0,
   "numOutputs": 2,
   "category": "Synth",
-  "file32": "VST/deluge-synth-arm32.so",
-  "file64": "VST/deluge-synth-arm64.so",
-  "description": "The Synthstrom Deluge synth engine (community firmware 1.3.0) playing Deluge SYNTH presets. Unofficial: not made or supported by Synthstrom Audible or inMusic.",
-  "author": "Fentonia",
+  "file32": "VST/downrush-arm32.so",
+  "file64": "VST/downrush-arm64.so",
+  "description": "A polyphonic synth running the synth engine of the open-source Deluge community firmware (1.3.0): subtractive, FM and ring mod, samples, a mod matrix, and it plays Deluge SYNTH preset files. Unofficial: not made or supported by Synthstrom Audible or inMusic.",
+  "author": "Jamie Fenton",
   "url": "https://github.com/jamiefaye/mpc-deluge",
   "license": "GPL-3.0-or-later"
 }

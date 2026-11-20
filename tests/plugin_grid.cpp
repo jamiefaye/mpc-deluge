@@ -1,4 +1,4 @@
-// A small VST2 host that loads the built Deluge Synth plugin and checks how its "engine
+// A small VST2 host that loads the built Downrush plugin and checks how its "engine
 // parameters" (the gold knobs and the shortcut-grid pads) behave together, which the SDK's
 // host_sim does not look at:
 //

@@ -7,6 +7,21 @@ synth engine on the MPC: "Deluge Synth" is the whole firmware engine playing SYN
 
 ## Status (2026-11-16) - read this first
 
+**The plugin is called Downrush, by Jamie Fenton, since 2026-11-20.** Until then it was "Deluge
+Synth" by "Fentonia", and everything below that was written before says so: read "Deluge Synth"
+as Downrush. Jamie chose the names for the release: the Open MPC catalog lists no plugin whose
+name, skin or screenshot carries another company's product name, so "Deluge" stays out of the
+name and is said only in descriptions (Downrush was the name of Jamie's own Deluge tools of
+2018). What changed: `plugin.json` (name, manufacturer, author, description), `PluginInfo`, the
+ABOUT page's first lines, the built folder (`Jamie Fenton - VST - Downrush`) and the binaries
+(`downrush-arm32.so`, `downrush-arm64.so`, `build/native/downrush.dylib`). What did not: the
+uid `F6wM`, every parameter id, the project folder `plugins/deluge-synth`, the source file
+and class names. **Not known: whether a Force project saved with the old name finds the
+plugin under the new one** (a project names the plugin by name, maker and uid; the
+converter's `PlugFind` tests found it with the path or the uid wrong, the name being right).
+The ABOUT page still credits Synthstrom and the firmware by name, as credits; if the
+catalog's reviewers object to that in a skin, it moves to the README.
+
 Older sections below are a dated log; where one says something "has not run yet", this section
 and the dated note nearest the topic win.
 

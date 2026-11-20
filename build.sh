@@ -34,7 +34,7 @@ fi
 
 case $(uname) in Darwin) ext=dylib ;; *) ext=so ;; esac
 for lib in "$project"/build/native/*."$ext"; do
-  # Deluge Synth's Save button writes a preset file; the simulator presses every button.
+  # Downrush's Save button writes a preset file; the simulator presses every button.
   DELUGE_SYNTH_NO_SAVE=1 "$sdk/.sdk-tools/host_sim" "$lib" test --wav "$project/build/test.wav"
 done
 

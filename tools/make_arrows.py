@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the up and down arrow buttons of Deluge Synth's MAIN page (previous / next folder and
+"""Draw the up and down arrow buttons of Downrush's MAIN page (previous / next folder and
 preset): plugins/deluge-synth/skin-images/arrow_{up,down}_{off,on}.png, checked in. tools/build.py copies
 that folder into the built skin and tabs.json ("buttons") says which parameters use them.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lay out a Deluge card's SYNTH presets, and the samples they use, as a library for Deluge Synth:
+"""Lay out a Deluge card's SYNTH presets, and the samples they use, as a library for Downrush:
 folders by collection instead of the card's one flat SYNTHS folder. Writes build/library/Content,
 which `./deploy.sh plugins/deluge-synth --content build/library` installs in place of the
 project's small Content/ (the one the tests use).

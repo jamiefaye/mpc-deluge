@@ -1,5 +1,5 @@
 {
-  "about": "Starter sounds for Deluge Synth, written in Tone.js terms (seconds, Hz, Q, octaves) and turned into Deluge presets by tools/make_starter.py. The first four began as the melodic voices of LJam (ljam/src/synths.js); the rest each show one thing the engine does. Ours, GPL-3.0-or-later like the rest of the repository.",
+  "about": "Starter sounds for Downrush, written in Tone.js terms (seconds, Hz, Q, octaves) and turned into Deluge presets by tools/make_starter.py. The first four began as the melodic voices of LJam (ljam/src/synths.js); the rest each show one thing the engine does. Ours, GPL-3.0-or-later like the rest of the repository.",
   "voices": [
     {
       "name": "Sub Bass",

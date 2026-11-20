@@ -11,7 +11,7 @@ Jamie Fenton, written with Claude (Anthropic's AI model) doing much of the codin
 
 | Folder | What | State |
 |--------|------|-------|
-| `plugins/deluge-synth/` | **Deluge Synth**: the whole firmware engine playing Deluge SYNTH preset files | Plays on a Force (32-bit). [README](plugins/deluge-synth/README.md) |
+| `plugins/deluge-synth/` | **Downrush**: the whole firmware engine playing Deluge SYNTH preset files | Plays on a Force (32-bit). [README](plugins/deluge-synth/README.md) |
 | `plugins/deluge-proto/` | **Deluge Proto**: the first prototype, firmware oscillators and filters with stand-in voices | Ran on a Force; kept as the small example. [README](plugins/deluge-proto/README.md) |
 | `plugins/hello/` | The SDK's instrument template, unchanged; a toolchain check with no Deluge code | [README](plugins/hello/README.md) |
 | `patches/` | Every change made to the firmware and to Argon | See below |
@@ -38,7 +38,7 @@ The patches are porting work, not a fork of the engine:
 There are **no performance or size changes** to the engine, and no changes meant to alter its
 sound. The aim is the opposite: the same audio as a Deluge on the same firmware. The 32-bit ARM,
 64-bit ARM and ARM Mac builds produce identical samples for all 747 presets of one Deluge SD
-card. Against a real Deluge the comparison is close but not finished; see the Deluge Synth
+card. Against a real Deluge the comparison is close but not finished; see the Downrush
 README.
 
 Anything found here that looks like a bug in the firmware itself will be reported to
@@ -57,7 +57,7 @@ tools/vendor.sh                      # once: fills third_party/ and applies the 
 ./deploy.sh plugins/deluge-synth     # to an MPC over the network
 ```
 
-Presets and samples are not included: they are not ours to redistribute. The Deluge Synth README
+Presets and samples are not included: they are not ours to redistribute. The Downrush README
 says where to put your own.
 
 `CLAUDE.md` is the project's working log and notes for the AI assistant. It is long, dated, and

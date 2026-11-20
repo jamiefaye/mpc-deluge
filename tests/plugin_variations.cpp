@@ -1,4 +1,4 @@
-// A small VST2 host that loads the built Deluge Synth plugin and checks variations: a sound
+// A small VST2 host that loads the built Downrush plugin and checks variations: a sound
 // that arrives in a project's state with more than one set of parameter values (the "X" block of
 // saveExtraState in DelugeSynth.cpp, which is what the Deluge song converter writes), and the
 // Variation parameter that chooses between them.

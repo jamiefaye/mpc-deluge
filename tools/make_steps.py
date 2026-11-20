@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the sixteen step buttons of Deluge Synth's SC STEPS page (the sidechain pattern, one bar
+"""Draw the sixteen step buttons of Downrush's SC STEPS page (the sidechain pattern, one bar
 of sixteenths): plugins/deluge-synth/skin-images/step_N_{off,on}.png, checked in. tabs.json
 ("buttons") places them in one row; the first step of each beat is a little lighter when off.
 

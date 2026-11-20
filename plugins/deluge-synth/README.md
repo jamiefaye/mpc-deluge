@@ -1,6 +1,6 @@
-# Deluge Synth
+# Downrush
 
-An instrument plugin for Akai MPC standalone hardware, by Fentonia: the Synthstrom Deluge's synth
+An instrument plugin for Akai MPC standalone hardware, by Jamie Fenton: the Synthstrom Deluge's synth
 engine playing Deluge SYNTH preset files.
 
 The sound comes from the Deluge community firmware's own code (voices, oscillators, filters,

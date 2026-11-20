@@ -1,4 +1,8 @@
-// Deluge Synth - an MPC instrument plugin by Fentonia
+// Downrush - an MPC instrument plugin by Jamie Fenton
+//
+// (Called "Deluge Synth", by "Fentonia", until 2026-11-20; the uid is the same. The name
+// changed so that the plugin does not carry Synthstrom's name for their instrument; file and
+// class names here keep the old one.)
 //
 // The Synthstrom Deluge's synth engine, running the Deluge community firmware's own code: this
 // file is only the plugin shell. It picks a SYNTH preset file, hands MIDI notes to the engine and
@@ -1461,8 +1465,8 @@ private:
     static mpc::PluginInfo makeInfo()
     {
         mpc::PluginInfo info;
-        info.name         = "Deluge Synth";
-        info.vendor       = "Fentonia";   // must match plugin.json "manufacturer"
+        info.name         = "Downrush";
+        info.vendor       = "Jamie Fenton";   // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
         info.version      = 1000;         // 1.0.0.0
         info.isInstrument = true;
@@ -2123,7 +2127,7 @@ private:
                 f = std::fopen(file.c_str(), "a");
                 if (f == nullptr) return;
                 if (fresh)
-                    std::fputs("Sample files that presets asked for and Deluge Synth could not find. Each line is where the\n"
+                    std::fputs("Sample files that presets asked for and Downrush could not find. Each line is where the\n"
                                "file should be, inside the plugin folder; a file with that name anywhere under Content/SAMPLES\n"
                                "is found too. Delete this file to start the list again.\n", f);
             }
@@ -2331,7 +2335,7 @@ private:
         const double seconds = (double)frames / 44100.0;
         const int loaded = loadedPreset_.load();
         std::snprintf(text, sizeof text,
-                      "Deluge Synth diagnostics (written on prepare, on project/preset save, and every 3 s while audio runs)\n"
+                      "Downrush diagnostics (written on prepare, on project/preset save, and every 3 s while audio runs)\n"
                       "engine: %s build; this is instance %d in it (-1: none, too many instances)\n"
                       "presets found in Content/SYNTHS: %d\n"
                       "loaded preset: %d (%s), load error %d, loads so far %d\n"
