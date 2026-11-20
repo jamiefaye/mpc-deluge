@@ -936,6 +936,14 @@ picture buttons (arrows, Save) are still `switch`. Use `switch` for nothing else
      `catalog/plugins/downrush.json` (the draft is `release-notes/open-mpc-entry.json`; its
      screenshot link is pinned to the tag), from a branch, with their template filled in:
      the check output and each zip's SHA-256 from the workflow's summary.
+  **0.1.0 was released on 2026-11-20:** https://github.com/jamiefaye/mpc-deluge/releases/tag/v0.1.0
+  (tag `v0.1.0`, three zips), `tested.json` added (Akai Force, MPC OS 3.10.1.12), and the
+  catalog entry proposed as https://github.com/open-mpc/mpc-vst-plugins/pull/1053 from the
+  branch `add-downrush` of the fork `jamiefaye/mpc-vst-plugins` (the entry as sent is
+  `release-notes/open-mpc-entry.json`). **From this release on, parameter ids and positions
+  and the state's layout are fixed**: a change to them is a major version. Until the pull
+  request is merged, watch it for reviewers' questions (the name and the ABOUT page's
+  credits are the likely ones); after that, a new release needs steps 1 to 7 only.
   **The workflow's first run (2026-11-20, a dry run on the draft of 0.1.0):** their tool
   made both zips from ours with our binaries unchanged; `catalog_check.py --catalog` said
   OK with no warnings for each (glibc 2.29 at most, listed for MPC OS 3.x). Their
