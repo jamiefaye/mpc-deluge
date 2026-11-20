@@ -84,6 +84,11 @@ fi
 
 mkdir -p dist
 python3 "$sdk/tools/package.py" "$stage" --out "$here/dist"
-zip=$(ls -t dist/*.zip | head -1)
+# Named as the Open MPC catalog wants a zip in Akai's one-folder format: <Name>-<version>-mpc-sdk.zip
+# (catalog/README.md in open-mpc/mpc-vst-plugins). It is the same zip whoever it is for.
+made=$(ls -t dist/*.zip | head -1)
+zip=dist/$(python3 -c 'import json,re,sys; j=json.load(open(sys.argv[1])); print(re.sub(r"[^A-Za-z0-9]+", "-", j["name"]).strip("-") + "-" + j["version"] + "-mpc-sdk.zip")' "$project/plugin.json")
+[ "$made" = "$zip" ] || mv "$made" "$zip"
+shasum -a 256 "$zip"
 echo "Contents other than the skin:"
 unzip -l "$zip" | grep -v "Plugin Skins/" | sed -n '4,$p'
