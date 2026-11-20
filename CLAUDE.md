@@ -91,8 +91,13 @@ and the dated note nearest the topic win.
   there. The plugin reports the gold parameters changed and requests a display update after
   a load, and the Force then shows the new names (Jamie, the same day). So on MPC builds the
   value text is now the position alone ("25"), and the GRID page's gold strip shows each
-  knob as its name and its number side by side (a `Name` and a `Value` label; not yet seen
-  on the device in that form).
+  knob as its name and its number side by side (a `Name` and a `Value` label; seen on the
+  Force in `screenshots/grid-editor.png`).
+- **`screenshots/grid-editor.png`** (Jamie's capture of the Force's screen, 2026-11-20,
+  the GRID page with the plugin named Downrush) is the picture for the Open MPC catalog's
+  card: the entry's `screenshot` must be a raw GitHub link to it pinned to the release's
+  tag, never a branch. Retake it when the page or the name changes. The older captures in
+  `~/deluge/pluginScreenShots/` show the old name in the Force's header.
 - **The build's 32-bit emulator check fails about one run in ten (found 2026-11-20, also in
   the build before the naming change; not known how old).** The simulator's state round trip
   reports 47 of the GRID page's display-only mark parameters (`"<pad> *"`) reading "-"

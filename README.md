@@ -7,6 +7,8 @@ the Synthstrom Audible Deluge community firmware's synth engine, built with inMu
 Synthstrom Audible product, and nobody from those companies is involved: it is a personal project by
 Jamie Fenton, written with Claude (Anthropic's AI model) doing much of the coding.
 
+![Downrush's GRID page on an Akai Force: the gold knobs above the shortcut grid](screenshots/grid-editor.png)
+
 ## What is here
 
 | Folder | What | State |
