@@ -1108,7 +1108,10 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   first note at beat 1, both clips do put the pan in the right place"), so the automation
   point at tick 0 reaches the plugin before the note and the converter need not place it
   early. (Those clips' notes carry the song's own probabilities, 30 and 40%, so not every
-  pass plays one.) Not yet reported: the last two points below.
+  pass plays one.) With launch quantization loosened so that clips start off the bar line,
+  "so far everything comes from the right place" (Jamie, the same day; the probabilities
+  keep it from being heard on every launch). Not yet reported: the screen following the
+  playing clip, stray automation, and a legato launch if the Force has one.
 - **Still to find out on the Force:** whether launching a clip part-way sends the point at all; whether the
   Force records as automation the parameter changes the plugin reports when the variation
   changes (a hundred or so at once), while automation is being written.
