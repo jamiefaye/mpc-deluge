@@ -56,8 +56,12 @@ moment and take room.
 
 ## Using it
 
-- **MAIN**: Folder and Preset with step arrows (single and by ten), Volume, the Save button, and
-  whether the preset's sample files were found.
+- **MAIN**: Folder and Preset with step arrows (single and by ten), the Save and Revert buttons,
+  whether the preset's sample files were found, and Variation.
+- **Variation** matters only for a sound that arrived in a project with more than one set of
+  parameter values, as a song converted from a Deluge can have (on a Deluge each clip of a synth
+  keeps its own values). It chooses which set plays and is edited, and is meant to be automated:
+  one point at the start of a clip. On an ordinary preset it does nothing.
 - **GOLD**: the Deluge's sixteen gold-knob assignments for the loaded preset, by name.
 - **OSC, SAMPLE 1, SAMPLE 2, FM, VOICE, ARP, FILTER, ENV, LFO, MOD FX, REVERB**: the Deluge's
   shortcut-grid parameters. SAMPLE 1 and 2 choose a sample file for each oscillator.
