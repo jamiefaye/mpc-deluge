@@ -67,6 +67,25 @@ and the dated note nearest the topic win.
   "Variations". **`Variation` is parameter 404 and the state has a new block: both are
   permanent once the plugin is released.**
 
+- **Gold knobs named for what they control (2026-11-20; installed on the Force, not yet
+  looked at there).** Jamie: the knobs "say Gold 1, Gold 2 and so on" when they first come
+  up; wanted the name and value straight away. On MPC builds the parameter's *name* is now
+  the preset's name for the knob ("LPF frequency"): the plugin has its own entry point,
+  which answers `effGetParamName` for the sixteen gold parameters (`knobParameterName`) and
+  hands everything else to the SDK's dispatcher. Other builds keep "Gold N", which the SDK's
+  tools and the tests look parameters up by; `DELUGE_SYNTH_KNOB_NAMES=1` switches it on
+  there. **Unknown: whether an MPC asks for names again after a preset change** (the plugin
+  reports the gold parameters changed and requests a display update). If it does not, the
+  names will be the first preset's, or still "Gold N", and the answer is in the skin
+  instead. The value text still carries the name too ("LPF frequency 25") until that is known.
+- **The build's 32-bit emulator check fails about one run in ten (found 2026-11-20, also in
+  the build before the naming change; not known how old).** The simulator's state round trip
+  reports 47 of the GRID page's display-only mark parameters (`"<pad> *"`) reading "-"
+  straight after `effSetChunk`; the diagnostics written afterwards show the right count (99
+  of 123 pads apply), no wait timed out and the load had no error. So the marks are stale for
+  a moment after a restore and then right. Nothing reads them back and no sound or saved
+  value is involved. Not chased; a second run of the build passes.
+
 - **A crash on loading a project, once, not repeatable (2026-11-19).** A project converted from
   a Deluge song by `../deluge-force-converter` (three Deluge Synth tracks, each naming a
   library preset, beside two drum tracks) crashed the Force as it loaded; the same file

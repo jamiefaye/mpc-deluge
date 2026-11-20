@@ -466,6 +466,21 @@ public:
         }
     }
 
+    // A gold knob's parameter is called what the loaded preset has the knob control ("LPF
+    // frequency"), so that wherever the MPC shows a parameter's name it shows that and not
+    // "Gold 3" (Jamie, 2026-11-20). False, and the name the parameter was declared with stands,
+    // for any other parameter, for a knob that controls nothing, and where names must stay
+    // fixed: the SDK's tools and the tests find parameters by "Gold 3", so only the builds for an
+    // MPC do this, or any build with DELUGE_SYNTH_KNOB_NAMES set. Called on the MPC's threads.
+    bool knobParameterName(int index, char* out) const
+    {
+        if (!knobNamesAsParameterNames_ || index < kGold || index >= kGold + deluge_hosted::kNumKnobs) return false;
+        const char* name = knobNames_[index - kGold];
+        if (name[0] == 0) return false;
+        std::snprintf(out, 32, "%.31s", name);
+        return true;
+    }
+
     // A button is a momentary request. It stays on for a tenth of a second, so that the MPC's
     // screen shows the press (and the SDK's tools, which set it and read it back to find out what
     // kind of parameter it is, see a switch), then the worker thread puts it back to off.
@@ -2273,6 +2288,7 @@ private:
         }
         knobsBusy_.store(false);
         tellHostLater(kPreset);   // the knob names changed: have the MPC read the texts again
+        for (int k = 0; k < deluge_hosted::kNumKnobs; ++k) tellHostLater(kGold + k);
     }
 
     void handleMidi(const mpc::MidiEvent& e)
@@ -2409,6 +2425,11 @@ private:
     int               framesSinceSnapshot_ = kSnapshotSpacing;   // audio thread only
     std::atomic<bool> resync_{false};        // a project set the engine parameters: hand them all to the engine
     char              knobNames_[deluge_hosted::kNumKnobs][32];
+#if defined(__linux__) && (defined(__arm__) || defined(__aarch64__))
+    const bool        knobNamesAsParameterNames_ = true;
+#else
+    const bool        knobNamesAsParameterNames_ = std::getenv("DELUGE_SYNTH_KNOB_NAMES") != nullptr;
+#endif
     // Set while this thread is the one writing a parameter, so parameterChanged() can tell our own
     // writes from the MPC's. Per thread: the MPC may be setting parameters on another at the same time.
     static inline thread_local bool tMirroringKnobs = false;
@@ -2509,4 +2530,31 @@ private:
     uint32_t              diagnosticsCalls_ = 0;       // worker thread only
 };
 
-MPC_PLUGIN_ENTRY(DelugeSynth)
+// The entry point is the SDK's (MPC_PLUGIN_ENTRY) with one addition: the answer to "what is
+// parameter n called?" comes from the plugin for the gold knobs (knobParameterName), and from the
+// SDK's dispatcher for everything else.
+namespace {
+VstIntPtr (*sdkDispatcher)(AEffect*, VstInt32, VstInt32, VstIntPtr, void*, float) = nullptr;
+VstIntPtr namingDispatcher(AEffect* e, VstInt32 opcode, VstInt32 index, VstIntPtr value, void* ptr, float opt)
+{
+    if (opcode == effGetParamName && ptr != nullptr && e->object != nullptr
+        && static_cast<DelugeSynth*>(static_cast<mpc::Plugin*>(e->object))->knobParameterName(index, static_cast<char*>(ptr)))
+        return 0;
+    return sdkDispatcher(e, opcode, index, value, ptr, opt);
+}
+AEffect* makeEffect(audioMasterCallback host)
+{
+    if (host != nullptr && host(nullptr, audioMasterVersion, 0, 0, nullptr, 0.0f) == 0) return nullptr;   // host is VST1 only
+    AEffect* e = mpc::detail::createEffect(new DelugeSynth(), host);
+    if (e != nullptr)
+    {
+        sdkDispatcher = e->dispatcher;
+        e->dispatcher = &namingDispatcher;
+    }
+    return e;
+}
+} // namespace
+extern "C" MPC_EXPORT AEffect* VSTPluginMain(audioMasterCallback host) { return makeEffect(host); }
+#if defined(__APPLE__)
+extern "C" MPC_EXPORT AEffect* main_macho(audioMasterCallback host) { return makeEffect(host); }
+#endif
