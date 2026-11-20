@@ -1103,12 +1103,13 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   `../deluge-force-converter`):** `VarPan449` (one synth, two clips set hard left and hard
   right): "hearing the pan". `Var454` (a real song, one synth with four clips of different
   filter and delay settings): "hearing the variations". So a state with an "X" block loads
-  on the device, and the Force's clip automation of `Variation` switches the set. Not yet
-  reported: the three points below.
-- **To find out on the Force:** whether an automation point at a clip's first tick reaches
-  the plugin before a note on the same tick (if not, the first note of a clip plays with the
-  last clip's values: the converter could then put the point a tick early, at the end of
-  the clip before); whether launching a clip part-way sends the point at all; whether the
+  on the device, and the Force's clip automation of `Variation` switches the set. **A
+  note on a clip's first tick already has the clip's values** (Jamie: "when they do fire a
+  first note at beat 1, both clips do put the pan in the right place"), so the automation
+  point at tick 0 reaches the plugin before the note and the converter need not place it
+  early. (Those clips' notes carry the song's own probabilities, 30 and 40%, so not every
+  pass plays one.) Not yet reported: the last two points below.
+- **Still to find out on the Force:** whether launching a clip part-way sends the point at all; whether the
   Force records as automation the parameter changes the plugin reports when the variation
   changes (a hundred or so at once), while automation is being written.
 
