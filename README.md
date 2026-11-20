@@ -9,6 +9,9 @@ Jamie Fenton, written with Claude (Anthropic's AI model) doing much of the codin
 
 ![Downrush's GRID page on an Akai Force: the gold knobs above the shortcut grid](screenshots/grid-editor.png)
 
+If you want to use it: the package's own README says how to install it and
+[how to bring your Deluge synths over](plugins/deluge-synth/release/README.md#bringing-your-deluge-synths-over).
+
 ## What is here
 
 | Folder | What | State |

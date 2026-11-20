@@ -34,25 +34,77 @@ locked to the tempo), Dub Stab (the synced delay) and Pump Pad (sidechain duckin
 steps on the SC STEPS page and press play).
 
 It does not come with the Deluge's factory presets or anyone's preset collections: those belong
-to their makers. If you own a Deluge, you can use the presets on your own SD card:
+to their makers. If you own a Deluge, bring your own over as described next.
 
-1. On a computer, open the plugin folder and find `Content`. It is laid out like a Deluge card.
-2. Copy presets from your card's `SYNTHS` folder into `Content/SYNTHS`, in subfolders of your
-   choosing. Keep each subfolder to about a hundred presets: the Folder bar on the MAIN screen
-   picks the subfolder and the Preset bar picks a preset inside it, one per click of the data
-   wheel.
-3. Copy the samples those presets use into `Content/SAMPLES`, best at the same paths they have
-   under `SAMPLES` on the card. A sample that is not at its path is looked for by name anywhere
-   under `Content/SAMPLES`, so a folder in the wrong place still works.
-4. Restart the MPC, or remove the plugin from the track and add it again.
+## Bringing your Deluge synths over
 
-**If a preset is silent or thin**, look at the Samples line on the MAIN screen. "1 of 2 MISSING"
-means a sample file was found nowhere. The file `missing-samples.txt` in the plugin folder
-lists each missing file, where it was expected, and the preset that wanted it: copy those
-files from your card and load the preset again.
+A Deluge keeps each synth preset as a small `.XML` file in the `SYNTHS` folder of its SD card,
+and the audio that sample-based presets play in `SAMPLES`. Downrush reads the same files from a
+folder laid out the same way: `Content`, inside the plugin's own folder. Bringing a sound over
+is copying files; nothing is converted.
 
-Samples are loaded whole into memory when a preset loads, so very large multisamples take a
-moment and take room.
+**Where things go.** Put the drive that holds the plugin in a computer and open
+
+    VST2 Plugins / Jamie Fenton - VST - Downrush / Content
+
+In it are `SYNTHS` and `SAMPLES`, standing for the two folders of the same names on a Deluge card.
+
+**The quick way: everything.**
+
+1. Put the Deluge's SD card in the computer too.
+2. Copy the card's `SYNTHS` folder into `Content/SYNTHS` as a subfolder with a name of your own,
+   for example `Content/SYNTHS/My Deluge`.
+3. Copy the *contents* of the card's `SAMPLES` folder into `Content/SAMPLES`, keeping the folders
+   inside it as they are. (A whole card's samples can be many gigabytes. Only the samples of the
+   preset that is loaded are read, so the size costs drive space and nothing else.)
+4. Eject the drive, put it back in the MPC, and restart the MPC (or remove the plugin from its
+   track and add it again). The list of presets is read when the plugin starts.
+
+**The tidy way: only what you want.** Copy just the preset files you want, into subfolders of
+`Content/SYNTHS` named as you like (Basses, Pads, a song's name). Then load each one on the MPC
+and look at the **Samples** line on the MAIN screen, as below, to see whether it needs audio
+files you have not copied.
+
+**Finding them on the MPC.** On the MAIN screen, **Folder** chooses a subfolder of
+`Content/SYNTHS` and **Preset** a preset inside it; the arrows step by one and by ten. A click
+of the data wheel is one preset as long as a folder holds about a hundred or fewer, so split a
+big collection into several folders (a card's `SYNTHS` folder with several hundred presets in
+it works, but the wheel then jumps several at a time: use the arrows).
+
+**Samples.** A preset names its audio files by their path on the card, such as
+`SAMPLES/DRUMS/Kick/808.wav`, and Downrush looks for that same path under `Content`. If the
+file is not there it looks for the same path with capital and small letters treated alike, and
+then for a file of that name anywhere under `Content/SAMPLES`, so a folder that ended up in a
+different place still works. The **Samples** line on MAIN says how it went:
+
+- "2 found": all there. "2 found, 1 by name": all there, one in a different folder.
+- "none used": the preset has no samples (most synth presets do not).
+- "1 of 2 MISSING": a file was found nowhere, and the preset will be silent or thin. The file
+  `missing-samples.txt` in the plugin folder lists each missing file, where it was expected and
+  which preset wanted it. Copy those files from the card and load the preset again.
+
+Samples are loaded whole into memory when a preset loads, so a very large multisample takes a
+moment and takes room.
+
+**What comes over, and what does not.**
+
+- Synth presets from any Deluge firmware, official or community, up to community 1.3.0, which is
+  the engine inside Downrush. A preset that uses something added after 1.3.0 will load without it.
+- A synth that exists only inside a song, never saved as a preset, has no file of its own: save
+  it as a synth preset on the Deluge first (see the Deluge's manual), then copy that file.
+- Kits and songs do not load. A kit row that is a synth can be saved on the Deluge as a synth
+  preset and brought over like any other.
+- A sound keeps its own gold-knob assignments: they are on the GOLD screen and on the Q-Links,
+  under the names the preset gives them.
+
+**Taking a sound back.** **Save** on the MAIN screen writes the sound as it stands to
+`Content/SYNTHS/User/<name> 2.XML` (then 3, and so on). Copy that file into the `SYNTHS` folder
+of a Deluge card, with any samples it uses at the same paths under `SAMPLES`, and the Deluge
+loads it.
+
+**Updating the plugin.** Your presets and samples live inside the plugin's folder. If you
+install a new version by replacing that folder, copy `Content` out first and put it back
+after. An installer from the Open MPC catalog keeps `Content` for you.
 
 ## Using it
 
