@@ -28,7 +28,9 @@ and the dated note nearest the topic win.
 - **Deluge Synth renders real audio** with the Deluge firmware's own engine (DelugeFirmware
   `v1.3.0`) on 32-bit ARM MPCs, 64-bit ARM MPCs and a 64-bit ARM Mac: all 747 presets on Jamie's
   card, sample-identical across the three. It runs on Jamie's Force (32-bit), where the `v1.3.0`
-  build was installed and played on 2026-11-13. Not yet tried on a 64-bit MPC (none to hand).
+  build was installed and played on 2026-11-13. On a 64-bit MPC it has not been run by us (none
+  to hand), but a user of the released 0.1.0 reports it working on an MPC Live III (told to
+  Jamie, 2026-11-22; firmware version not yet known, so not yet in `tested.json`).
 - **The placeholder sine tone is only for Intel builds** (the native build on an Intel computer
   and the desktop VST): the firmware's DSP is ARM NEON and cannot be compiled there. No MPC
   build contains it.
@@ -1235,8 +1237,9 @@ Chosen: the state carries every set, and one stepped parameter picks between the
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
 "Force G2") and macOS, and produces the same audio as the 32-bit build, sample for sample, for
-all 747 SYNTH presets on Jamie's card (see "Comparing builds"). Not yet run on a 64-bit MPC:
-Jamie has none.
+all 747 SYNTH presets on Jamie's card (see "Comparing builds"). Jamie has no 64-bit MPC; the
+first run on one is a user's report that the released 0.1.0 works on an MPC Live III
+(2026-11-22).
 
 - **Addresses in 32-bit fields.** The allocator's free list, and arrays and hash tables keyed by
   an object's address (`Song::backedUpParamManagers`, `Kit::drumsWithRenderingActive`, the

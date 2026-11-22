@@ -14,7 +14,8 @@ source with the hardware replaced. See the repository's `CLAUDE.md` for how.
   sample for sample, for all 747 presets of a Deluge SD card (`tools/corpus.sh`).
 - The engine is DelugeFirmware `v1.3.0`. It plays on a Force (32-bit), and also runs in emulated
   32-bit and 64-bit ARM machines and on an ARM Mac, where it passes the SDK host simulator and
-  plays 400 notes in a row on every preset. Not tried on a 64-bit MPC.
+  plays 400 notes in a row on every preset. On a 64-bit MPC: a user reports the
+  released 0.1.0 working on an MPC Live III (2026-11-22); not tested by us.
 - Compared with a real Deluge running the same firmware on one FM preset: level and spectrum
   agree within 1-2 dB below 16 kHz. One known difference remains near 22 kHz (inaudible; under
   investigation, see the repository's `CLAUDE.md`, "Status"). So "sounds the same" is close but

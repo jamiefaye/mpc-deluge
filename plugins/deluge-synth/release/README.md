@@ -16,7 +16,8 @@ software and a fault in it can stop the MPC.
 ## What you need
 
 - A standalone MPC or a Force on MPC OS 3.10.1 or later. Tested on a Force. The 64-bit MPCs
-  (Live III, XL) get their own build in this package, which has not yet been run on one.
+  (Live III, XL) get their own build in this package, which a user reports working on an
+  MPC Live III; we have not tested it ourselves.
 - In Preferences > Enhancements (Beta): Enable Enhancements and External Plugin Support on.
 
 ## Install
