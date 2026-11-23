@@ -225,6 +225,10 @@ void engineCellSet(int layer, int x, int y, int32_t value) {
 	}
 }
 
+// The placeholder has whole steps only: the plugin then sets a pad as it always did.
+bool engineCellSetFine(int, int, int, float) { return false; }
+bool engineCellGetFine(int, int, int, float*) { return false; }
+
 void engineGridRead(int32_t* values, uint8_t* relevant) {
 	std::memcpy(values, pads, sizeof pads);
 	std::memset(relevant, 1, kGridSlots);

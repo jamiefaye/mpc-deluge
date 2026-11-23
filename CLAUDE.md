@@ -1255,6 +1255,40 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   Force records as automation the parameter changes the plugin reports when the variation
   changes (a hundred or so at once), while automation is being written.
 
+### Pads between steps, and gliding (2026-11-23; in the tests, installed on the Force, not yet heard there)
+
+For automation in songs converted from a Deluge. A Deluge moves an automated parameter at
+every render (128 samples at most), linearly between two nodes, in its full 32 bits
+(`AutoParam::tickSamples`). The Force holds an automation point's value until the next point
+(`../deluge-force-converter`, `AutoRamp1`, recorded on Jamie's Force this day), and the SDK's
+framework rounds a stepped parameter before the plugin sees it. So a sweep was a stair twice
+over. Jamie: change the plugin here, on his own device; nothing goes to the catalog until the
+converting is done. **Not released: the published version is still 0.1.1.**
+
+- **Engine** (`hosted/matrix.h`): `engineCellSetFine` / `engineCellGetFine` take and give a
+  pad's value in steps with a fraction. For a Number pad that stands on one of the sound's
+  parameters (the firmware's `menu_item::Param`, a range of up to 129 steps). The 32-bit
+  value of each step is found once for a pad by writing every step through its own menu
+  item and reading the parameter back, then putting it back, so the scaling is the
+  firmware's whatever the item's class; a fraction is placed on the line between two
+  steps. A whole number is exactly the step, as before.
+- **Plugin** (`glideTo`, and the block after the pending changes in `process()`): a pad set
+  from outside takes the unrounded value (`getNormalised`, kept in `fineHost_`) and its
+  parameter goes there in a straight line over `kGlideFrames` (882 frames, 20 ms), a part
+  each block. A choice, a switch, a transpose and a pad that does nothing in the sound are
+  set whole, at once, as they were. Gold knobs are as they were (whole positions). A
+  restore, a preset load and a change of variation stop every glide.
+- **For the converter:** points along a Deluge glide written 20 ms apart or closer play
+  as the glide, 20 ms late. A point's value is (step - min) / (max - min) with the step
+  fractional. A hand on a knob or the data wheel now also arrives over 20 ms.
+- **What a project keeps is still whole steps**: the "V" values and the parameters the MPC
+  saves are rounded, so a pad left between two steps by automation comes back on the nearer
+  one. The read-back still reads whole steps and shows them.
+- `tests/plugin_glide.cpp` (in `tools/plugintest.sh`): half way between two steps of Master
+  Level plays between their levels; ten to forty arrives over about seven blocks; a choice
+  is set at once. `tools/corpus.sh` was not run again (nothing it runs calls the new
+  functions).
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

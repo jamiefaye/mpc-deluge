@@ -43,6 +43,15 @@ bool engineCellOption(int layer, int x, int y, int index, char* out, int outSize
 // the pad is not relevant.
 bool engineCellTextFor(int layer, int x, int y, int32_t value, char* out, int outSize);
 
+// Between two steps. A Number pad that stands on one of the sound's parameters (the firmware's
+// menu_item::Param: levels, filter, envelope times, rates... 51 steps of a 32-bit value) can hold
+// any value between two of its steps, which is how the Deluge's own automation moves one. `value`
+// is in steps, with a fraction (24.4); it is placed on the straight line between the 32-bit values
+// the firmware gives the step below and the step above, so a whole number is exactly that step.
+// Both return false, having done nothing, for a pad that is not of this kind or not relevant.
+bool engineCellSetFine(int layer, int x, int y, float value);
+bool engineCellGetFine(int layer, int x, int y, float* value);
+
 // Every pad at once, cheaply (no strings): for use on the audio thread after a change, to see
 // what else moved. Slot = layer * 128 + x * 8 + y. relevant[slot] is 0 for a pad that has no
 // value or does nothing in this preset; values[slot] is then left alone.

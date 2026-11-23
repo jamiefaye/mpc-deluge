@@ -61,6 +61,7 @@
 #include "grid_table.h"
 #include "matrix.h"
 
+#include <limits>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -343,6 +344,7 @@ public:
         keptEdit_.reset(new std::atomic<uint8_t>[presets_.size() + 1]);
         for (size_t i = 0; i <= presets_.size(); ++i) keptEdit_[i].store(0);
         std::snprintf(saveText_[0], sizeof saveText_[0], "-");
+        for (auto& fine : fineHost_) fine.store(std::numeric_limits<float>::quiet_NaN());
         for (int m = 0; m < kNumEngineParams; ++m)
         {
             pending_[m].store(kNoChange);
@@ -474,6 +476,13 @@ public:
                         value = mpc::clamp((value - kSemitones) * 100 + centsOf(host_[m].load()), -kSemitones * 100, kSemitones * 100);
                     if (host_[m].load() != value) noteEdit();   // not the MPC giving back what it was shown
                     host_[m].store(value);
+                    // The value before the framework rounded it to a whole step: process() glides
+                    // the engine's parameter to it where the pad can stand between steps (glideTo).
+                    if (index >= kGrid && index < kFine)
+                    {
+                        const grid::Cell& cell = grid::kCells[index - kGrid];
+                        fineHost_[index - kGrid].store((float)cell.min + getNormalised(index) * (float)(cell.max - cell.min));
+                    }
                     pending_[m].store(value);
                     // After the value is in place: a reader that sees the new stamp sees the value.
                     lastHostChange_[m].store(changeCounter_.fetch_add(1) + 1);
@@ -1351,19 +1360,43 @@ public:
         if (variation != deluge_hosted::engineVariationCurrent() && variation < deluge_hosted::engineVariationCount())
         {
             deluge_hosted::engineVariationUse(variation);
+            stopGlides();   // they were on their way in the other variation's values
             reconcileCables(true);
             snapshotWanted_ = true;
             framesSinceSnapshot_ = kSnapshotSpacing;
             statVariationChanges_.fetch_add(1, std::memory_order_relaxed);
         }
+        if (cancelGlides_.exchange(false, std::memory_order_relaxed)) stopGlides();
         if (anyPending_.exchange(false, std::memory_order_relaxed))
         {
             for (int m = 0; m < kNumEngineParams; ++m)
             {
                 const int value = pending_[m].exchange(kNoChange, std::memory_order_relaxed);
                 if (value == kNoChange) continue;
+                if (m >= kFirstCell && glideTo(m - kFirstCell)) continue;
                 engineSet(m, value);
                 snapshotWanted_ = true;
+            }
+        }
+        // Pads on their way to a value from outside. A Deluge moves an automated parameter a
+        // little at every render, in its full 32 bits; the MPC holds an automation point's value
+        // until the next point (the converter's AutoRamp1, 2026-11-23) and the framework rounds
+        // it to a whole step. So the unrounded value is taken, and the parameter goes to it in a
+        // straight line over kGlideFrames: points written that far apart or closer along a
+        // glide play as the glide, that much late.
+        if (anyGlide_)
+        {
+            anyGlide_ = false;
+            for (int c = 0; c < grid::kNumCells; ++c)
+            {
+                if (!glideActive_[c]) continue;
+                const float left = glideTarget_[c] - glideCur_[c], step = glidePerFrame_[c] * (float)numFrames;
+                const bool there = std::fabs(step) >= std::fabs(left);
+                glideCur_[c] = there ? glideTarget_[c] : glideCur_[c] + step;
+                const grid::Cell& cell = grid::kCells[c];
+                deluge_hosted::engineCellSetFine(cell.layer, cell.x, cell.y, glideCur_[c]);
+                if (there) { glideActive_[c] = false; snapshotWanted_ = true; }
+                else anyGlide_ = true;
             }
         }
         if (cableDirty_.load(std::memory_order_relaxed) != 0 && applyCableSlots()) snapshotWanted_ = true;
@@ -1493,6 +1526,30 @@ private:
     static float dbToGain(float dB) { return std::pow(10.0f, dB / 20.0f); }
 
     // Engine lock held.
+    // Audio thread, engine held. Starts pad c on its way to the unrounded value last set from
+    // outside. False, and nothing done, for a pad that cannot stand between two steps (a choice,
+    // a switch, a transpose, one that does nothing in this sound): it is then set as a whole step.
+    bool glideTo(int c)
+    {
+        if (fineOfCell_[c] >= 0) return false;
+        const float target = fineHost_[c].load(std::memory_order_relaxed);
+        if (std::isnan(target)) return false;
+        const grid::Cell& cell = grid::kCells[c];
+        float from = glideCur_[c];
+        if (!glideActive_[c] && !deluge_hosted::engineCellGetFine(cell.layer, cell.x, cell.y, &from)) return false;
+        glideCur_[c] = from;
+        glideTarget_[c] = target;
+        glidePerFrame_[c] = (target - from) / (float)kGlideFrames;
+        glideActive_[c] = true;
+        anyGlide_ = true;
+        return true;
+    }
+    void stopGlides()
+    {
+        for (bool& active : glideActive_) active = false;
+        anyGlide_ = false;
+    }
+
     static void engineSet(int m, int value)
     {
         if (m < kFirstCell) { deluge_hosted::engineKnobSet(m, value); return; }
@@ -2159,6 +2216,7 @@ private:
         }
         const bool keep = goldPreset_.load() == loaded;
         const bool adopt = !keep && loaded == requestedPreset_.load();
+        cancelGlides_.store(true);   // the values are set here, whole; nothing is to go on moving them
         const int changesBefore = knobChanges_.load();
         knobsBusy_.store(true);
         // The cables first: gold knobs and pads that reach a cable's depth come after and agree.
@@ -2398,6 +2456,13 @@ private:
     std::atomic<int>  snap_[kNumEngineParams];             // what the engine held at the last read-back
     std::atomic<int>  changeCounter_{0};                   // counts every setting from outside
     std::atomic<bool> anyPending_{false};
+    // Glides (see process()). All but fineHost_ and cancelGlides_ belong to the audio thread.
+    static constexpr int kGlideFrames = 882;               // 20 ms
+    std::atomic<float> fineHost_[grid::kNumCells];         // a pad's last value from outside, unrounded, in steps (NaN: none yet)
+    std::atomic<bool> cancelGlides_{false};                // the worker has set the engine's values itself (syncKnobs)
+    float             glideCur_[grid::kNumCells] = {}, glideTarget_[grid::kNumCells] = {}, glidePerFrame_[grid::kNumCells] = {};
+    bool              glideActive_[grid::kNumCells] = {};
+    bool              anyGlide_ = false;
     std::atomic<bool> snapKnobValid_[deluge_hosted::kNumKnobs];   // at the last read-back: the knob controls something
     std::atomic<bool> snapRelevant_[grid::kNumCells];             // at the last read-back: the pad applies to the preset
     std::atomic<bool> cellRelevant_[grid::kNumCells];             // the same, as the parameters' texts show it

@@ -11,6 +11,7 @@
 #include "gui/menu_item/enumeration.h"
 #include "gui/menu_item/menu_item.h"
 #include "gui/menu_item/number.h"
+#include "gui/menu_item/param.h"
 #include "gui/menu_item/selection.h"
 #include "gui/menu_item/toggle.h"
 #include "gui/menu_item/value.h"
@@ -20,11 +21,14 @@
 #include "gui/views/instrument_clip_view.h"
 #include "hosted.h"
 #include "model/clip/instrument_clip.h"
+#include "model/model_stack.h"
 #include "model/song/song.h"
+#include "modulation/automation/auto_param.h"
 #include "processing/sound/sound_instrument.h"
 #include "util/d_stringbuf.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cxxabi.h>
@@ -244,6 +248,117 @@ void engineCellSet(int layer, int x, int y, int32_t value) {
 		toggle->setValue(value != 0);
 		write<bool>(toggle);
 	}
+}
+
+namespace {
+// The 32-bit value the firmware gives each step of a pad, found once by writing every step
+// through the pad's own menu item and reading the parameter (so the scaling is the firmware's,
+// whichever kind of item it is), then putting the parameter back. Fixed for a pad: it does not
+// depend on the sound. Only for ranges of up to kFineSteps steps.
+constexpr int kFineSteps = 129;
+struct FineTable {
+	uint8_t state = 0; // 0 not looked at, 1 usable, 2 not this kind of pad
+	int32_t min = 0, max = 0;
+	int32_t at[kFineSteps];
+};
+FineTable fineTables[kGridSlots];
+
+// The parameter behind a pad, or null. `memory` is the model stack's.
+ModelStackWithAutoParam* paramOf(MenuItem* item, void* memory) {
+	auto* param = dynamic_cast<Param*>(item);
+	if (param == nullptr) {
+		return nullptr;
+	}
+	ModelStackWithAutoParam* modelStack = param->getModelStack(memory);
+	return modelStack != nullptr && modelStack->autoParam != nullptr ? modelStack : nullptr;
+}
+
+// With an Editing in place for `item`, relevant. Null if the pad is not of this kind.
+FineTable* fineTableOf(int layer, int x, int y, MenuItem* item) {
+	FineTable& table = fineTables[gridSlot(layer, x, y)];
+	if (table.state != 0) {
+		return table.state == 1 ? &table : nullptr;
+	}
+	table.state = 2;
+	auto* number = dynamic_cast<Number*>(item);
+	char memory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithAutoParam* modelStack = number != nullptr ? paramOf(item, memory) : nullptr;
+	if (modelStack == nullptr) {
+		return nullptr;
+	}
+	table.min = minOf(number);
+	table.max = maxOf(number);
+	if (table.max <= table.min || table.max - table.min >= kFineSteps) {
+		return nullptr;
+	}
+	const int32_t before = modelStack->autoParam->getCurrentValue();
+	for (int32_t step = table.min; step <= table.max; step++) {
+		number->setValue(step);
+		write<int32_t>(number);
+		table.at[step - table.min] = modelStack->autoParam->getCurrentValue();
+	}
+	modelStack->autoParam->setCurrentValueInResponseToUserInput(before, modelStack);
+	// It has to run one way and get somewhere, or a place between two steps means nothing.
+	const int n = table.max - table.min;
+	const bool rising = table.at[n] > table.at[0];
+	for (int i = 0; i < n; i++) {
+		if (rising ? table.at[i + 1] < table.at[i] : table.at[i + 1] > table.at[i]) {
+			return nullptr;
+		}
+	}
+	if (table.at[n] == table.at[0]) {
+		return nullptr;
+	}
+	table.state = 1;
+	return &table;
+}
+} // namespace
+
+bool engineCellSetFine(int layer, int x, int y, float value) {
+	InEngine inEngine;
+	MenuItem* item = itemAt(layer, x, y);
+	Editing editing(item, x);
+	if (!editing.ok || dynamic_cast<Value<int32_t>*>(item) == nullptr || !editing.relevant(item, x)) {
+		return false;
+	}
+	FineTable* table = fineTableOf(layer, x, y, item);
+	char memory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithAutoParam* modelStack = table != nullptr ? paramOf(item, memory) : nullptr;
+	if (modelStack == nullptr) {
+		return false;
+	}
+	const float place = std::clamp(value, (float)table->min, (float)table->max) - (float)table->min;
+	const int below = std::min((int)place, table->max - table->min - 1);
+	const double fraction = (double)place - below;
+	const double raw = (double)table->at[below] + ((double)table->at[below + 1] - (double)table->at[below]) * fraction;
+	modelStack->autoParam->setCurrentValueInResponseToUserInput((int32_t)std::llround(raw), modelStack);
+	return true;
+}
+
+bool engineCellGetFine(int layer, int x, int y, float* value) {
+	InEngine inEngine;
+	MenuItem* item = itemAt(layer, x, y);
+	Editing editing(item, x);
+	if (!editing.ok || dynamic_cast<Value<int32_t>*>(item) == nullptr || !editing.relevant(item, x)) {
+		return false;
+	}
+	FineTable* table = fineTableOf(layer, x, y, item);
+	char memory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithAutoParam* modelStack = table != nullptr ? paramOf(item, memory) : nullptr;
+	if (modelStack == nullptr) {
+		return false;
+	}
+	const int64_t raw = modelStack->autoParam->getCurrentValue();
+	const int n = table->max - table->min;
+	const bool rising = table->at[n] > table->at[0];
+	int below = 0;
+	while (below < n - 1 && (rising ? raw >= table->at[below + 1] : raw <= table->at[below + 1])) {
+		below++;
+	}
+	const double span = (double)table->at[below + 1] - (double)table->at[below];
+	const double fraction = span != 0.0 ? std::clamp(((double)raw - (double)table->at[below]) / span, 0.0, 1.0) : 0.0;
+	*value = (float)(table->min + below + fraction);
+	return true;
 }
 
 bool engineCellOption(int layer, int x, int y, int index, char* out, int outSize) {
