@@ -1569,7 +1569,13 @@ private:
         {
             const int slot = slotOf(grid::kCells[c]);
             snapRelevant_[c].store(relevant[slot] != 0, std::memory_order_relaxed);
-            if (relevant[slot]) snap_[kFirstCell + c].store((int)values[slot], std::memory_order_relaxed);
+            // A pad on its way to a value from outside is where it was asked to go, as far as
+            // anything shown is concerned: read part way there, the worker would make the
+            // parameter show that and report it changed, and an MPC playing automation into the
+            // parameter takes such a report for a hand on the control (Jamie on the Force,
+            // 2026-11-23: an automated pad did not move on screen).
+            if (relevant[slot] && glideActive_[c]) snap_[kFirstCell + c].store((int)std::lround(glideTarget_[c]), std::memory_order_relaxed);
+            else if (relevant[slot]) snap_[kFirstCell + c].store((int)values[slot], std::memory_order_relaxed);
         }
         for (int k = 0; k < deluge_hosted::kNumKnobs; ++k)
         {

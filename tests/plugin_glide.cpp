@@ -24,8 +24,16 @@
 #include <thread>
 #include <vector>
 
-static VstIntPtr hostCallback(AEffect*, VstInt32 opcode, VstInt32, VstIntPtr, void* ptr, float) {
+#include <atomic>
+static std::atomic<int> watched{-1}, toldOfWatched{0};
+
+static VstIntPtr hostCallback(AEffect*, VstInt32 opcode, VstInt32 index, VstIntPtr, void* ptr, float) {
 	switch (opcode) {
+	case audioMasterAutomate: // the plugin says a parameter changed
+		if (index == watched.load()) {
+			toldOfWatched.fetch_add(1);
+		}
+		return 0;
 	case audioMasterVersion:
 		return 2400;
 	case audioMasterGetVendorString:
@@ -217,6 +225,34 @@ int main(int argc, char** argv) {
 	run(100);
 	std::snprintf(text, sizeof text, "%.5f against %.5f", level(), high);
 	check(std::fabs(level() - high) < high * 0.002f, "the same step set again changes nothing", text);
+
+	// Automation as the MPC plays it: a value every 17 ms or so, with pauses, another pad moving
+	// too. The plugin must not answer by reporting the pad changed (to the engine's value part
+	// way there), which an MPC may take for a hand on the control.
+	const int other = paramCalled("LPF Reso");
+	run(300);
+	watched.store(master);
+	toldOfWatched.store(0);
+	float steps = 40.0f;
+	for (int burst = 0; burst < 12; burst++) {
+		for (int i = 0; i < 12; i++) {
+			steps += (burst % 2 == 0 ? -1.3f : 1.1f);
+			setSteps(steps);
+			if (i % 4 == 0) {
+				fx->setParameter(fx, other, (float)((burst * 12 + i) % 50) / 50.0f);
+			}
+			for (int b = 0; b < 6; b++) {
+				block();
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(17));
+		}
+		run(60 + 10 * (burst % 3));
+	}
+	run(200);
+	watched.store(-1);
+	std::snprintf(text, sizeof text, "%d reports; it shows %s, last set to %.1f", toldOfWatched.load(), shown("Master Level").c_str(), steps);
+	check(toldOfWatched.load() == 0 && shown("Master Level") == std::to_string((int)std::lround(steps)),
+	      "a pad under automation is not reported back changed, and shows what was last set", text);
 
 	// A choice has nothing between its values: set at once.
 	const int mode = paramCalled("Synth Mode");

@@ -1284,6 +1284,15 @@ converting is done. **Not released: the published version is still 0.1.1.**
 - **What a project keeps is still whole steps**: the "V" values and the parameters the MPC
   saves are rounded, so a pad left between two steps by automation comes back on the nearer
   one. The read-back still reads whole steps and shows them.
+- **A gliding pad was reported back to the host part way there (found and fixed the same
+  day).** Jamie, playing a converted song's FM automation on the Force: "mod2 level not
+  changing on UI". The read-back took the engine's value while the pad was still on its way
+  and, when no newer value had come from outside, made the parameter show that and reported
+  it changed (`audioMasterAutomate`); 36 such reports in a second or two of automation with
+  pauses in the test. An MPC playing automation into a parameter very likely takes the
+  report for a hand on the control and stops following: not proven, the Force was not
+  asked. Now a pad that is gliding reads back as the value it was asked to go to
+  (`takeSnapshot`). Not yet tried on the Force.
 - `tests/plugin_glide.cpp` (in `tools/plugintest.sh`): half way between two steps of Master
   Level plays between their levels; ten to forty arrives over about seven blocks; a choice
   is set at once. `tools/corpus.sh` was not run again (nothing it runs calls the new
