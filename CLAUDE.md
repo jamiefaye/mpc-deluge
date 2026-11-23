@@ -946,6 +946,13 @@ picture buttons (arrows, Save) are still `switch`. Use `switch` for nothing else
   and the state's layout are fixed**: a change to them is a major version. Until the pull
   request is merged, watch it for reviewers' questions (the name and the ABOUT page's
   credits are the likely ones); after that, a new release needs steps 1 to 7 only.
+  **0.1.1 (2026-11-23, a fix release: the two faults under "Variations") is a draft, not
+  published.** Done: version, notes (`release-notes/v0.1.1.md`), build, `plugintest.sh`,
+  `corpus.sh` (all identical), `release.sh` (the zip's SHA-256 begins `66d2fc7b`), pushed,
+  the draft made, the workflow's dry run passed. Left: the workflow with "dry run" off (step
+  5), the draft's zip tried on the Force (6), publishing, `tested.json` (7). No catalog pull
+  request is needed again. `release.sh`'s first run failed in the 32-bit emulator and the
+  second passed (the known one-in-ten).
   **The workflow's first run (2026-11-20, a dry run on the draft of 0.1.0):** their tool
   made both zips from ours with our binaries unchanged; `catalog_check.py --catalog` said
   OK with no warnings for each (glibc 2.29 at most, listed for MPC OS 3.x). Their
