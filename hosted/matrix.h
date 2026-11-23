@@ -52,6 +52,11 @@ bool engineCellTextFor(int layer, int x, int y, int32_t value, char* out, int ou
 bool engineCellSetFine(int layer, int x, int y, float value);
 bool engineCellGetFine(int layer, int x, int y, float* value);
 
+// For tools outside the plugin (the song converter's table): the 32-bit value of every step of
+// such a pad, `max - min + 1` of them into `values` (room for 129), and the name the firmware
+// gives the pad's parameter in a preset or song file ("lpfFrequency"). False as above.
+bool engineCellFineTable(int layer, int x, int y, int32_t* min, int32_t* max, int32_t* values, char* fileName, int fileNameSize);
+
 // Every pad at once, cheaply (no strings): for use on the audio thread after a change, to see
 // what else moved. Slot = layer * 128 + x * 8 + y. relevant[slot] is 0 for a pad that has no
 // value or does nothing in this preset; values[slot] is then left alone.

@@ -24,6 +24,8 @@
 #include "model/model_stack.h"
 #include "model/song/song.h"
 #include "modulation/automation/auto_param.h"
+#include "modulation/params/param.h"
+#include "modulation/params/param_collection.h"
 #include "processing/sound/sound_instrument.h"
 #include "util/d_stringbuf.h"
 
@@ -332,6 +334,32 @@ bool engineCellSetFine(int layer, int x, int y, float value) {
 	const double fraction = (double)place - below;
 	const double raw = (double)table->at[below] + ((double)table->at[below + 1] - (double)table->at[below]) * fraction;
 	modelStack->autoParam->setCurrentValueInResponseToUserInput((int32_t)std::llround(raw), modelStack);
+	return true;
+}
+
+bool engineCellFineTable(int layer, int x, int y, int32_t* min, int32_t* max, int32_t* values, char* fileName, int fileNameSize) {
+	InEngine inEngine;
+	MenuItem* item = itemAt(layer, x, y);
+	Editing editing(item, x);
+	if (!editing.ok || dynamic_cast<Value<int32_t>*>(item) == nullptr || !editing.relevant(item, x)) {
+		return false;
+	}
+	FineTable* table = fineTableOf(layer, x, y, item);
+	char memory[MODEL_STACK_MAX_SIZE];
+	ModelStackWithAutoParam* modelStack = table != nullptr ? paramOf(item, memory) : nullptr;
+	if (modelStack == nullptr) {
+		return false;
+	}
+	*min = table->min;
+	*max = table->max;
+	std::memcpy(values, table->at, sizeof(int32_t) * (size_t)(table->max - table->min + 1));
+	const auto kind = modelStack->paramCollection->getParamKind();
+	int32_t id = modelStack->paramId;
+	if (kind == deluge::modulation::params::Kind::UNPATCHED_SOUND || kind == deluge::modulation::params::Kind::UNPATCHED_GLOBAL) {
+		id += deluge::modulation::params::UNPATCHED_START; // as paramNameForFile wants an unpatched one
+	}
+	char const* name = deluge::modulation::params::paramNameForFile(kind, id);
+	copy(fileName, (size_t)fileNameSize, name != nullptr ? name : "");
 	return true;
 }
 
