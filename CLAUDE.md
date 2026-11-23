@@ -1255,7 +1255,7 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   Force records as automation the parameter changes the plugin reports when the variation
   changes (a hundred or so at once), while automation is being written.
 
-### Pads between steps, and gliding (2026-11-23; in the tests, installed on the Force, not yet heard there)
+### Pads between steps, and gliding (2026-11-23; on Jamie's Force, where converted automation plays: "working now")
 
 For automation in songs converted from a Deluge. A Deluge moves an automated parameter at
 every render (128 samples at most), linearly between two nodes, in its full 32 bits
@@ -1292,7 +1292,8 @@ converting is done. **Not released: the published version is still 0.1.1.**
   pauses in the test. An MPC playing automation into a parameter very likely takes the
   report for a hand on the control and stops following: not proven, the Force was not
   asked. Now a pad that is gliding reads back as the value it was asked to go to
-  (`takeSnapshot`). Not yet tried on the Force.
+  (`takeSnapshot`). With that build on the Force the automated pad moves on screen (Jamie,
+  the same day: "working now").
 - `tests/plugin_glide.cpp` (in `tools/plugintest.sh`): half way between two steps of Master
   Level plays between their levels; ten to forty arrives over about seven blocks; a choice
   is set at once. `tools/corpus.sh` was not run again (nothing it runs calls the new
