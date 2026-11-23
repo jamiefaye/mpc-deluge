@@ -73,11 +73,20 @@ static void hostPath(const char* path, char* out, size_t outSize) {
 	snprintf(out, outSize, "%s/%s", rootFolder, path);
 }
 
+static void closeSlot(int slot);
+
 // Returns the start cluster standing for a host path, adding it to the table if needed. 0 if the
 // table is full.
 static DWORD idForPath(const char* host) {
 	for (int i = 0; i < numFiles; i++) {
 		if (strcmp(files[i].path, host) == 0) {
+			// A descriptor kept open after f_close (see there) may be of a file since removed and
+			// written again under the same name, as the plugin's files for a project's sounds are
+			// (state-N.XML): reading through it gave the old file's contents. Let go of it then.
+			struct stat now, held;
+			if (files[i].fd >= 0 && (stat(host, &now) != 0 || fstat(files[i].fd, &held) != 0 || now.st_ino != held.st_ino || now.st_dev != held.st_dev)) {
+				closeSlot(i);
+			}
 			return START_CLUSTER(i);
 		}
 	}

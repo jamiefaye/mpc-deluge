@@ -1839,7 +1839,8 @@ private:
         // 2026-11-18), and restoring one drops every kept edit. Revert drops this preset's.
         const int previous = loadedPreset_.load();
         const bool restoring = restoringNow_.load();
-        if (revertRequested_.exchange(false))
+        const bool reverting = revertRequested_.exchange(false);
+        if (reverting)
         {
             keptEdit_[(size_t)wanted].store(0);
             if (!restoring) goldPreset_.store(-1);   // the file's values are to be taken, not the parameters' given back
@@ -1856,7 +1857,21 @@ private:
             std::lock_guard<std::mutex> lock(restoreLock_);
             sounds.swap(restoreSounds_);
             soundName = restoreSoundName_;
+            embeddedSounds_ = sounds;   // kept for Revert, until the next project restore
+            embeddedSoundsName_ = soundName;
+            embeddedSoundsPreset_ = wanted;
         }
+        // Revert of a sound that came in a project's state goes back to that sound, all its
+        // variations with it, not to the preset file whose place it took (Jamie, 2026-11-23: a
+        // converted song's synth reverted to a preset). So does Revert after coming back to it
+        // from another preset, which had kept only the variation in use.
+        else if (reverting && embeddedSoundsPreset_ == wanted && !embeddedSounds_.empty())
+        {
+            sounds = embeddedSounds_;
+            soundName = embeddedSoundsName_;
+        }
+        // A project restored without a sound of its own: the last project's is not to come back.
+        else if (restoring) { embeddedSounds_.clear(); embeddedSoundsPreset_ = -1; }
         const bool kept = sounds.empty() && !restoring && keptEdit_[(size_t)wanted].load() != 0;
         resync_.store(false);
         const int64_t loadStart = nowMs();
@@ -2443,6 +2458,9 @@ private:
     char                  embeddedName_[2][80] = {};
     std::atomic<bool>     restoreEmbedded_{false};
     std::vector<std::string> restoreSounds_;
+    std::vector<std::string> embeddedSounds_;        // worker thread only: the state's sound as it came, for Revert
+    std::string           embeddedSoundsName_;
+    int                   embeddedSoundsPreset_ = -1;
     std::string           restoreSoundName_;
     std::mutex            restoreLock_;           // loadExtraState and the worker; never the audio thread
     std::vector<float>    restoreValues_;         // a restored project's parameter values, from kGold on

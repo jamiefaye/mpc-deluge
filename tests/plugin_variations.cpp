@@ -259,6 +259,20 @@ int main(int argc, char** argv) {
 	}
 	check(sounds == 2, "a project save holds both variations as preset texts", std::to_string(saved.size()) + " bytes, " + std::to_string(sounds) + " sounds");
 
+	// Revert goes back to the sound the state carried, both variations, not to the preset
+	// file whose place it took.
+	fx->setParameter(fx, paramCalled("Revert"), 1.0f);
+	run(500);
+	check(shown("Preset") == name && shown("Variation") == "2" && valueOf("LPF Freq") == freq1 && valueOf("Env1 Attack") == attack1
+	          && valueOf("LPF Reso") != reso1,
+	      "Revert of a sound from a state: the state's sound again, without the change", values());
+	setVariation(0);
+	check(shown("Preset") == name && valueOf("LPF Freq") == freq0 && valueOf("Env1 Attack") == attack0 && valueOf("LPF Reso") == reso0,
+	      "and its variation 1 is still there", values());
+	setVariation(1);
+	setValue("LPF Reso", reso1); // the change again, for what follows
+	run();
+
 	// Another preset is itself, whatever Variation says.
 	check(choosePreset(presetName), "the first preset again");
 	run(500);

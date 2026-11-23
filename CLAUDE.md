@@ -1229,6 +1229,19 @@ Chosen: the state carries every set, and one stepped parameter picks between the
   keep it from being heard on every launch). MAIN's `Variation` bar is where the skin puts
   it and follows the playing clip ("it changes"). Not yet reported: stray automation written
   by the Force when the variation switches, and a legato launch if the Force has one.
+- **Revert of a sound from a state goes back to that sound (2026-11-23; installed on the
+  Force, not yet tried there).** Jamie, with songs converted that day: "changing a synth
+  from a song (not the presets) and then reverting, reverts to a preset". Revert loaded the
+  file of the preset whose place the sound had taken. The worker now keeps the state's texts
+  (`embeddedSounds_`) until the next project restore, and Revert loads them again, every
+  variation; it does so too after leaving the sound for another preset and coming back.
+- **Found on the way, and worse: a second state's sounds could be the first's.** The texts
+  pass through `EDITS/i<n>/state-<k>.XML`, and the hosted file layer keeps a file's
+  descriptor open after `f_close`, by path: a file removed and written again under the same
+  name was read through the old descriptor, so the engine got the old contents (a project
+  loaded after another in one session, or a Revert after a project save). `idForPath` in
+  `hosted/files.c` now lets go of a descriptor whose file is no longer the one at the path.
+  `tests/plugin_variations.cpp` has both. Was in 0.1.0 as released.
 - **Still to find out on the Force:** whether launching a clip part-way sends the point at all; whether the
   Force records as automation the parameter changes the plugin reports when the variation
   changes (a hundred or so at once), while automation is being written.
