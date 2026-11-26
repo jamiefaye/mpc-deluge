@@ -1299,6 +1299,29 @@ converting is done. **Not released: the published version is still 0.1.1.**
   is set at once. `tools/corpus.sh` was not run again (nothing it runs calls the new
   functions).
 
+### Making the plain pages look better (ideas, 2026-11-25; nothing built)
+
+Jamie: MAIN and GRID "look OK, but the rest looks plain" (every other page is the SDK
+generator's stock one: sixteen grey-and-red widgets on a blank background). Proposed, and
+Jamie: "all sound worth investigating" once back at the Force (about 2026-11-27). All of it
+is skin only, no parameter or state change. In the order proposed:
+
+1. A background picture per page: tinted panels and headings in the module's GRID column
+   colour (`COLUMN_COLOURS` in `tools/make_grid.py`), e.g. OSC as "OSC 1" and "OSC 2"
+   panels, FILTER as LPF / HPF / EQ / Compressor. The technique of `about.png` and
+   `grid_bg.png`. Also covers the empty places on ARP, MOD FX and REVERB.
+2. Knobs and bars tinted to the same colour: a knob film strip per module (`knobImage`,
+   the SDK's `make_knob.py`) in place of MPC red everywhere.
+3. Film-strip icons for the choices that have a shape (Osc Type, LFO Shape, LPF/HPF Mode,
+   Arp Mode, Delay Type), on the parameter, as the grid cells' states are.
+4. CABLES as a patch list: four rows of source, arrow, destination, a bipolar amount bar, of.
+5. An envelope drawing on ENV (the SDK's envelope display; never tried on the Force, so last).
+
+Perhaps also names without their prefix under a panel heading ("Feedback" under "OSC 1"),
+which means text in the picture in place of the MPC's own `Name` label. Offered as a first
+step and not yet asked for: a mock-up of 1 and 2 on OSC and FILTER, drawn over the captures
+in `~/deluge/pluginScreenShots/`, to judge before building.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
