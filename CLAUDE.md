@@ -1322,6 +1322,19 @@ which means text in the picture in place of the MPC's own `Name` label. Offered 
 step and not yet asked for: a mock-up of 1 and 2 on OSC and FILTER, drawn over the captures
 in `~/deluge/pluginScreenShots/`, to judge before building.
 
+**Built for OSC and FILTER, 2026-11-27 (ideas 1 and 2; installed on the Force, not yet looked
+at there).** Jamie saw a mock-up of both pages first ("so far so good"). `tabs.json` "panels"
+names, per page, each panel's title, colour and cells of the generator's 4 x 4 grid;
+`tools/make_panels.py` draws `skin-images/panel_<PAGE>.png` and, per colour, the kit's two
+knob strips with the accent turned to that colour; `apply_panels` in `tools/build.py` puts
+the picture behind the page's controls and points each control in a panel at a copy of its
+component in the panel's colour. A name-and-value bar is drawn by the MPC in its own red, so
+in a panel it becomes a name label, a `ColourBar` and a value label (as "big" does): its
+look is a copy of the stock one by eye. The Compressor's gold is its GRID column's (7).
+To look at on the Force: that the picture sits behind the controls; the tinted knobs; the
+rebuilt Type and Mode bars (text size and place, that a drag and a double tap still work);
+the focus ring, which is still MPC red. Another page is one more entry in "panels".
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
