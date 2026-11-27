@@ -245,8 +245,15 @@ void* usb_hstd_get_usb_ip_adr(uint16_t ipno) {
 	(void)ipno;
 	return usbRegisters;
 }
+#ifdef __EMSCRIPTEN__
+// WebAssembly checks a function's arguments at the call: these two need the ones their caller
+// (io/midi/midi_engine.cpp) passes, or reaching them would stop the program.
+void change_destination_of_send_pipe(void* ptr, uint16_t pipe, uint16_t* tbl, int32_t sq) {}
+void usb_send_start_rohan(void* ptr, uint16_t pipe, uint8_t const* data, int32_t size) {}
+#else
 void change_destination_of_send_pipe(void) {}
 void usb_send_start_rohan(void) {}
+#endif
 void usb_receive_start_rohan_midi(uint16_t pipe) {
 	(void)pipe;
 }

@@ -14,7 +14,16 @@ uintptr_t deluge_hosted_internal_end;
 // The Deluge has 64 MB of external RAM and streams samples through it. Here samples are kept
 // whole in memory, so the region is larger. The pages are meant to be committed only as they are
 // touched; see the end of deluge_hosted_memory_init() for what that takes inside an MPC.
+#ifdef __EMSCRIPTEN__
+// WebAssembly: the block is part of the module's one linear memory, which a browser may refuse to
+// grow far. 64 MB unless the build says otherwise (-DDELUGE_HOSTED_EXTERNAL_MB=256).
+#ifndef DELUGE_HOSTED_EXTERNAL_MB
+#define DELUGE_HOSTED_EXTERNAL_MB 64
+#endif
+#define EXTERNAL_SIZE ((unsigned)DELUGE_HOSTED_EXTERNAL_MB << 20)
+#else
 #define EXTERNAL_SIZE (256u << 20)
+#endif
 #define INTERNAL_SMALL_SIZE (256u << 10)
 #define INTERNAL_SIZE (4u << 20)
 
@@ -51,6 +60,18 @@ void deluge_hosted_memory_init(void) {
 		abort();
 	}
 	deluge_hosted_window = base;
+#elif defined(__EMSCRIPTEN__)
+	// Emscripten's mmap is malloc followed by clearing the lot, which would make every page real.
+	// Take the block from the end of the linear memory instead: memory that has never been used
+	// is zero, and the pages become real only when touched. (Addresses stay under 2 GB, so they
+	// are positive as int32_t, as long as the module's memory is not allowed past that.)
+	char* top = (char*)sbrk(0);
+	const size_t pad = (size_t)(-(uintptr_t)top & 0xFFFFu);
+	char* block = (char*)sbrk((intptr_t)(pad + total));
+	if (block == (char*)-1) {
+		abort();
+	}
+	block += pad;
 #else
 	void* block = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
 	if (block == MAP_FAILED) {
@@ -84,6 +105,9 @@ int deluge_hosted_memory_resident_mb(int* totalMb) {
 	if (deluge_hosted_external_begin == 0) {
 		return 0;
 	}
+#ifdef __EMSCRIPTEN__
+	return -1; // no page table to ask
+#else
 	const size_t page = (size_t)sysconf(_SC_PAGESIZE);
 	const size_t pages = total / page;
 	static unsigned char seen[(EXTERNAL_SIZE + INTERNAL_SMALL_SIZE + INTERNAL_SIZE) / 4096];
@@ -95,4 +119,5 @@ int deluge_hosted_memory_resident_mb(int* totalMb) {
 		resident += seen[i] & 1;
 	}
 	return (int)((resident * page) >> 20);
+#endif
 }

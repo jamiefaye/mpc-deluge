@@ -193,6 +193,30 @@ diff -ruN a/deluge/src/deluge/gui/menu_item/arpeggiator/rhythm.h b/deluge/src/de
  
  namespace deluge::gui::menu_item::arpeggiator {
  
+diff -ruN a/deluge/src/deluge/gui/menu_item/dx/param.cpp b/deluge/src/deluge/gui/menu_item/dx/param.cpp
+--- a/deluge/src/deluge/gui/menu_item/dx/param.cpp
++++ b/deluge/src/deluge/gui/menu_item/dx/param.cpp
+@@ -367,7 +367,7 @@
+ 		display->setScrollingText(desc_global_short[param - 6 * 21], 0, 600, 1);
+ 	}
+ 	else {
+-		display->setScrollingText(getTitle().begin(), 0, 600, 1);
++		display->setScrollingText(getTitle().data(), 0, 600, 1);
+ 	}
+ }
+ 
+diff -ruN a/deluge/src/deluge/gui/menu_item/patch_cables.cpp b/deluge/src/deluge/gui/menu_item/patch_cables.cpp
+--- a/deluge/src/deluge/gui/menu_item/patch_cables.cpp
++++ b/deluge/src/deluge/gui/menu_item/patch_cables.cpp
+@@ -106,7 +106,7 @@
+ 		return;
+ 	}
+ 
+-	display->setScrollingText(options[currentValue].begin());
++	display->setScrollingText(options[currentValue].data());
+ }
+ 
+ void PatchCables::selectEncoderAction(int32_t offset) {
 diff -ruN a/deluge/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp b/deluge/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
 --- a/deluge/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
 +++ b/deluge/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
@@ -1380,6 +1404,17 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  volatile int voices_started_this_render = 0;
  bool headphonesPluggedIn;
  bool micPluggedIn;
+@@ -195,8 +200,8 @@
+ alignas(CACHE_LINE_SIZE) std::array<StereoSample, SSI_TX_BUFFER_NUM_SAMPLES> renderingMemory;
+ alignas(CACHE_LINE_SIZE) std::array<int32_t, 2 * SSI_TX_BUFFER_NUM_SAMPLES> reverbMemory;
+ 
+-StereoSample* renderingBufferOutputPos = renderingMemory.begin();
+-StereoSample* renderingBufferOutputEnd = renderingMemory.begin();
++StereoSample* renderingBufferOutputPos = renderingMemory.data();
++StereoSample* renderingBufferOutputEnd = renderingMemory.data();
+ 
+ int32_t masterVolumeAdjustmentL;
+ int32_t masterVolumeAdjustmentR;
 @@ -229,9 +234,9 @@
  
  	sampleForPreview->sideChainSendLevel = 2147483647;
@@ -1401,6 +1436,28 @@ diff -ruN a/deluge/src/deluge/processing/engines/audio_engine.cpp b/deluge/src/d
  	size_t numSamples = ((uint32_t)(saddr - i2sTXBufferPos) >> (2 + NUM_MONO_OUTPUT_CHANNELS_MAGNITUDE))
  	                    & (SSI_TX_BUFFER_NUM_SAMPLES - 1);
  
+@@ -858,8 +863,8 @@
+ 
+ 	setMonitoringMode();
+ 
+-	renderingBufferOutputPos = renderingMemory.begin();
+-	renderingBufferOutputEnd = renderingMemory.begin() + numSamples;
++	renderingBufferOutputPos = renderingMemory.data();
++	renderingBufferOutputEnd = renderingMemory.data() + numSamples;
+ }
+ 
+ void renderAudioForStemExport(size_t numSamples) {
+@@ -901,8 +906,8 @@
+ 	doMonitoring = false;
+ 	monitoringAction = MonitoringAction::NONE;
+ 
+-	renderingBufferOutputPos = renderingMemory.begin();
+-	renderingBufferOutputEnd = renderingMemory.begin() + numSamples;
++	renderingBufferOutputPos = renderingMemory.data();
++	renderingBufferOutputEnd = renderingMemory.data() + numSamples;
+ }
+ 
+ void flushMIDIGateBuffers() {
 @@ -1294,7 +1299,7 @@
  }
  
@@ -1884,3 +1941,30 @@ diff -ruN a/deluge/src/deluge/util/functions.cpp b/deluge/src/deluge/util/functi
  	if (dotPos < prefixLength + 3) {
  		return false;
  	}
+diff -ruN a/deluge/src/deluge/util/functions.h b/deluge/src/deluge/util/functions.h
+--- a/deluge/src/deluge/util/functions.h
++++ b/deluge/src/deluge/util/functions.h
+@@ -388,15 +388,23 @@
+ int32_t divide_round_negative(int32_t dividend, int32_t divisor);
+ 
+ [[gnu::always_inline]] inline uint32_t swapEndianness32(uint32_t input) {
++#if defined(__arm__) || defined(__aarch64__)
+ 	int32_t out;
+ 	asm("rev %0, %1" : "=r"(out) : "r"(input));
+ 	return out;
++#else // mpc-deluge: not ARM (WebAssembly)
++	return __builtin_bswap32(input);
++#endif
+ }
+ 
+ [[gnu::always_inline]] inline uint32_t swapEndianness2x16(uint32_t input) {
++#if defined(__arm__) || defined(__aarch64__)
+ 	int32_t out;
+ 	asm("rev16 %0, %1" : "=r"(out) : "r"(input));
+ 	return out;
++#else // mpc-deluge: not ARM (WebAssembly)
++	return ((input & 0x00FF00FFu) << 8) | ((input >> 8) & 0x00FF00FFu);
++#endif
+ }
+ 
+ [[gnu::always_inline]] inline int32_t getMagnitudeOld(uint32_t input) {

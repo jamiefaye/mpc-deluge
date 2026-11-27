@@ -1345,6 +1345,50 @@ Left as they were: MAIN, GRID, ABOUT, SC STEPS, and CABLES 1 to 6, which wait fo
 Jamie of the twelve on the Force: "looks good" (the same day). Pushed to GitHub at Jamie's
 word; **not to go to the catalog yet** (Jamie): the published version stays 0.1.1.
 
+### WebAssembly (2026-11-27): the engine in a browser, byte for byte
+
+For `../deluge-force-converter`'s web page, which measures kit rows by playing them through
+the engine. Built with Emscripten (`~/tools/emsdk`, or `$EMSDK`); the other targets' commands
+are unchanged.
+
+```
+tools/build_firmware.py wasm --test tests/engine_script.cpp     # build/firmware/wasm/engine_script.js, for Node
+tools/build_firmware.py wasm --module tests/engine_module.cpp   # engine_module.mjs + .wasm, for a page
+node tests/engine_module_check.mjs                              # the module against the native program: PASS
+```
+
+- **The same samples as the native build**: all 747 presets of the card, one process each and
+  one after another, `engine_corpus`'s switch pass, `engine_variations`, `engine_instances`,
+  the FM kernel's checksum (a subagent's runs, 2026-11-27; `engine_module_check.mjs` run
+  again here: PASS). And the converter's five test songs measured with it come out as the
+  same project as with the native `engine_script`.
+- NEON was no trouble (Argon has a SIMDe path and Emscripten's `arm_neon.h` is SIMDe;
+  `hosted/wasm/arm/neon.h` is the include name Argon expects). What was:
+  - **fused multiply-add**: ARM does `a*b+c` in one float expression as one instruction and
+    wasm has none; five reverb presets differed 112 dB down. The wasm build compiles each
+    source to LLVM text, turns `llvm.fmuladd` into `llvm.fma`, and generates code from that
+    (`hosted/wasm/fma.c` has an exact `fmaf`).
+  - **division by zero**: wasm traps, arm64 gives 0, and the firmware does it
+    (`VoiceSample::weShouldBeTimeStretchingNow`, one preset of 747). The same rewrite gives
+    every division by a variable arm64's results.
+  - small things in `patches/`: two byte swaps written as ARM assembly get C elsewhere;
+    `.begin()` given as a pointer becomes `.data()`.
+- `hosted/memory.c` under Emscripten: a 64 MB sample region, taken with `sbrk`.
+- **`tests/engine_module.cpp`** is `engine_script` as a function, `run_script(root,
+  commands)`, in a module with its own file system: 2.1 MB of wasm (1 MB gzipped), 128 MB
+  of memory. **The engine is not reset between calls** (as in one native process loading
+  several presets), so a caller that wants a fresh run's audio makes a new instance for
+  each script: 2.5 ms with the wasm compiled once.
+- Not run through wasm: `engine_notes`, the DX7 voice (no preset on the card uses it; its
+  kernel's checksum matches), `save`, `pad` and `cable` commands. In a browser it has run
+  inside the converter's page only (Chrome 158).
+- **Seen on the way, in every build: a preset naming a missing sample, with a very large
+  SAMPLES tree (the whole 12 GB card), fills the allocator's 2 MB external region with the
+  sample index's strings** (`loadSamplesFromElsewhere` in `hosted/engine.cpp`). Native
+  carried on; wasm then lost its sample paths and crashed. Not mended. The plugin's own
+  library is far smaller, but it is the same code on the Force.
+- The other targets rebuild everything next time (`util/functions.h` changed).
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
