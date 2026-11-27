@@ -1400,7 +1400,8 @@ at 31, 62, 131, 232, 264, 392... Hz; the engine at 128 gives 80, 131, 160, 182, 
 416; **at 64 frames and below it gives the Deluge's**. `tests/engine_script.cpp` has
 `frames|N` to set the size. Details and files: `../deluge-force-converter/CLAUDE.md`.
 **The plugin now renders 32 at a time (`kRenderFrames`, the same day; built, its tests
-pass, installed on Jamie's Force, not yet restarted or heard; NOT released).** The corpus at
+pass, installed on Jamie's Force; Jamie, after the restart, of SYNT128: "sound closer
+now"; NOT released).** The corpus at
 both sizes first (744 presets of the card, one note at velocity 64 for 3 s, 128 against 32
 frames): about 20 have a third-octave band more than 6 dB different beyond their level
 (`BOD6-346-PLUCK`, `SYNT107`, `SYNT128`, `SYNT165`, `BOD6-358-PLUCK`, `SYNT288`, `SYNT245`,
