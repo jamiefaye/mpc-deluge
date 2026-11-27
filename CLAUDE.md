@@ -1334,6 +1334,14 @@ look is a copy of the stock one by eye. The Compressor's gold is its GRID column
 To look at on the Force: that the picture sits behind the controls; the tinted knobs; the
 rebuilt Type and Mode bars (text size and place, that a drag and a double tap still work);
 the focus ring, which is still MPC red. Another page is one more entry in "panels".
+Jamie, after the restart, of OSC and FILTER: "looks good" (2026-11-27; taken here to mean
+the Force's screen). Then the same on ten more pages, **installed, not yet looked at**: GOLD
+(one gold panel; its sixteen bars are now the rebuilt kind, so check their names and
+numbers), SAMPLE 1 and 2 (one green panel; the big Folder and File bars tinted too), FM,
+VOICE, ARP, ENV, LFO, MOD FX, REVERB. Envelopes 3 and 4 and LFOs 3 and 4 take the colours
+of 1 and 2; Stutter is gold by choice (its pad sits in an FM column). A panel that stops
+above the last row ends close under its cells to leave room for one below (ARP, LFO).
+Left as they were: MAIN, GRID, ABOUT, SC STEPS, and CABLES 1 to 6, which wait for idea 4.
 
 ### 64-bit (done 2026-11-13)
 

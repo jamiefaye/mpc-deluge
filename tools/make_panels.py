@@ -45,8 +45,10 @@ def cell_of(bounds):
 def box(cells):
     """A panel's rectangle on the page from "column row columns rows"."""
     column, row, columns, rows = (int(v) for v in cells.split())
+    # A panel that stops above the last row leaves room for the heading of one under it.
+    last = row + rows - 1
     return (column * COLUMN_STEP + 10, ROW_TOPS[row] - 37,
-            (column + columns) * COLUMN_STEP - 10, ROW_TOPS[row + rows - 1] + CELL_H + 16)
+            (column + columns) * COLUMN_STEP - 10, ROW_TOPS[last] + CELL_H + (16 if last == 3 else 3))
 
 
 def holds(cells, cell):

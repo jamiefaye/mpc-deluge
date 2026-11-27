@@ -796,6 +796,13 @@ def apply_panels(project, out_dir, params_json):
             block = block.replace('"key": "%s"' % kind, '"key": "%s %s"' % (kind, colour), 1)
             list_at = block.index("[", block.index('"componentsData"'))
             blocks.append(block[:list_at + 1] + "\n" + ",\n".join(parts) + "\n" + block[matching(block, list_at) - 1:])
+        # The bars "big" made (a name, a value and a bar in the accent colour): the bar's colour.
+        for kind in sorted(set(re.findall(r'"key": "(big slider [^"]*)"', tui))):
+            block = block_of(kind)
+            block, n = re.subn(r'("valueColour"\s*:\s*)"[0-9a-fA-F]{8}"', lambda m: '%s"ff%s"' % (m.group(1), colour), block, count=1)
+            if n == 1:
+                kinds[(kind, colour)] = "%s %s" % (kind, colour)
+                blocks.append(block.replace('"key": "%s"' % kind, '"key": "%s %s"' % (kind, colour), 1))
     first_block = tui.rfind("{", 0, tui.index('"key": "sliderWithFocus'))
     tui = tui[:first_block] + "".join(b + ",\n" for b in blocks) + tui[first_block:]
 

@@ -356,6 +356,54 @@
       {"title": "HIGH-PASS", "colour": "f08a4a", "cells": "1 0 1 4"},
       {"title": "EQ", "colour": "3cc8b4", "cells": "2 0 1 4"},
       {"title": "COMPRESSOR", "colour": "f0b43c", "cells": "3 0 1 2"}
+    ],
+    "GOLD": [
+      {"title": "GOLD KNOBS", "colour": "e0b040", "cells": "0 0 4 4"}
+    ],
+    "SAMPLE 1": [
+      {"title": "SAMPLE 1", "colour": "4cc26b", "cells": "0 0 4 4"}
+    ],
+    "SAMPLE 2": [
+      {"title": "SAMPLE 2", "colour": "4cc26b", "cells": "0 0 4 4"}
+    ],
+    "FM": [
+      {"title": "MODULATOR 1", "colour": "a97bf5", "cells": "0 0 1 4"},
+      {"title": "MODULATOR 2", "colour": "a97bf5", "cells": "1 0 1 4"},
+      {"title": "PHASE AND ROUTING", "colour": "a97bf5", "cells": "2 0 1 3"},
+      {"title": "SYNC AND NOISE", "colour": "4a9df0", "cells": "3 0 1 2"}
+    ],
+    "VOICE": [
+      {"title": "MASTER", "colour": "f0b43c", "cells": "0 0 1 4"},
+      {"title": "VOICE", "colour": "f0b43c", "cells": "1 0 1 4"},
+      {"title": "UNISON", "colour": "f0b43c", "cells": "2 0 1 4"},
+      {"title": "DISTORTION", "colour": "f0b43c", "cells": "3 0 1 4"}
+    ],
+    "ARP": [
+      {"title": "ARPEGGIATOR", "colour": "3cc8b4", "cells": "0 0 1 4"},
+      {"title": "ARP RANGE", "colour": "3cc8b4", "cells": "1 0 1 1"},
+      {"title": "RANDOMIZER", "colour": "9a9aa0", "cells": "1 1 1 3"},
+      {"title": "STUTTER", "colour": "f0b43c", "cells": "2 0 1 2"}
+    ],
+    "ENV": [
+      {"title": "ENVELOPE 1", "colour": "f06a5a", "cells": "0 0 1 4"},
+      {"title": "ENVELOPE 2", "colour": "f08a4a", "cells": "1 0 1 4"},
+      {"title": "ENVELOPE 3", "colour": "f06a5a", "cells": "2 0 1 4"},
+      {"title": "ENVELOPE 4", "colour": "f08a4a", "cells": "3 0 1 4"}
+    ],
+    "LFO": [
+      {"title": "LFO 1", "colour": "f06eb4", "cells": "0 0 1 3"},
+      {"title": "VIBRATO", "colour": "f0b43c", "cells": "0 3 1 1"},
+      {"title": "LFO 2", "colour": "f06eb4", "cells": "1 0 1 3"},
+      {"title": "LFO 3", "colour": "f06eb4", "cells": "2 0 1 3"},
+      {"title": "LFO 4", "colour": "f06eb4", "cells": "3 0 1 3"}
+    ],
+    "MOD FX": [
+      {"title": "MOD FX", "colour": "f06eb4", "cells": "0 0 2 4"},
+      {"title": "DELAY", "colour": "5ac8f0", "cells": "2 0 2 4"}
+    ],
+    "REVERB": [
+      {"title": "REVERB", "colour": "f06eb4", "cells": "0 0 2 4"},
+      {"title": "SIDECHAIN", "colour": "3cc8b4", "cells": "2 0 2 4"}
     ]
   },
   "ownText": [
