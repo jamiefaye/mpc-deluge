@@ -1416,6 +1416,18 @@ zig as `c++` in the PATH; the script is unchanged.
 The earlier comparisons with a Deluge (within 1 to 2 dB a band) were of presets with slow
 LFOs, where the size matters little.
 
+### A real Deluge is 6.0 dB above the engine (found 2026-11-27; nothing changed here)
+
+A test song of synths, resampled on Jamie's Deluge and recorded from the Force playing its
+conversion (`../deluge-force-converter`, "STEST1"): the Deluge's resample is 6.0 dB over the
+Force's take on every note of a plain sound, at any velocity, volume or cable, and the
+Force's take is what `engine_script` gives to 0.0 dB. So `engineRender`'s output is half
+what a Deluge's own resample holds. Not found where: the output stage `engineRender` repeats
+from `routine_()` (master volume, the shift and saturate) against where the firmware's
+recorder takes its samples is the place to read. The converter makes it up on the plugin
+track's level. Whether the plugin's own output should be doubled instead is Jamie's to say
+(it would change every project that has the plugin in it).
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked
