@@ -1462,11 +1462,12 @@ public:
 
             while (frame < segmentEnd)
             {
-                // The engine renders in multiples of four frames, up to 128. Whatever it renders
-                // beyond what this segment needs (at most three frames) is kept for the next one.
+                // The engine renders in multiples of four frames, kRenderFrames at a time. Whatever
+                // it renders beyond what this segment needs (at most three frames) is kept for the
+                // next one.
                 if (leftoverFrames_ == 0)
                 {
-                    const int wanted = std::min(segmentEnd - frame, deluge_hosted::kMaxRenderFrames);
+                    const int wanted = std::min(segmentEnd - frame, kRenderFrames);
                     const int rendered = (wanted + 3) & ~3;
                     deluge_hosted::engineRender(engineBuffer_, rendered);
                     leftoverFrames_ = rendered;
@@ -2464,6 +2465,12 @@ private:
     std::atomic<bool> anyPending_{false};
     // Glides (see process()). All but fineHost_ and cancelGlides_ belong to the audio thread.
     static constexpr int kGlideFrames = 882;               // 20 ms
+    // How much the engine renders at a time. The firmware moves its LFOs once a render, and a
+    // Deluge renders what its converter has taken since the last pass: 10 frames at least, 128 at
+    // most, so few when it is not busy. At 128 an LFO near its fastest aliases into another sound
+    // (SYNT128 of Jamie's SONG327D against the Deluge's own take, 2026-11-27: at 64 and below the
+    // engine gives the Deluge's partials, at 128 others); 32 is well inside what agrees.
+    static constexpr int kRenderFrames = 32;
     std::atomic<float> fineHost_[grid::kNumCells];         // a pad's last value from outside, unrounded, in steps (NaN: none yet)
     std::atomic<bool> cancelGlides_{false};                // the worker has set the engine's values itself (syncKnobs)
     float             glideCur_[grid::kNumCells] = {}, glideTarget_[grid::kNumCells] = {}, glidePerFrame_[grid::kNumCells] = {};

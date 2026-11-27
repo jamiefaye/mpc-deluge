@@ -1399,8 +1399,19 @@ rate 0x7E000000) the two are different sounds: resampled on Jamie's Deluge the p
 at 31, 62, 131, 232, 264, 392... Hz; the engine at 128 gives 80, 131, 160, 182, 212, 314,
 416; **at 64 frames and below it gives the Deluge's**. `tests/engine_script.cpp` has
 `frames|N` to set the size. Details and files: `../deluge-force-converter/CLAUDE.md`.
-**To decide with Jamie: render 32 or 16 at a time in the plugin.** Before that: the corpus
-at both sizes (how many presets change, by how much), and the processor cost on the Force.
+**The plugin now renders 32 at a time (`kRenderFrames`, the same day; built, its tests
+pass, installed on Jamie's Force, not yet restarted or heard; NOT released).** The corpus at
+both sizes first (744 presets of the card, one note at velocity 64 for 3 s, 128 against 32
+frames): about 20 have a third-octave band more than 6 dB different beyond their level
+(`BOD6-346-PLUCK`, `SYNT107`, `SYNT128`, `SYNT165`, `BOD6-358-PLUCK`, `SYNT288`, `SYNT245`,
+`SYNT283`, `135 - LFO Madness`...), where 32 against 16 has 4 and 64 against 32 has 11: so
+about fifteen sounds that 128 changes much, and a floor of small differences between any
+two sizes (free-running oscillators and noise fall differently). Cost: the simulator's
+figure in the 32-bit emulator went from 4.9 to 6.0 % a block; on the Force unmeasured
+(`diagnostics.txt`). The engine's tests, the corpus and the converter's kit measurements
+still render 128. `tools/plugintest.sh` would not link with the system's `c++` this day
+(the command line tools' linker cannot read the macOS 27.2 SDK): it passes with the SDK's
+zig as `c++` in the PATH; the script is unchanged.
 The earlier comparisons with a Deluge (within 1 to 2 dB a band) were of presets with slow
 LFOs, where the size matters little.
 
