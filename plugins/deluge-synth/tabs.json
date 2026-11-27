@@ -1,5 +1,5 @@
 {
-  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here MAIN's bottom row, below the bars, and Variation to the right of the small grid (the small grid is above the bars; Volume is on no page: Jamie, 2026-11-18). programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset. SC STEPS: the sidechain pattern, sixteen steps in one row (tools/make_steps.py draws them). grid: one more page after the named one on its key, the Deluge's shortcut grid as a picture with a bar in every cell and a touch that opens the cell's parameter, under the gold knobs (tools/make_grid.py draws it, apply_grid in tools/build.py builds it). about: a last page of fixed, centred text, the credits (apply_about in tools/build.py); edit the lines here. ownText: parameters whose list of choices is found when the plugin starts (folders, presets, sample files), which the skin must not carry a copy of.",
+  "_comment": "Which function key each ui.json page sits on. The MPC has six keys under the screen; pressing a key again steps through its pages. tools/build.py applies this to the generated skin. buttons: switches drawn as a picture button (images in skin-images/), with their place on the page in pixels; here the up and down arrows to the left of Folder and Preset, one above the other. big: a name-and-value bar at another size (x y w h), text scaled with it; here Folder and Preset at one and a half times. steps: whole-number parameters the knobs must step through one at a time (first and last value); here the transposes, in semitones, and their cents. place: moves a control (x y w h); here MAIN's bottom row, below the bars, and Variation to the right of the small grid (the small grid is above the bars; Volume is on no page: Jamie, 2026-11-18). programQLinks: the sixteen parameters the Q-Links control in the MPC's Program mode. The SAMPLE pages lay out an oscillator's Folder and File like MAIN's Folder and Preset. SC STEPS: the sidechain pattern, sixteen steps in one row (tools/make_steps.py draws them). grid: one more page after the named one on its key, the Deluge's shortcut grid as a picture with a bar in every cell and a touch that opens the cell's parameter, under the gold knobs (tools/make_grid.py draws it, apply_grid in tools/build.py builds it). about: a last page of fixed, centred text, the credits (apply_about in tools/build.py); edit the lines here. panels: on a page the generator made, a tinted and headed panel behind each group of cells (column row columns rows of the 4 x 4 grid of controls) with the knobs and bars inside it in the panel's colour, the colour of the module's column on GRID (tools/make_panels.py draws them, apply_panels in tools/build.py builds them). ownText: parameters whose list of choices is found when the plugin starts (folders, presets, sample files), which the skin must not carry a copy of.",
   "keys": [
     [
       "MAIN",
@@ -346,6 +346,18 @@
     "Gold 15",
     "Gold 16"
   ],
+  "panels": {
+    "OSC": [
+      {"title": "OSC 1", "colour": "4a9df0", "cells": "0 0 2 4"},
+      {"title": "OSC 2", "colour": "4a9df0", "cells": "2 0 2 4"}
+    ],
+    "FILTER": [
+      {"title": "LOW-PASS", "colour": "f06a5a", "cells": "0 0 1 4"},
+      {"title": "HIGH-PASS", "colour": "f08a4a", "cells": "1 0 1 4"},
+      {"title": "EQ", "colour": "3cc8b4", "cells": "2 0 1 4"},
+      {"title": "COMPRESSOR", "colour": "f0b43c", "cells": "3 0 1 2"}
+    ]
+  },
   "ownText": [
     "Preset",
     "Folder",

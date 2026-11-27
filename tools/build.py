@@ -714,6 +714,131 @@ def apply_about(project, out_dir, params_json):
     sdk_build.log("  tabs.json: the %s page, %d lines" % (about["name"], len([l for l in about["lines"] if l])))
 
 
+def apply_panels(project, out_dir, params_json):
+    """tabs.json "panels": {"<page>": [{"title": "OSC 1", "colour": "rrggbb", "cells": "column row
+    columns rows"}, ...]}: on a page the generator made, a picture behind the controls with a
+    tinted, headed panel round each group of cells (tools/make_panels.py draws it and holds the
+    geometry), and the controls inside a panel in the panel's colour: a knob gets a copy of the
+    kit's knob with a film strip of that colour, a name-and-value bar (which the MPC draws itself,
+    in its own red) becomes a name, a bar of the colour and the value, as "big" does it.
+    Skin only: no parameter is touched. Not yet seen on a device (2026-11-27)."""
+    spec_path = os.path.join(project, "tabs.json")
+    skins = os.path.join(out_dir, "Plugin Skins")
+    tui_path = os.path.join(skins, "TUI.json")
+    if not (os.path.isfile(spec_path) and os.path.isfile(tui_path)):
+        return
+    panels = json.load(open(spec_path)).get("panels")
+    if not panels:
+        return
+    import make_panels as mp
+    try:
+        mp.render(project, skins)
+    except ImportError:
+        pass
+
+    def copy(name):
+        source = os.path.join(project, "skin-images", name)
+        if not os.path.isfile(source):
+            raise sdk_build.BuildError("tabs.json panels: no %s (run tools/make_panels.py)" % source)
+        with open(source, "rb") as f, open(os.path.join(skins, name), "wb") as out:
+            out.write(f.read())
+
+    tui = open(tui_path, encoding="utf-8").read()
+
+    def block_of(key):
+        at = tui.find('"key": "%s"' % key)
+        if at < 0:
+            return None
+        start = tui.rfind("{", 0, at)
+        return tui[start:matching(tui, start)]
+
+    def part(name, kind, data, where, when="Always"):
+        return json.dumps({"version": 2, "componentData": {"version": 1, "name": name, "type": kind, "data": data},
+                           "handle remapping": {"version": 1, "map": []},
+                           "bounds": {"version": 1, "acceptsHWFocus": "No", "showWhenDataModelInvalid": "Show", "whenVisible": when,
+                                      "boundsType": "Absolute", "bounds": where}})
+
+    def text(style, height, colour, case):
+        return {"version": 1, "font": {"version": 1, "name": "Titillium Web", "style": style, "height": height},
+                "colour": colour, "justification": "horizontallyCentred verticallyCentred", "case": case}
+
+    colours = sorted({item["colour"] for items in panels.values() for item in items})
+    kinds = {}  # (the generator's component, colour) -> the copy's name
+    blocks = []
+    for colour in colours:
+        for kind, strip in (("knobUni", "knob_uni"), ("knobBi", "knob_bi")):
+            block = block_of(kind)
+            if block is None:
+                continue
+            name = "%s_%s.png" % (strip, colour)
+            copy(name)
+            if strip + ".png" not in block:
+                raise sdk_build.BuildError("tabs.json panels: the SDK's %s has changed shape" % kind)
+            kinds[(kind, colour)] = "%s %s" % (kind, colour)
+            blocks.append(block.replace('"key": "%s"' % kind, '"key": "%s %s"' % (kind, colour), 1).replace(strip + ".png", name))
+        for kind in ("sliderWithFocusMenu", "sliderWithFocus"):
+            block = block_of(kind)
+            if block is None:
+                continue
+            list_at = block.index("[", block.index('"componentsData"'))
+            list_end = matching(block, list_at)
+            first = block.index("{", list_at)
+            focus_end = matching(block, first)
+            bar = {"version": 2, "sliderType": "ColourBar", "direction": "Horizontal", "backgroundColour": "ff2c2b2c",
+                   "outlineColour": "ff6a6a6c", "valueColour": "ff" + colour, "isBipolar": False, "handleName": "Data"}
+            parts = [block[first:focus_end],
+                     part("name", "Label", {"version": 1, "textStyle": text("SemiBold", 24.0, "ff8a8a8c", "Upper Case"),
+                                            "type": "Name", "handleName": "Data"}, "4 6 270 32"),
+                     part("bar", "Slider", bar, "77 41 124 21"),
+                     part("value", "Label", {"version": 1, "textStyle": text("Regular", 30.0, "ffffffff", "Original"),
+                                             "type": "Value", "handleName": "Data"}, "4 64 270 38")]
+            kinds[(kind, colour)] = "%s %s" % (kind, colour)
+            block = block.replace('"key": "%s"' % kind, '"key": "%s %s"' % (kind, colour), 1)
+            list_at = block.index("[", block.index('"componentsData"'))
+            blocks.append(block[:list_at + 1] + "\n" + ",\n".join(parts) + "\n" + block[matching(block, list_at) - 1:])
+    first_block = tui.rfind("{", 0, tui.index('"key": "sliderWithFocus'))
+    tui = tui[:first_block] + "".join(b + ",\n" for b in blocks) + tui[first_block:]
+
+    changed = 0
+    for page, items in panels.items():
+        at = re.search(r'"tabName"\s*:\s*"%s"' % re.escape(page), tui)
+        if not at:
+            raise sdk_build.BuildError("tabs.json panels: no page called \"%s\"" % page)
+        picture = "panel_%s.png" % page.replace(" ", "_")
+        copy(picture)
+        tab_start = tui.rfind("{", 0, at.start())
+        list_at = tui.index("[", tui.index('"componentsData"', tab_start, matching(tui, tab_start)))
+        list_end = matching(tui, list_at)
+        controls, i = [], list_at + 1
+        while True:
+            i = tui.find("{", i, list_end)
+            if i < 0:
+                break
+            end = matching(tui, i)
+            controls.append(tui[i:end])
+            i = end
+        for n, control in enumerate(controls):
+            where = re.search(r'"boundsType"\s*:\s*"Absolute"\s*,\s*"bounds"\s*:\s*"([^"]*)"', control)
+            cell = mp.cell_of(where.group(1)) if where else None
+            inside = [item for item in items if cell and mp.holds(item["cells"], cell)]
+            if not inside:
+                continue
+            kind = re.search(r'"type"\s*:\s*"([^"]*)"', control)
+            to = kinds.get((kind.group(1), inside[0]["colour"]))
+            if to:
+                controls[n] = control[:kind.start(1)] + to + control[kind.end(1):]
+                changed += 1
+        background = json.dumps({"version": 2,
+                                 "componentData": {"version": 1, "name": "panels", "type": "Image",
+                                                   "data": {"version": 2, "imageType": "Regular", "colour": "0", "image": picture}},
+                                 "handle remapping": {"version": 1, "map": []},
+                                 "bounds": {"version": 1, "acceptsHWFocus": "No", "showWhenDataModelInvalid": "Show", "whenVisible": "Always",
+                                            "boundsType": "Absolute", "bounds": "0 0 %d %d" % (mp.WIDTH, mp.HEIGHT)}})
+        tui = tui[:list_at + 1] + "\n" + ",\n".join([background] + controls) + "\n" + tui[list_end - 1:]
+    open(tui_path, "w", encoding="utf-8").write(tui)
+    sdk_build.log("  tabs.json: panels on %d pages, %d controls in their panel's colour" % (len(panels), changed))
+
+
 _make_skins = sdk_build.make_skins
 
 
@@ -724,6 +849,7 @@ def make_skins(project, out_dir, params_json, no_ui):
         apply_buttons(project, out_dir, params_json)
         apply_grid(project, out_dir, params_json)
         apply_about(project, out_dir, params_json)
+        apply_panels(project, out_dir, params_json)
     return made
 
 
