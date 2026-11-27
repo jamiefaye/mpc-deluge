@@ -1342,6 +1342,8 @@ VOICE, ARP, ENV, LFO, MOD FX, REVERB. Envelopes 3 and 4 and LFOs 3 and 4 take th
 of 1 and 2; Stutter is gold by choice (its pad sits in an FM column). A panel that stops
 above the last row ends close under its cells to leave room for one below (ARP, LFO).
 Left as they were: MAIN, GRID, ABOUT, SC STEPS, and CABLES 1 to 6, which wait for idea 4.
+Jamie of the twelve on the Force: "looks good" (the same day). Pushed to GitHub at Jamie's
+word; **not to go to the catalog yet** (Jamie): the published version stays 0.1.1.
 
 ### 64-bit (done 2026-11-13)
 
