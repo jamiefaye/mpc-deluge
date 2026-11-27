@@ -1389,6 +1389,21 @@ node tests/engine_module_check.mjs                              # the module aga
   library is far smaller, but it is the same code on the Force.
 - The other targets rebuild everything next time (`util/functions.h` changed).
 
+### The render block's size is part of the sound (found 2026-11-27; the plugin NOT changed)
+
+The firmware moves LFOs (and whatever else is per render) once a block. `engineRender` is
+given 128 frames at a time by the plugin and by every test here; a real Deluge renders what
+its converter has consumed since the last pass, from 10 frames up to 128, so far fewer when
+it is not busy. With an LFO near its fastest on pitch (`SYNT128` in Jamie's `SONG327D`:
+rate 0x7E000000) the two are different sounds: resampled on Jamie's Deluge the partials are
+at 31, 62, 131, 232, 264, 392... Hz; the engine at 128 gives 80, 131, 160, 182, 212, 314,
+416; **at 64 frames and below it gives the Deluge's**. `tests/engine_script.cpp` has
+`frames|N` to set the size. Details and files: `../deluge-force-converter/CLAUDE.md`.
+**To decide with Jamie: render 32 or 16 at a time in the plugin.** Before that: the corpus
+at both sizes (how many presets change, by how much), and the processor cost on the Force.
+The earlier comparisons with a Deluge (within 1 to 2 dB a band) were of presets with slow
+LFOs, where the size matters little.
+
 ### 64-bit (done 2026-11-13)
 
 The firmware builds and runs on 64-bit ARM, Linux (MPC Live III, XL; presumably the leaked

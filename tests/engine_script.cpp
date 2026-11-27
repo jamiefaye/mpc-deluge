@@ -11,6 +11,7 @@
 //   on|60|127    off|60            notes
 //   render|40|/tmp/a.raw           render 40 blocks of 128 frames, appending interleaved stereo
 //                                    int32 to the file (no file name: render and discard)
+//   frames|64                      blocks are that many frames from here on (a multiple of 4, 128 at most)
 //   save|SYNTHS/New.XML            write the sound as a preset (will not overwrite)
 //   samples                        print how the preset's sample files fared
 //   pads    cables    names        print what there is
@@ -36,6 +37,7 @@
 using namespace deluge_hosted;
 
 static int lineNumber = 0;
+static int framesPerBlock = kMaxRenderFrames;
 
 [[noreturn]] static void fail(const std::string& why) {
 	std::fprintf(stderr, "engine_script: line %d: %s\n", lineNumber, why.c_str());
@@ -163,6 +165,14 @@ int main(int argc, char** argv) {
 			need(1);
 			engineNoteOff(std::atoi(f[1].c_str()));
 		}
+		else if (c == "frames") { // the size of a render block from here on (128 until said; a multiple of 4)
+			need(1);
+			int frames = std::atoi(f[1].c_str());
+			if (frames < 4 || frames > kMaxRenderFrames || frames % 4 != 0) {
+				fail("frames takes a multiple of 4 up to " + std::to_string(kMaxRenderFrames));
+			}
+			framesPerBlock = frames;
+		}
 		else if (c == "render") {
 			if (f.size() != 2 && f.size() != 3) {
 				fail("render takes a block count and, optionally, a file");
@@ -172,9 +182,9 @@ int main(int argc, char** argv) {
 				fail("cannot write " + f[2]);
 			}
 			for (int block = std::atoi(f[1].c_str()); block > 0; block--) {
-				engineRender(buffer, kMaxRenderFrames);
+				engineRender(buffer, framesPerBlock);
 				if (out != nullptr) {
-					std::fwrite(buffer, sizeof buffer, 1, out);
+					std::fwrite(buffer, sizeof(int32_t) * 2 * framesPerBlock, 1, out);
 				}
 			}
 			if (out != nullptr) {
